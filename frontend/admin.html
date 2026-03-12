@@ -1,0 +1,126 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>功法绝学活动 - 管理端原型</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-gradient"></div>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">A</span>
+        <div>
+          <div class="brand-title">功法绝学活动</div>
+          <div class="brand-sub">管理端原型</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="#queue">待确认</a>
+        <a href="#table">总表</a>
+        <a href="#audit">审计</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section id="queue" class="card">
+        <div class="card-title">待确认队列</div>
+        <div class="card-sub">管理员确认后状态锁定。</div>
+        <div class="queue">
+          <div class="queue-item">
+            <div>
+              <div class="queue-name">秋</div>
+              <div class="muted">收券 12 · 待确认</div>
+            </div>
+            <div class="actions">
+              <button class="primary">确认</button>
+              <button class="ghost">驳回</button>
+            </div>
+          </div>
+          <div class="queue-item">
+            <div>
+              <div class="queue-name">秋2</div>
+              <div class="muted">发卡 红色 1 · 待确认</div>
+            </div>
+            <div class="actions">
+              <button class="primary">确认</button>
+              <button class="ghost">驳回</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="table" class="card">
+        <div class="card-title">参与者总表</div>
+        <div class="card-sub">可筛选、批量查看、写入管理员字段。</div>
+        <div class="toolbar">
+          <input type="text" placeholder="搜索游戏名/手机号" />
+          <div class="filters">
+            <select>
+              <option>全部状态</option>
+              <option>待确认</option>
+              <option>已确认</option>
+              <option>有争议</option>
+            </select>
+            <select>
+              <option>本周</option>
+              <option>本月</option>
+            </select>
+          </div>
+        </div>
+        <div class="table wide">
+          <div class="row header">
+            <div>游戏名</div>
+            <div>是否需要帮做</div>
+            <div>收到卷卷</div>
+            <div>ID</div>
+            <div>炼功</div>
+            <div>我给了</div>
+            <div>绿色</div>
+            <div>蓝色</div>
+            <div>紫色</div>
+            <div>橙色</div>
+            <div>红色</div>
+            <div>金色</div>
+          </div>
+          <div class="row">
+            <div>秋</div>
+            <div>是</div>
+            <div>6</div>
+            <div>584967604</div>
+            <div>1</div>
+            <div>12</div>
+            <div>12</div>
+            <div>12</div>
+            <div>12</div>
+            <div>12</div>
+            <div>12</div>
+            <div>12</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="audit" class="card">
+        <div class="card-title">审计日志</div>
+        <div class="card-sub">记录管理员操作，便于追溯。</div>
+        <div class="table">
+          <div class="row header">
+            <div>时间</div>
+            <div>管理员</div>
+            <div>动作</div>
+            <div>备注</div>
+          </div>
+          <div class="row">
+            <div>01-26 20:40</div>
+            <div>admin</div>
+            <div>status_confirmed</div>
+            <div>确认首批发放</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">原型仅展示结构与流程，数据与接口待接入后端。</footer>
+  </body>
+</html>

@@ -1,0 +1,137 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>功法绝学活动 - 用户端原型</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-gradient"></div>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">G</span>
+        <div>
+          <div class="brand-title">功法绝学活动</div>
+          <div class="brand-sub">用户端原型</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="#login">登录</a>
+        <a href="#profile">我的信息</a>
+        <a href="#ledger">流水</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section id="login" class="card">
+        <div class="card-title">短信登录</div>
+        <div class="card-sub">手机验证码登录，后端接腾讯云短信。</div>
+        <div class="form-grid">
+          <label>
+            手机号
+            <input type="tel" placeholder="请输入手机号" />
+          </label>
+          <label>
+            验证码
+            <div class="inline">
+              <input type="text" placeholder="6位验证码" />
+              <button class="ghost">发送验证码</button>
+            </div>
+          </label>
+        </div>
+        <button class="primary">登录 / 注册</button>
+      </section>
+
+      <section id="profile" class="card">
+        <div class="card-title">我的信息（必填字段）</div>
+        <div class="card-sub">用户只能修改自己的必填/选填字段。</div>
+        <div class="form-grid two">
+          <label>
+            游戏名
+            <input type="text" placeholder="例：秋" />
+          </label>
+          <label>
+            这周宝库是否需要我帮你做
+            <select>
+              <option>是</option>
+              <option>否</option>
+            </select>
+          </label>
+          <label>
+            收到卷卷（数量）
+            <input type="number" placeholder="0" />
+          </label>
+          <label>
+            id（游戏ID / 活动ID）
+            <input type="text" placeholder="例如 24870+..." />
+          </label>
+          <label>
+            参与大杂鱼炼功
+            <select>
+              <option>1 = 我帮你</option>
+              <option>2 = 自己做</option>
+            </select>
+          </label>
+          <label>
+            联系人/微信名（选填）
+            <input type="text" placeholder="可空" />
+          </label>
+        </div>
+        <div class="actions">
+          <button class="primary">提交 / 更新</button>
+          <button class="ghost">撤回</button>
+        </div>
+        <div class="status-chip">当前状态：待确认</div>
+      </section>
+
+      <section id="ledger" class="card">
+        <div class="card-title">流水明细</div>
+        <div class="card-sub">每一次收/发卷、转账、发卡记录都在这里。</div>
+        <div class="toolbar">
+          <button class="ghost">新增流水</button>
+          <div class="filters">
+            <select>
+              <option>全部类型</option>
+              <option>收券</option>
+              <option>发券</option>
+              <option>转账</option>
+              <option>发卡</option>
+            </select>
+            <select>
+              <option>全部状态</option>
+              <option>待确认</option>
+              <option>已确认</option>
+              <option>有争议</option>
+            </select>
+          </div>
+        </div>
+        <div class="table">
+          <div class="row header">
+            <div>时间</div>
+            <div>类型</div>
+            <div>数量</div>
+            <div>说明</div>
+            <div>状态</div>
+          </div>
+          <div class="row">
+            <div>01-26 20:18</div>
+            <div>收券</div>
+            <div>12</div>
+            <div>首批资源</div>
+            <div><span class="pill pending">待确认</span></div>
+          </div>
+          <div class="row">
+            <div>01-26 20:22</div>
+            <div>发卡（红）</div>
+            <div>1</div>
+            <div>已发放</div>
+            <div><span class="pill done">已确认</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">原型仅展示结构与流程，数据与接口待接入后端。</footer>
+  </body>
+</html>

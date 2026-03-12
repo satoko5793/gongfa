@@ -1,0 +1,114 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>卡牌库存展示台</title>
+    <link rel="stylesheet" href="cards.css" />
+  </head>
+  <body>
+    <div class="noise"></div>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">CARD</span>
+        <div>
+          <h1>卡牌库存展示台</h1>
+          <p>上传背包截图，自动切片、去重并生成网店风格展示。</p>
+        </div>
+      </div>
+      <div class="status" id="statusText">等待上传截图</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel controls">
+        <h2>1. 上传截图</h2>
+        <label class="upload">
+          <input id="imageInput" type="file" accept="image/*" multiple />
+          <span>选择 1 张或多张截图</span>
+        </label>
+        <div id="fileList" class="file-list"></div>
+
+        <h2>2. 设置卡槽参数</h2>
+        <div class="grid-2">
+          <label>列数
+            <input id="cols" type="number" value="6" min="1" max="20" />
+          </label>
+          <label>行数
+            <input id="rows" type="number" value="8" min="1" max="20" />
+          </label>
+          <label>起点 X
+            <input id="startX" type="number" value="80" min="0" />
+          </label>
+          <label>起点 Y
+            <input id="startY" type="number" value="220" min="0" />
+          </label>
+          <label>卡槽宽度
+            <input id="cellW" type="number" value="140" min="10" />
+          </label>
+          <label>卡槽高度
+            <input id="cellH" type="number" value="164" min="10" />
+          </label>
+          <label>间距 X
+            <input id="gapX" type="number" value="14" min="0" />
+          </label>
+          <label>间距 Y
+            <input id="gapY" type="number" value="14" min="0" />
+          </label>
+          <label>空槽过滤阈值
+            <input id="emptyStd" type="number" value="15" min="1" max="80" />
+          </label>
+          <label>相似合并阈值
+            <input id="mergeDistance" type="number" value="8" min="1" max="32" />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="previewBtn" class="btn alt">预览切片</button>
+          <button id="runBtn" class="btn">生成展示</button>
+        </div>
+        <p class="tip">提示：参数不对时，先点“预览切片”检查切出来的卡块是否准确。</p>
+      </section>
+
+      <section class="panel workspace">
+        <div class="tabs">
+          <button class="tab active" data-tab="preview">切片预览</button>
+          <button class="tab" data-tab="shop">库存展示</button>
+        </div>
+
+        <div id="previewTab" class="tab-content active">
+          <div id="previewGrid" class="preview-grid"></div>
+        </div>
+
+        <div id="shopTab" class="tab-content">
+          <div class="shop-toolbar">
+            <label>排序
+              <select id="sortSelect">
+                <option value="count-desc">数量高到低</option>
+                <option value="count-asc">数量低到高</option>
+                <option value="rarity">按稀有度</option>
+              </select>
+            </label>
+            <button id="exportBtn" class="btn alt">导出 JSON</button>
+          </div>
+          <div id="shopGrid" class="shop-grid"></div>
+        </div>
+      </section>
+    </main>
+
+    <template id="shopCardTpl">
+      <article class="shop-card">
+        <div class="thumb-wrap">
+          <img class="thumb" alt="card" />
+          <span class="badge"></span>
+        </div>
+        <input class="name-input" type="text" />
+        <div class="meta">
+          <span class="rarity"></span>
+          <span class="count"></span>
+        </div>
+      </article>
+    </template>
+
+    <script src="cards.js"></script>
+  </body>
+</html>

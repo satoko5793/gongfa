@@ -1,0 +1,135 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Card Inventory Showcase</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Card Inventory Showcase</h1>
+        <p>Upload backpack screenshots, auto-group visual duplicates, and render a storefront gallery.</p>
+      </div>
+      <div id="status" class="status">Idle</div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel controls">
+        <h2>Input</h2>
+        <label class="upload">
+          <input id="fileInput" type="file" accept="image/*" multiple />
+          <span>Choose screenshots</span>
+        </label>
+        <div id="fileSummary" class="summary">No files selected</div>
+
+        <h2>Grid Settings</h2>
+        <div class="grid-inputs">
+          <label>Columns <input id="cols" type="number" value="6" min="1" max="20" /></label>
+          <label>Rows <input id="rows" type="number" value="8" min="1" max="20" /></label>
+          <label>Start X <input id="startX" type="number" value="70" min="0" /></label>
+          <label>Start Y <input id="startY" type="number" value="180" min="0" /></label>
+          <label>Slot W <input id="slotW" type="number" value="130" min="8" /></label>
+          <label>Slot H <input id="slotH" type="number" value="154" min="8" /></label>
+          <label>Gap X <input id="gapX" type="number" value="12" min="0" /></label>
+          <label>Gap Y <input id="gapY" type="number" value="12" min="0" /></label>
+          <label>Empty Threshold <input id="emptyThreshold" type="number" value="14" min="1" max="80" /></label>
+          <label>Merge Threshold <input id="mergeThreshold" type="number" value="8" min="1" max="32" /></label>
+        </div>
+        <div class="preset-actions">
+          <button id="presetBackpackBtn" class="btn secondary">背包2x4预设</button>
+          <label class="toggle">
+            <input id="ocrToggle" type="checkbox" checked />
+            <span>启用OCR</span>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="gridPreviewBtn" class="btn secondary">Grid Preview</button>
+          <button id="extractBtn" class="btn primary">Extract Inventory</button>
+        </div>
+        <button id="exportBtn" class="btn secondary full">Export JSON</button>
+      </aside>
+
+      <section class="panel workspace">
+        <div class="tabs">
+          <button class="tab active" data-tab="preview">Slice Preview</button>
+          <button class="tab" data-tab="shop">Storefront</button>
+        </div>
+
+        <div id="previewTab" class="tab-content active">
+          <div class="canvas-wrap">
+            <canvas id="gridCanvas"></canvas>
+          </div>
+          <div id="sliceGrid" class="slice-grid"></div>
+        </div>
+
+        <div id="shopTab" class="tab-content">
+          <div class="shop-head">
+            <label>Sort
+              <select id="sortSelect">
+                <option value="count-desc">Count desc</option>
+                <option value="count-asc">Count asc</option>
+                <option value="rarity">Rarity</option>
+              </select>
+            </label>
+            <div id="resultSummary" class="summary">No result</div>
+          </div>
+          <div id="shopGrid" class="shop-grid"></div>
+        </div>
+      </section>
+    </main>
+
+    <template id="itemTpl">
+      <article class="item-card">
+        <div class="thumb-wrap">
+          <img class="thumb" alt="card" />
+          <span class="count"></span>
+        </div>
+        <input class="name" type="text" />
+        <div class="stats">
+          <div class="stat-row">
+            <span class="label">种类</span>
+            <span class="type"></span>
+          </div>
+          <div class="stat-row">
+            <span class="label">数值</span>
+            <span class="value"></span>
+          </div>
+          <div class="stat-row">
+            <span class="label">攻击</span>
+            <span class="attack"></span>
+          </div>
+          <div class="stat-row">
+            <span class="label">血量</span>
+            <span class="health"></span>
+          </div>
+          <div class="stat-row">
+            <span class="label">气定</span>
+            <span class="qi"></span>
+          </div>
+          <div class="stat-row">
+            <span class="label">走火</span>
+            <span class="zhou"></span>
+          </div>
+          <div class="stat-row">
+            <span class="label">词条</span>
+            <span class="tags"></span>
+          </div>
+          <div class="stat-row">
+            <span class="label">稀有度</span>
+            <span class="rarity-text"></span>
+          </div>
+        </div>
+        <div class="meta">
+          <span class="rarity"></span>
+          <span class="hash"></span>
+        </div>
+      </article>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
