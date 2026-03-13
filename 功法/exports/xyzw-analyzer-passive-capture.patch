@@ -1,0 +1,518 @@
+From 733d2c16afc93d09ea3f754b646be5c3977acef0 Mon Sep 17 00:00:00 2001
+From: satoko5793 <yuqiu@littlelights.ai>
+Date: Fri, 13 Mar 2026 14:06:36 +0800
+Subject: [PATCH] feat: support passive raw capture and linux server workflow
+
+---
+ .gitignore                            |  6 +-
+ cmd/xyzw/main.go                      |  2 +-
+ docs/local-capture-server-analysis.md | 54 +++++++++++++++
+ go.mod                                |  6 +-
+ go.sum                                |  2 -
+ internal/proxy/capture.go             | 88 +++++++++++++++++++++----
+ run-linux.sh                          | 95 +++++++++++++++++++++++++++
+ tools/summarize_raw_capture.sh        | 36 ++++++++++
+ web/api/handlers.go                   |  8 +++
+ web/api/storage.go                    | 32 +++++++++
+ 10 files changed, 309 insertions(+), 20 deletions(-)
+ create mode 100644 docs/local-capture-server-analysis.md
+ create mode 100755 run-linux.sh
+ create mode 100755 tools/summarize_raw_capture.sh
+
+diff --git a/.gitignore b/.gitignore
+index 2f63ca3..7e14176 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -24,4 +24,8 @@ go.work
+ *.swo
+ 
+ # Project specific
+-ca/
+\ No newline at end of file
++ca/
++bin/
++logs/
++data/raw_capture/
++.DS_Store
+diff --git a/cmd/xyzw/main.go b/cmd/xyzw/main.go
+index 456e985..09ed69a 100644
+--- a/cmd/xyzw/main.go
++++ b/cmd/xyzw/main.go
+@@ -144,7 +144,7 @@ func main() {
+ 	showDisclaimer()
+ 
+ 	// 检查更新，如果有新版本则退出程序
+-	if checkForUpdates() {
++	if os.Getenv("XY_SKIP_UPDATE_CHECK") != "1" && checkForUpdates() {
+ 		fmt.Println()
+ 		waitForExit()
+ 		return
+diff --git a/docs/local-capture-server-analysis.md b/docs/local-capture-server-analysis.md
+new file mode 100644
+index 0000000..fd267db
+--- /dev/null
++++ b/docs/local-capture-server-analysis.md
+@@ -0,0 +1,54 @@
++# Local Capture + Server Analysis
++
++## Why this mode
++
++Remote MITM on the server can reach game traffic, but it often triggers:
++
++- `websocket close 1008 (policy violation): authentication failed`
++
++To keep gameplay normal, run MITM locally and only sync capture logs to the server.
++
++## Topology
++
++1. Local machine runs `xyzw_analyzer` proxy (`127.0.0.1:12311`).
++2. Game traffic goes to local proxy.
++3. Local analyzer writes `data/raw_capture/*.jsonl`.
++4. Upload those `jsonl` files to server for centralized analysis.
++
++## Local run requirements
++
++- Go `1.23+`
++- Analyzer repo on local machine
++- Local trusted CA cert: `ca/ca.crt`
++
++Run locally with passive capture mode:
++
++```bash
++XY_SKIP_UPDATE_CHECK=1 XY_CAPTURE_HOST='*' XY_PASSIVE_CAPTURE=1 go run ./cmd/xyzw
++```
++
++Notes:
++
++- `XY_PASSIVE_CAPTURE=1` avoids sequence/ack rewriting and keeps traffic transparent.
++- Keep game proxy set to local `127.0.0.1:12311`.
++
++## Upload logs to server
++
++Single file upload (today):
++
++```bash
++scp data/raw_capture/$(date +%F).jsonl xyq@172.26.10.61:/data/home/xyq/gongfa/功法/xyzw_analyzer/data/raw_capture/local-$(hostname)-$(date +%F).jsonl
++```
++
++Or sync whole folder:
++
++```bash
++rsync -av data/raw_capture/ xyq@172.26.10.61:/data/home/xyq/gongfa/功法/xyzw_analyzer/data/raw_capture/local-$(hostname)/
++```
++
++## Server-side quick check
++
++```bash
++ls -lah /data/home/xyq/gongfa/功法/xyzw_analyzer/data/raw_capture
++tail -n 30 /data/home/xyq/gongfa/功法/xyzw_analyzer/data/raw_capture/local-<host>-$(date +%F).jsonl
++```
+diff --git a/go.mod b/go.mod
+index c8444dc..9b07313 100644
+--- a/go.mod
++++ b/go.mod
+@@ -3,15 +3,17 @@ module xyzw_study
+ go 1.23
+ 
+ require (
++	github.com/fatih/color v1.18.0
++	github.com/gorilla/websocket v1.5.3
+ 	github.com/husanpao/game-mitm v0.0.0-20250310071321-f2c191024c8a
+ 	github.com/pierrec/lz4 v2.6.1+incompatible
+ )
+ 
+ require (
+-	github.com/fatih/color v1.18.0 // indirect
+ 	github.com/frankban/quicktest v1.14.6 // indirect
+-	github.com/gorilla/websocket v1.5.3 // indirect
+ 	github.com/mattn/go-colorable v0.1.13 // indirect
+ 	github.com/mattn/go-isatty v0.0.20 // indirect
+ 	golang.org/x/sys v0.25.0 // indirect
+ )
++
++replace github.com/husanpao/game-mitm => ../game-mitm
+diff --git a/go.sum b/go.sum
+index ae8daff..d50fd3e 100644
+--- a/go.sum
++++ b/go.sum
+@@ -7,8 +7,6 @@ github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
+ github.com/google/go-cmp v0.5.9/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
+ github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
+-github.com/husanpao/game-mitm v0.0.0-20250310071321-f2c191024c8a h1:V7UtEikHkur4vtecZDHp2UgqBwhOQyH0LsEpLRjSyjk=
+-github.com/husanpao/game-mitm v0.0.0-20250310071321-f2c191024c8a/go.mod h1:I9GGTA+SGqrMmDdfIY2Hksbs0f/mDEcSyCdnCz+KzHs=
+ github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
+ github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
+ github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
+diff --git a/internal/proxy/capture.go b/internal/proxy/capture.go
+index 55180cf..9044e52 100644
+--- a/internal/proxy/capture.go
++++ b/internal/proxy/capture.go
+@@ -3,6 +3,8 @@ package proxy
+ import (
+ 	"encoding/hex"
+ 	gamemitm "github.com/husanpao/game-mitm"
++	"os"
++	"strings"
+ 	"sync/atomic"
+ 	"xyzw_study/internal/crypto/bon"
+ )
+@@ -42,13 +44,47 @@ type GamePacket struct {
+ // PacketHandler 定义处理数据包的函数类型
+ type PacketHandler func(packet GamePacket)
+ 
++func captureTarget() string {
++	target := strings.TrimSpace(os.Getenv("XY_CAPTURE_HOST"))
++	if target == "" {
++		return "hortorgames.com"
++	}
++	return target
++}
++
++func passiveCapture() bool {
++	// Default to passive capture mode in server deployment.
++	// Set XY_PASSIVE_CAPTURE=0 to re-enable seq/ack/resp rewriting.
++	return strings.TrimSpace(os.Getenv("XY_PASSIVE_CAPTURE")) != "0"
++}
++
++func buildRawPacketPreview(body []byte, ctx *gamemitm.ProxyCtx, direction Direction) any {
++	previewLen := min(len(body), 96)
++	call := "client"
++	if direction == Receive {
++		call = "server"
++	}
++	return map[string]any{
++		"cmd":          "_raw/capture",
++		"call":         call,
++		"host":         ctx.Req.Host,
++		"path":         ctx.Req.URL.Path,
++		"query":        ctx.Req.URL.RawQuery,
++		"content_type": ctx.Req.Header.Get("Content-Type"),
++		"size":         len(body),
++		"hex_preview":  hex.EncodeToString(body[:previewLen]),
++	}
++}
++
+ // StartCapture 开始捕获游戏数据包
+ func StartCapture(handler PacketHandler) {
+ 	proxy := gamemitm.NewProxy()
+ 	proxy.SetVerbose(false)
+ 	seq = 0
+ 	clientMSg = make(map[int32]int32)
+-	proxy.OnRequest("xxz-xyzw.hortorgames.com").Do(func(body []byte, ctx *gamemitm.ProxyCtx) []byte {
++	target := captureTarget()
++	passive := passiveCapture()
++	proxy.OnRequest(target).Do(func(body []byte, ctx *gamemitm.ProxyCtx) []byte {
+ 		if handler == nil {
+ 			return body
+ 		}
+@@ -66,7 +102,16 @@ func StartCapture(handler PacketHandler) {
+ 		original := make([]byte, len(body))
+ 		copy(original, body)
+ 		if len(body) >= 2 && body[0] == 0x70 && body[1] == 0x78 {
+-			msg := bon.DecodeXAsMap(body)
++			decodedInput := make([]byte, len(original))
++			copy(decodedInput, original)
++			updateStr := bon.DecodeX(decodedInput)
++			handler(GamePacket{original, updateStr, Send, ctx.WSSession})
++
++			if passive {
++				return original
++			}
++
++			msg := bon.DecodeXAsMap(original)
+ 			if msg["seq"] != nil {
+ 				gameSeq := msg["seq"].(int32)
+ 				if gameSeq == 1 {
+@@ -84,16 +129,16 @@ func StartCapture(handler PacketHandler) {
+ 				processed = bon.EncodeReplaceSeq(original, NextSeq())
+ 				clientMSg[CurrentSeq()] = msg["seq"].(int32)
+ 			}
+-			// 给 DecodeX 使用一份拷贝，避免修改原 processed
+-			decodedInput := make([]byte, len(processed))
+-			copy(decodedInput, processed)
+-			updateStr := bon.DecodeX(decodedInput)
+-			handler(GamePacket{processed, updateStr, Send, ctx.WSSession})
++			decodedProcessed := make([]byte, len(processed))
++			copy(decodedProcessed, processed)
++			updateProcessedStr := bon.DecodeX(decodedProcessed)
++			handler(GamePacket{processed, updateProcessedStr, Send, ctx.WSSession})
+ 			return processed
+ 		}
++		handler(GamePacket{original, buildRawPacketPreview(original, ctx, Send), Send, ctx.WSSession})
+ 		return original
+ 	})
+-	proxy.OnResponse("xxz-xyzw.hortorgames.com").Do(func(body []byte, ctx *gamemitm.ProxyCtx) []byte {
++	proxy.OnResponse(target).Do(func(body []byte, ctx *gamemitm.ProxyCtx) []byte {
+ 		if handler == nil {
+ 			return body
+ 		}
+@@ -101,8 +146,16 @@ func StartCapture(handler PacketHandler) {
+ 		original := make([]byte, len(body))
+ 		copy(original, body)
+ 		if len(body) >= 2 && body[0] == 0x70 && body[1] == 0x78 {
++			decodedInput := make([]byte, len(original))
++			copy(decodedInput, original)
++			updateStr := bon.DecodeX(decodedInput)
++			handler(GamePacket{original, updateStr, Receive, ctx.WSSession})
+ 
+-			msg := bon.DecodeXAsMap(body)
++			if passive {
++				return original
++			}
++
++			msg := bon.DecodeXAsMap(original)
+ 			var processed []byte
+ 			if msg["cmd"] == nil {
+ 				return original
+@@ -121,14 +174,21 @@ func StartCapture(handler PacketHandler) {
+ 				}
+ 
+ 			}
+-			decodedInput := make([]byte, len(processed))
+-			copy(decodedInput, processed)
+-			// 给 DecodeX 使用一份拷贝，避免修改原 processed
+-			updateStr := bon.DecodeX(decodedInput)
+-			handler(GamePacket{processed, updateStr, Receive, ctx.WSSession})
++			decodedProcessed := make([]byte, len(processed))
++			copy(decodedProcessed, processed)
++			updateProcessedStr := bon.DecodeX(decodedProcessed)
++			handler(GamePacket{processed, updateProcessedStr, Receive, ctx.WSSession})
+ 			return processed
+ 		}
++		handler(GamePacket{original, buildRawPacketPreview(original, ctx, Receive), Receive, ctx.WSSession})
+ 		return original
+ 	})
+ 	proxy.Start()
+ }
++
++func min(a, b int) int {
++	if a < b {
++		return a
++	}
++	return b
++}
+diff --git a/run-linux.sh b/run-linux.sh
+new file mode 100755
+index 0000000..ded862b
+--- /dev/null
++++ b/run-linux.sh
+@@ -0,0 +1,95 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
++GO_BIN="/data/home/xyq/gongfa/功法/.tools/go-linux/bin/go"
++APP_BIN="$ROOT_DIR/bin/xyzw-linux"
++LOG_DIR="$ROOT_DIR/logs"
++PID_FILE="$LOG_DIR/xyzw.pid"
++LOG_FILE="$LOG_DIR/xyzw.log"
++
++mkdir -p "$LOG_DIR" "$ROOT_DIR/bin"
++
++build_if_needed() {
++  if [[ ! -x "$APP_BIN" ]]; then
++    "$GO_BIN" build -o "$APP_BIN" ./cmd/xyzw
++  fi
++}
++
++is_running() {
++  if [[ -f "$PID_FILE" ]]; then
++    local pid
++    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
++    if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
++      return 0
++    fi
++  fi
++  local found
++  found="$(ps -eo pid=,args= | rg '(^| )(\./)?bin/xyzw-linux($| )' | awk 'NR==1{print $1}' || true)"
++  if [[ -n "${found:-}" ]]; then
++    echo "$found" > "$PID_FILE"
++    return 0
++  fi
++  return 1
++}
++
++cmd_start() {
++  if is_running; then
++    echo "already running: pid $(cat "$PID_FILE")"
++    return 0
++  fi
++  build_if_needed
++  cd "$ROOT_DIR"
++  setsid env XY_SKIP_UPDATE_CHECK=1 XY_CAPTURE_HOST="*" XY_PASSIVE_CAPTURE=1 "$APP_BIN" >"$LOG_FILE" 2>&1 < /dev/null &
++  echo $! > "$PID_FILE"
++  sleep 1
++  if is_running; then
++    echo "started: pid $(cat "$PID_FILE")"
++  else
++    echo "failed to start, check log: $LOG_FILE"
++    exit 1
++  fi
++}
++
++cmd_stop() {
++  if ! is_running; then
++    echo "not running"
++    rm -f "$PID_FILE"
++    return 0
++  fi
++  local pid
++  pid="$(cat "$PID_FILE")"
++  kill "$pid" || true
++  sleep 1
++  if kill -0 "$pid" 2>/dev/null; then
++    kill -9 "$pid" || true
++  fi
++  rm -f "$PID_FILE"
++  echo "stopped"
++}
++
++cmd_status() {
++  if is_running; then
++    echo "running: pid $(cat "$PID_FILE")"
++  else
++    echo "not running"
++  fi
++  ss -ltnp | rg ':12311|:12582' || true
++}
++
++cmd_logs() {
++  tail -n 80 "$LOG_FILE" 2>/dev/null || true
++}
++
++ACTION="${1:-status}"
++case "$ACTION" in
++  start) cmd_start ;;
++  stop) cmd_stop ;;
++  restart) cmd_stop; cmd_start ;;
++  status) cmd_status ;;
++  logs) cmd_logs ;;
++  *)
++    echo "usage: $0 {start|stop|restart|status|logs}"
++    exit 1
++    ;;
++esac
+diff --git a/tools/summarize_raw_capture.sh b/tools/summarize_raw_capture.sh
+new file mode 100755
+index 0000000..04d6504
+--- /dev/null
++++ b/tools/summarize_raw_capture.sh
+@@ -0,0 +1,36 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if [[ "${1:-}" == "" ]]; then
++  echo "usage: $0 <jsonl-file>"
++  exit 1
++fi
++
++FILE="$1"
++if [[ ! -f "$FILE" ]]; then
++  echo "file not found: $FILE"
++  exit 1
++fi
++
++echo "file: $FILE"
++echo "total lines:"
++wc -l "$FILE"
++
++echo
++echo "top hosts:"
++rg -o '"host":"[^"]*"' "$FILE" | sed 's/"host":"//;s/"$//' | sort | uniq -c | sort -nr | head -n 20
++
++echo
++echo "top paths:"
++rg -o '"path":"[^"]*"' "$FILE" | sed 's/"path":"//;s/"$//' | sort | uniq -c | sort -nr | head -n 20
++
++echo
++echo "top host+path:"
++awk '
++  match($0, /"host":"[^"]*"/, h) && match($0, /"path":"[^"]*"/, p) {
++    host=h[0]; path=p[0];
++    gsub(/"host":"|"/, "", host);
++    gsub(/"path":"|"/, "", path);
++    print host " " path;
++  }
++' "$FILE" | sort | uniq -c | sort -nr | head -n 30
+diff --git a/web/api/handlers.go b/web/api/handlers.go
+index 55d2c7e..c2d1711 100644
+--- a/web/api/handlers.go
++++ b/web/api/handlers.go
+@@ -165,6 +165,14 @@ func HandleGamePacket(packet proxy.GamePacket) {
+ 		game = packet.Session
+ 	}
+ 
++	if raw, ok := packet.RawData.(map[string]any); ok {
++		if cmd, ok := raw["cmd"].(string); ok && cmd == "_raw/capture" {
++			if err := appendRawCapture(raw); err != nil {
++				log.Println("写入原始抓包日志失败:", err)
++			}
++		}
++	}
++
+ 	// 确定消息方向
+ 	var call string
+ 	if packet.Direction == proxy.Send {
+diff --git a/web/api/storage.go b/web/api/storage.go
+index 18419d2..3f34d89 100644
+--- a/web/api/storage.go
++++ b/web/api/storage.go
+@@ -1,9 +1,11 @@
+ package api
+ 
+ import (
++	"bufio"
+ 	"encoding/json"
+ 	"os"
+ 	"path/filepath"
++	"time"
+ )
+ 
+ var (
+@@ -13,6 +15,8 @@ var (
+ 	scriptsFilePath = filepath.Join(dataDir, "scripts.json")
+ 	// 备注数据文件路径
+ 	notesFilePath = filepath.Join(dataDir, "notes.json")
++	// 原始抓包日志目录
++	rawCaptureDir = filepath.Join(dataDir, "raw_capture")
+ )
+ 
+ // 初始化存储
+@@ -45,5 +49,33 @@ func InitStorage() error {
+ 		}
+ 	}
+ 
++	// 确保原始抓包日志目录存在
++	if err := os.MkdirAll(rawCaptureDir, 0755); err != nil {
++		return err
++	}
++
+ 	return nil
+ }
++
++func appendRawCapture(entry any) error {
++	filePath := filepath.Join(rawCaptureDir, time.Now().Format("2006-01-02")+".jsonl")
++	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
++	if err != nil {
++		return err
++	}
++	defer file.Close()
++
++	writer := bufio.NewWriter(file)
++	payload := map[string]any{
++		"logged_at": time.Now().Format(time.RFC3339Nano),
++		"entry":     entry,
++	}
++	line, err := json.Marshal(payload)
++	if err != nil {
++		return err
++	}
++	if _, err := writer.Write(append(line, '\n')); err != nil {
++		return err
++	}
++	return writer.Flush()
++}
+-- 
+2.43.0
+

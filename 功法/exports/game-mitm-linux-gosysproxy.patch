@@ -1,0 +1,53 @@
+From bdfcd7287066468be1da933cd29e53995d6ad915 Mon Sep 17 00:00:00 2001
+From: satoko5793 <yuqiu@littlelights.ai>
+Date: Fri, 13 Mar 2026 14:06:36 +0800
+Subject: [PATCH] feat: add linux gosysproxy no-op implementation
+
+---
+ gosysproxy/linux.go | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+ create mode 100644 gosysproxy/linux.go
+
+diff --git a/gosysproxy/linux.go b/gosysproxy/linux.go
+new file mode 100644
+index 0000000..9b897a5
+--- /dev/null
++++ b/gosysproxy/linux.go
+@@ -0,0 +1,34 @@
++//go:build linux
++// +build linux
++
++package gosysproxy
++
++import "errors"
++
++// Linux server mode: system proxy management is intentionally a no-op.
++// Traffic capture relies on clients explicitly pointing to this MITM proxy.
++func SetGlobalProxy(proxyServer string, bypasses ...string) error {
++	if proxyServer == "" {
++		return errors.New("proxyServer is required")
++	}
++	return nil
++}
++
++func Off() error {
++	return nil
++}
++
++func SetPAC(scriptLoc string) error {
++	if scriptLoc == "" {
++		return errors.New("scriptLoc is required")
++	}
++	return nil
++}
++
++func Status() (*ProxyStatus, error) {
++	return nil, errors.New("not implemented on linux")
++}
++
++func Flush() error {
++	return nil
++}
+-- 
+2.43.0
+
