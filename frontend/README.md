@@ -1,14 +1,12 @@
-﻿# Frontend prototype
+# Frontend
 
-Open these files in a browser:
-- `index.html` (user prototype)
-- `admin.html` (admin prototype)
-- `cards.html` (card inventory storefront prototype from screenshots)
+当前前端是一个无需构建的静态页面框架：
 
-## `cards.html` usage
+- `index.html`：前台商品页、绑定页、我的账户
+- `admin.html`：后台导入、商品管理、用户管理、订单管理
+- `app.js` / `admin.js` / `shared.js`：前端脚本
+- `cards.html`：旧的截图切卡与本地聚类原型，当前不属于商城主流程
 
-1. Upload one or more backpack screenshots.
-2. Set slot-grid parameters to match your game UI.
-3. Click `Preview` to verify slot cutting.
-4. Click `Generate` to auto-cluster same-looking cards and build a storefront list.
-5. Optionally rename cards and export JSON.
+运行方式：
+- 直接由静态服务器托管
+- 与后端 API 保持同域或通过反向代理转发 `/auth`、`/products`、`/me`、`/orders`、`/admin`

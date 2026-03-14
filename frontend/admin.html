@@ -1,9 +1,9 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>功法绝学活动 - 管理端原型</title>
+    <title>功法卡片商城 - 后台</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -12,115 +12,130 @@
       <div class="brand">
         <span class="brand-mark">A</span>
         <div>
-          <div class="brand-title">功法绝学活动</div>
-          <div class="brand-sub">管理端原型</div>
+          <div class="brand-title">功法卡片商城</div>
+          <div class="brand-sub">后台管理</div>
         </div>
       </div>
       <nav class="nav">
-        <a href="#queue">待确认</a>
-        <a href="#table">总表</a>
-        <a href="#audit">审计</a>
+        <a href="index.html">前台</a>
+        <a href="#imports">导入</a>
+        <a href="#products">商品</a>
+        <a href="#bundles">套餐</a>
+        <a href="#users">用户</a>
+        <a href="#orders">订单</a>
       </nav>
     </header>
 
     <main class="container">
-      <section id="queue" class="card">
-        <div class="card-title">待确认队列</div>
-        <div class="card-sub">管理员确认后状态锁定。</div>
-        <div class="queue">
-          <div class="queue-item">
-            <div>
-              <div class="queue-name">秋</div>
-              <div class="muted">收券 12 · 待确认</div>
-            </div>
-            <div class="actions">
-              <button class="primary">确认</button>
-              <button class="ghost">驳回</button>
-            </div>
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <div class="card-title">后台会话</div>
+            <div class="card-sub">使用前台登录后的登录态。当前账号需要具备 `admin` 角色。</div>
           </div>
-          <div class="queue-item">
-            <div>
-              <div class="queue-name">秋2</div>
-              <div class="muted">发卡 红色 1 · 待确认</div>
-            </div>
-            <div class="actions">
-              <button class="primary">确认</button>
-              <button class="ghost">驳回</button>
-            </div>
-          </div>
+          <button id="reload-admin-btn" class="ghost">刷新后台数据</button>
         </div>
+        <div id="admin-session" class="stack-list"></div>
+        <div id="admin-message" class="notice"></div>
       </section>
 
-      <section id="table" class="card">
-        <div class="card-title">参与者总表</div>
-        <div class="card-sub">可筛选、批量查看、写入管理员字段。</div>
+      <section id="imports" class="card">
+        <div class="card-title">导入卡片 JSON</div>
+        <div class="card-sub">把 `legacy_getinfo*.json` 粘贴到这里，后端会解析、合并并默认上架商品。</div>
+        <div class="actions">
+          <button id="load-sample-json-btn" class="ghost">载入示例 JSON</button>
+        </div>
+        <form id="import-form" class="form-grid">
+          <label>
+            来源文件名
+            <input id="import-file-name" type="text" placeholder="例如 legacy_getinfo-xxx.json" />
+          </label>
+          <label>
+            原始 JSON
+            <textarea id="import-json-input" rows="12" placeholder="粘贴 JSON"></textarea>
+          </label>
+          <div class="actions">
+            <button type="submit" class="primary">导入并生成商品</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="products" class="card">
+        <div class="card-title">商品管理</div>
+        <div class="card-sub">导入后默认自动上架。后台支持多选、全选和批量下架。</div>
         <div class="toolbar">
-          <input type="text" placeholder="搜索游戏名/手机号" />
+          <input id="admin-product-keyword-input" type="text" placeholder="搜索名称 / 词条 / 来源" />
           <div class="filters">
-            <select>
-              <option>全部状态</option>
-              <option>待确认</option>
-              <option>已确认</option>
-              <option>有争议</option>
-            </select>
-            <select>
-              <option>本周</option>
-              <option>本月</option>
+            <select id="admin-product-status-filter">
+              <option value="all">全部状态</option>
+              <option value="on_sale">已上架</option>
+              <option value="off_sale">已下架</option>
+              <option value="sold">已售罄</option>
+              <option value="draft">草稿</option>
             </select>
           </div>
         </div>
-        <div class="table wide">
-          <div class="row header">
-            <div>游戏名</div>
-            <div>是否需要帮做</div>
-            <div>收到卷卷</div>
-            <div>ID</div>
-            <div>炼功</div>
-            <div>我给了</div>
-            <div>绿色</div>
-            <div>蓝色</div>
-            <div>紫色</div>
-            <div>橙色</div>
-            <div>红色</div>
-            <div>金色</div>
+        <div class="bulk-toolbar">
+          <div class="chip-row">
+            <span id="selected-products-chip" class="chip">已选 0</span>
           </div>
-          <div class="row">
-            <div>秋</div>
-            <div>是</div>
-            <div>6</div>
-            <div>584967604</div>
-            <div>1</div>
-            <div>12</div>
-            <div>12</div>
-            <div>12</div>
-            <div>12</div>
-            <div>12</div>
-            <div>12</div>
-            <div>12</div>
+          <div class="actions">
+            <button id="recalculate-pricing-btn" class="ghost" type="button">重算定价</button>
+            <button id="select-all-products-btn" class="ghost">按当前筛选全选</button>
+            <button id="clear-selected-products-btn" class="ghost">清空</button>
+            <button id="bulk-on-sale-btn" class="ghost">批量上架</button>
+            <button id="bulk-off-sale-btn" class="danger">批量下架</button>
           </div>
         </div>
+        <div class="bulk-toolbar">
+          <div class="inline-form bulk-inline-form">
+            <input id="bulk-price-input" type="number" placeholder="批量设置价格" />
+            <button id="bulk-price-btn" class="ghost">批量改价</button>
+            <input id="bulk-stock-input" type="number" placeholder="批量设置库存" />
+            <button id="bulk-stock-btn" class="ghost">批量改库存</button>
+          </div>
+        </div>
+        <div id="admin-products" class="admin-list"></div>
+      </section>
+
+      <section id="users" class="card">
+        <div class="card-title">用户管理</div>
+        <div class="card-sub">查看绑定用户并调额度。</div>
+        <div id="admin-users" class="admin-list"></div>
+      </section>
+
+      <section id="bundles" class="card">
+        <div class="card-title">套餐 SKU</div>
+        <div class="card-sub">套餐商品独立管理，不参与单卡自动定价。</div>
+        <div id="admin-bundles" class="admin-list"></div>
+      </section>
+
+      <section id="orders" class="card">
+        <div class="card-title">订单管理</div>
+        <div class="card-sub">确认或取消订单。取消会自动回补额度并返还库存。</div>
+        <div class="toolbar">
+          <input id="admin-order-keyword-input" type="text" placeholder="搜索订单号 / 角色 / 商品" />
+          <div class="filters">
+            <select id="admin-order-status-filter">
+              <option value="all">全部状态</option>
+              <option value="pending">待处理</option>
+              <option value="confirmed">已确认</option>
+              <option value="cancelled">已取消</option>
+            </select>
+            <button id="reload-orders-btn" class="ghost" type="button">查询订单</button>
+          </div>
+        </div>
+        <div id="admin-orders" class="admin-list"></div>
       </section>
 
       <section id="audit" class="card">
         <div class="card-title">审计日志</div>
-        <div class="card-sub">记录管理员操作，便于追溯。</div>
-        <div class="table">
-          <div class="row header">
-            <div>时间</div>
-            <div>管理员</div>
-            <div>动作</div>
-            <div>备注</div>
-          </div>
-          <div class="row">
-            <div>01-26 20:40</div>
-            <div>admin</div>
-            <div>status_confirmed</div>
-            <div>确认首批发放</div>
-          </div>
-        </div>
+        <div class="card-sub">便于追踪导入、调额度和订单操作。</div>
+        <div id="admin-audits" class="stack-list"></div>
       </section>
     </main>
 
-    <footer class="footer">原型仅展示结构与流程，数据与接口待接入后端。</footer>
+    <footer class="footer">后台页面当前是纯静态骨架，数据由后端 API 提供。</footer>
+    <script type="module" src="./admin.js"></script>
   </body>
 </html>

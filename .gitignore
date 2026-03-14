@@ -1,0 +1,11 @@
+.env
+.env.local
+.vscode/
+
+backend/node_modules/
+backend/run-logs/
+backend/dev-data.json
+
+message-history-*.json
+
+xyzw_web_helper/
