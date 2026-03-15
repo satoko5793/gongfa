@@ -1116,39 +1116,39 @@ importSubmitBtn?.addEventListener("click", () => {
     preventDefault() {},
   });
 });
-document.getElementById("load-sample-json-btn").addEventListener("click", loadSampleJson);
-document.getElementById("reload-admin-btn").addEventListener("click", reloadAll);
-document.getElementById("reload-orders-btn").addEventListener("click", () => {
+document.getElementById("load-sample-json-btn")?.addEventListener("click", loadSampleJson);
+document.getElementById("reload-admin-btn")?.addEventListener("click", reloadAll);
+document.getElementById("reload-orders-btn")?.addEventListener("click", () => {
   loadOrders().catch((error) => setMessage(`璁㈠崟鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
-document.getElementById("select-all-products-btn").addEventListener("click", () => {
+document.getElementById("select-all-products-btn")?.addEventListener("click", () => {
   selectedProductIds.clear();
   getFilteredProducts().forEach((product) => selectedProductIds.add(product.id));
   renderProducts(getFilteredProducts());
 });
-document.getElementById("clear-selected-products-btn").addEventListener("click", () => {
+document.getElementById("clear-selected-products-btn")?.addEventListener("click", () => {
   selectedProductIds.clear();
-  productsRoot.querySelectorAll(".product-select").forEach((checkbox) => {
+  productsRoot?.querySelectorAll(".product-select").forEach((checkbox) => {
     checkbox.checked = false;
   });
   syncSelectedProducts();
 });
-document.getElementById("bulk-on-sale-btn").addEventListener("click", () => {
+document.getElementById("bulk-on-sale-btn")?.addEventListener("click", () => {
   bulkUpdateSelectedProducts("on_sale");
 });
-document.getElementById("bulk-off-sale-btn").addEventListener("click", () => {
+document.getElementById("bulk-off-sale-btn")?.addEventListener("click", () => {
   bulkUpdateSelectedProducts("off_sale");
 });
-document.getElementById("bulk-price-btn").addEventListener("click", () => {
-  const price = Number(bulkPriceInput.value);
+document.getElementById("bulk-price-btn")?.addEventListener("click", () => {
+  const price = Number(bulkPriceInput?.value);
   if (!Number.isInteger(price) || price < 0) {
     setMessage("鎵归噺浠锋牸蹇呴』鏄ぇ浜庣瓑浜?0 鐨勬暣鏁般€?, "error");
     return;
   }
   bulkPatchSelectedProducts({ price_quota: price });
 });
-document.getElementById("bulk-stock-btn").addEventListener("click", () => {
-  const stock = Number(bulkStockInput.value);
+document.getElementById("bulk-stock-btn")?.addEventListener("click", () => {
+  const stock = Number(bulkStockInput?.value);
   if (!Number.isInteger(stock) || stock < 0) {
     setMessage("鎵归噺搴撳瓨蹇呴』鏄ぇ浜庣瓑浜?0 鐨勬暣鏁般€?, "error");
     return;
@@ -1166,13 +1166,13 @@ recalculatePricingBtn?.addEventListener("click", async () => {
   }
 });
 
-adminProductKeywordInput.addEventListener("input", () => {
+adminProductKeywordInput?.addEventListener("input", () => {
   renderProducts(getFilteredProducts());
 });
-adminProductStatusFilter.addEventListener("change", () => {
+adminProductStatusFilter?.addEventListener("change", () => {
   renderProducts(getFilteredProducts());
 });
-adminUserKeywordInput.addEventListener("input", () => {
+adminUserKeywordInput?.addEventListener("input", () => {
   renderUsers(getFilteredUsers());
 });
 linkedOrderUserState?.addEventListener("click", (event) => {
@@ -1183,15 +1183,15 @@ linkedOrderUserState?.addEventListener("click", (event) => {
   loadQuotaLogs().catch((error) => setMessage(`棰濆害娴佹按鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
   loadOrders().catch((error) => setMessage(`璁㈠崟鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
-adminOrderStatusFilter.addEventListener("change", () => {
+adminOrderStatusFilter?.addEventListener("change", () => {
   loadOrders().catch((error) => setMessage(`璁㈠崟鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
-adminOrderKeywordInput.addEventListener("keydown", (event) => {
+adminOrderKeywordInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
   loadOrders().catch((error) => setMessage(`璁㈠崟鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
-adminOrderKeywordInput.addEventListener("input", () => {
+adminOrderKeywordInput?.addEventListener("input", () => {
   if (linkedOrderUser && adminOrderKeywordInput.value.trim() !== linkedOrderUser.game_role_id) {
     linkedOrderUser = null;
     renderLinkedOrderUserState();
@@ -1203,10 +1203,10 @@ adminProductModal?.addEventListener("click", (event) => {
     closeProductModal();
   }
 });
-document.getElementById("reload-quota-logs-btn").addEventListener("click", () => {
+document.getElementById("reload-quota-logs-btn")?.addEventListener("click", () => {
   loadQuotaLogs().catch((error) => setMessage(`棰濆害娴佹按鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
-document.getElementById("reload-audits-btn").addEventListener("click", () => {
+document.getElementById("reload-audits-btn")?.addEventListener("click", () => {
   loadAudits().catch((error) => setMessage(`瀹¤鏃ュ織鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 adminQuotaLogTypeFilter?.addEventListener("change", () => {
