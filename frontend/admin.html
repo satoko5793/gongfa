@@ -203,7 +203,7 @@
 
     <aside id="admin-debug-panel" class="debug-panel">
       <div class="debug-title">后台调试</div>
-      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260315e</div>
+      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260316a</div>
       <div id="admin-debug-action" class="debug-line">action: page_loaded</div>
       <div id="admin-debug-session" class="debug-line">session: unknown</div>
       <div id="admin-debug-error" class="debug-line">error: none</div>
@@ -213,7 +213,7 @@
     <script>
       (() => {
         const SESSION_KEY = "gongfa_session_v1";
-        const fallbackVersion = "fallback-20260315e";
+        const fallbackVersion = "fallback-20260316a";
 
         function setDebugLine(id, prefix, value) {
           const element = document.getElementById(id);
@@ -291,6 +291,42 @@
           setSession(`token role=${profile?.role || "-"}`);
         }
 
+        function renderFallbackProducts(products) {
+          const root = document.getElementById("admin-products");
+          const overview = document.getElementById("admin-overview");
+          if (overview) {
+            overview.innerHTML = `
+              <div class="overview-card">
+                <div class="overview-label">商品总数</div>
+                <div class="overview-value">${products.length}</div>
+                <div class="overview-hint">fallback 模式</div>
+              </div>
+            `;
+          }
+          if (!root) return;
+          if (!Array.isArray(products) || products.length === 0) {
+            root.innerHTML = '<div class="stack-item">当前没有商品</div>';
+            return;
+          }
+          root.innerHTML = products
+            .slice(0, 100)
+            .map((product) => `
+              <div class="stack-item">
+                <strong>${product?.name || "-"}</strong>
+                <div>legacy ${product?.legacy_id || "-"} | 库存 ${Number(product?.stock || 0)} | 价格 ${Number(product?.price_quota || 0)} | 状态 ${product?.status || "-"}</div>
+              </div>
+            `)
+            .join("");
+        }
+
+        async function fallbackLoadProducts() {
+          if (window.__adminModuleReady) return;
+          const session = loadSession();
+          if (!session?.token) return;
+          const products = await apiFetch("/admin/products");
+          renderFallbackProducts(Array.isArray(products) ? products : []);
+        }
+
         async function apiFetch(path, options = {}) {
           const session = loadSession();
           const headers = {
@@ -341,6 +377,7 @@
               profile: result?.user || result?.profile || null,
             });
             renderSession();
+            await fallbackLoadProducts();
             setMessage("登录成功", "success");
             setAction("fallback_login_success");
           } catch (error) {
@@ -385,8 +422,10 @@
                 raw_json: rawJson,
               }),
             });
-            const count = Number(result?.imported_count || 0);
+            const count = Number(result?.parsed_count || result?.imported_count || 0);
             setMessage(`导入完成：${count} 件商品`, "success");
+            await fallbackLoadProducts();
+            setMessage(`导入完成：解析 ${count} 件商品`, "success");
             setAction("fallback_import_success");
           } catch (error) {
             setMessage(error?.message || "导入失败", "error");
@@ -451,6 +490,7 @@
         renderSession();
         setError("none");
         setAction("fallback_boot");
+        fallbackLoadProducts().catch(() => {});
 
         document.getElementById("admin-login-btn")?.addEventListener("click", fallbackLogin);
         document.getElementById("admin-logout-btn")?.addEventListener("click", fallbackLogout);
@@ -459,6 +499,6 @@
         document.getElementById("load-sample-json-btn")?.addEventListener("click", fallbackLoadSample);
       })();
     </script>
-    <script type="module" src="./admin.js?v=20260315e"></script>
+    <script type="module" src="./admin.js?v=20260316a"></script>
   </body>
 </html>
