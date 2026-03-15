@@ -7,7 +7,7 @@ RUN npm --prefix backend install --omit=dev
 
 COPY backend ./backend
 COPY frontend ./frontend
-COPY xyzw_web_helper/public ./xyzw_web_helper/public
+RUN mkdir -p ./xyzw_web_helper/public
 
 ENV NODE_ENV=production
 ENV PORT=8090
