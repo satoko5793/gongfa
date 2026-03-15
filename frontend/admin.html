@@ -203,7 +203,7 @@
 
     <aside id="admin-debug-panel" class="debug-panel">
       <div class="debug-title">后台调试</div>
-      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260315d</div>
+      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260315e</div>
       <div id="admin-debug-action" class="debug-line">action: page_loaded</div>
       <div id="admin-debug-session" class="debug-line">session: unknown</div>
       <div id="admin-debug-error" class="debug-line">error: none</div>
@@ -213,7 +213,7 @@
     <script>
       (() => {
         const SESSION_KEY = "gongfa_session_v1";
-        const fallbackVersion = "fallback-20260315d";
+        const fallbackVersion = "fallback-20260315e";
 
         function setDebugLine(id, prefix, value) {
           const element = document.getElementById(id);
@@ -430,7 +430,10 @@
           if (window.__adminModuleReady) return;
           setAction("fallback_load_sample");
           try {
-            const response = await fetch("./legacy_getinfo-2026-03-13T17-54-19.json");
+            const response = await fetch("./legacy-json/legacy_getinfo-2026-03-13T17-54-19.json");
+            if (!response.ok) {
+              throw new Error(`load_sample_failed_${response.status}`);
+            }
             const text = await response.text();
             const input = document.getElementById("import-json-input");
             const fileNameInput = document.getElementById("import-file-name");
@@ -456,6 +459,6 @@
         document.getElementById("load-sample-json-btn")?.addEventListener("click", fallbackLoadSample);
       })();
     </script>
-    <script type="module" src="./admin.js?v=20260315d"></script>
+    <script type="module" src="./admin.js?v=20260315e"></script>
   </body>
 </html>

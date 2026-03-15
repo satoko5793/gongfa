@@ -826,6 +826,9 @@ async function submitImport(event) {
 async function loadSampleJson() {
   try {
     const response = await fetch("./legacy-json/legacy_getinfo-2026-03-13T17-54-19.json");
+    if (!response.ok) {
+      throw new Error(`load_sample_failed_${response.status}`);
+    }
     importJsonInput.value = await response.text();
     importFileNameInput.value = "legacy_getinfo-2026-03-13T17-54-19.json";
     setMessage("宸茶浇鍏ョず渚?JSON銆?, "success");
