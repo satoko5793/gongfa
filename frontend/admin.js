@@ -1231,4 +1231,5 @@ adminAuditActionInput?.addEventListener("keydown", (event) => {
 markDebugAction("page_loaded");
 markDebugSession(loadSession()?.token ? "token_present" : "no_token");
 markDebugError("none");
+window.__adminModuleReady = true;
 reloadAll();
