@@ -9,6 +9,7 @@ const closeAdminProductModalBtn = document.getElementById("close-admin-product-m
 const adminLoginForm = document.getElementById("admin-login-form");
 const adminLoginRoleIdInput = document.getElementById("admin-login-role-id");
 const adminLoginPasswordInput = document.getElementById("admin-login-password");
+const adminLoginBtn = document.getElementById("admin-login-btn");
 const adminLogoutBtn = document.getElementById("admin-logout-btn");
 const importJsonInput = document.getElementById("import-json-input");
 const importFileNameInput = document.getElementById("import-file-name");
@@ -33,7 +34,7 @@ const bulkPriceInput = document.getElementById("bulk-price-input");
 const bulkStockInput = document.getElementById("bulk-stock-input");
 const recalculatePricingBtn = document.getElementById("recalculate-pricing-btn");
 const importForm = document.getElementById("import-form");
-const importSubmitBtn = importForm?.querySelector('button[type="submit"]') || null;
+const importSubmitBtn = document.getElementById("import-submit-btn");
 
 const selectedProductIds = new Set();
 let allProducts = [];
@@ -1068,8 +1069,18 @@ ordersRoot.addEventListener("click", async (event) => {
 });
 
 adminLoginForm?.addEventListener("submit", submitAdminLogin);
+adminLoginBtn?.addEventListener("click", () => {
+  submitAdminLogin({
+    preventDefault() {},
+  });
+});
 adminLogoutBtn?.addEventListener("click", logoutAdmin);
 importForm?.addEventListener("submit", submitImport);
+importSubmitBtn?.addEventListener("click", () => {
+  submitImport({
+    preventDefault() {},
+  });
+});
 document.getElementById("load-sample-json-btn").addEventListener("click", loadSampleJson);
 document.getElementById("reload-admin-btn").addEventListener("click", reloadAll);
 document.getElementById("reload-orders-btn").addEventListener("click", () => {
