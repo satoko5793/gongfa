@@ -1,4 +1,4 @@
-import { apiFetch, clearSession, formatDate, loadSession, saveSession } from "./shared.js";
+﻿import { apiFetch, clearSession, formatDate, loadSession, saveSession } from "./shared.js";
 
 const adminSession = document.getElementById("admin-session");
 const adminMessage = document.getElementById("admin-message");
@@ -35,6 +35,9 @@ const bulkStockInput = document.getElementById("bulk-stock-input");
 const recalculatePricingBtn = document.getElementById("recalculate-pricing-btn");
 const importForm = document.getElementById("import-form");
 const importSubmitBtn = document.getElementById("import-submit-btn");
+const adminDebugAction = document.getElementById("admin-debug-action");
+const adminDebugSession = document.getElementById("admin-debug-session");
+const adminDebugError = document.getElementById("admin-debug-error");
 
 const selectedProductIds = new Set();
 let allProducts = [];
@@ -43,6 +46,23 @@ let allUsers = [];
 let allAudits = [];
 let allQuotaLogs = [];
 let linkedOrderUser = null;
+
+function setDebugLine(element, prefix, value) {
+  if (!element) return;
+  element.textContent = `${prefix}: ${value}`;
+}
+
+function markDebugAction(action) {
+  setDebugLine(adminDebugAction, "action", action);
+}
+
+function markDebugSession(sessionState) {
+  setDebugLine(adminDebugSession, "session", sessionState);
+}
+
+function markDebugError(errorText) {
+  setDebugLine(adminDebugError, "error", errorText || "none");
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -53,13 +73,18 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function pickErrorMessage(error, fallback = "请求失败") {
+function pickErrorMessage(error, fallback = "璇锋眰澶辫触") {
   return error?.payload?.error || error?.message || fallback;
 }
 
 function setMessage(text, type = "") {
   adminMessage.textContent = text || "";
   adminMessage.className = type ? `notice ${type}` : "notice";
+  if (type === "error") {
+    markDebugError(text || "unknown_error");
+  } else if (text) {
+    markDebugError("none");
+  }
 }
 
 function formatOrderStatusLabel(status) {
@@ -74,11 +99,6 @@ function formatOrderStatusLabel(status) {
       return "已取消";
     default:
       return status || "-";
-  } finally {
-    if (importSubmitBtn) {
-      importSubmitBtn.disabled = false;
-      importSubmitBtn.textContent = "导入并生成商品";
-    }
   }
 }
 
@@ -86,22 +106,26 @@ function renderSession(profile) {
   const session = loadSession();
 
   if (!session?.token) {
+    markDebugSession("no_token");
     adminSession.innerHTML =
-      '<div class="stack-item">当前未登录。可直接在后台页输入管理员游戏 ID 和密码登录。</div>';
+      '<div class="stack-item">褰撳墠鏈櫥褰曘€傚彲鐩存帴鍦ㄥ悗鍙伴〉杈撳叆绠＄悊鍛樻父鎴?ID 鍜屽瘑鐮佺櫥褰曘€?/div>';
     return false;
   }
 
   if (!profile) {
-    adminSession.innerHTML = '<div class="stack-item">已检测到登录态，但当前无法读取管理员资料。</div>';
+    markDebugSession("token_without_profile");
+    adminSession.innerHTML = '<div class="stack-item">宸叉娴嬪埌鐧诲綍鎬侊紝浣嗗綋鍓嶆棤娉曡鍙栫鐞嗗憳璧勬枡銆?/div>';
     return false;
   }
 
+  markDebugSession(`token role=${profile.role || "-"}`);
+
   adminSession.innerHTML = [
-    `当前账号：${escapeHtml(profile.game_role_name || "-")}`,
-    `游戏 ID：${escapeHtml(profile.game_role_id || "-")}`,
-    `区服：${escapeHtml(profile.game_server || "-")}`,
-    `角色：${escapeHtml(profile.role || "-")}`,
-    `当前额度：${Number(profile.quota_balance || 0)}`,
+    `褰撳墠璐﹀彿锛?{escapeHtml(profile.game_role_name || "-")}`,
+    `娓告垙 ID锛?{escapeHtml(profile.game_role_id || "-")}`,
+    `鍖烘湇锛?{escapeHtml(profile.game_server || "-")}`,
+    `瑙掕壊锛?{escapeHtml(profile.role || "-")}`,
+    `褰撳墠棰濆害锛?{Number(profile.quota_balance || 0)}`,
   ]
     .map((line) => `<div class="stack-item">${line}</div>`)
     .join("");
@@ -118,12 +142,12 @@ function renderOverview() {
   const totalQuota = allUsers.reduce((sum, user) => sum + Number(user.quota_balance || 0), 0);
 
   const cards = [
-    { label: "商品总数", value: allProducts.length, hint: `上架中 ${onSaleCount}` },
-    { label: "套餐总数", value: allBundles.length, hint: "独立 SKU" },
-    { label: "用户总数", value: allUsers.length, hint: `活跃 ${activeUsers}` },
-    { label: "待审核取消", value: cancelReviewCount, hint: "订单状态" },
-    { label: "审计记录", value: allAudits.length, hint: "最近 200 条" },
-    { label: "用户总额度", value: totalQuota, hint: "本地文件存储统计" },
+    { label: "鍟嗗搧鎬绘暟", value: allProducts.length, hint: `涓婃灦涓?${onSaleCount}` },
+    { label: "濂楅鎬绘暟", value: allBundles.length, hint: "鐙珛 SKU" },
+    { label: "鐢ㄦ埛鎬绘暟", value: allUsers.length, hint: `娲昏穬 ${activeUsers}` },
+    { label: "寰呭鏍稿彇娑?, value: cancelReviewCount, hint: "璁㈠崟鐘舵€? },
+    { label: "瀹¤璁板綍", value: allAudits.length, hint: "鏈€杩?200 鏉? },
+    { label: "鐢ㄦ埛鎬婚搴?, value: totalQuota, hint: "鏈湴鏂囦欢瀛樺偍缁熻" },
   ];
 
   adminOverview.innerHTML = cards
@@ -146,9 +170,9 @@ function renderLinkedOrderUserState() {
   }
 
   linkedOrderUserState.innerHTML = `
-    <span class="chip">订单联动用户：${escapeHtml(linkedOrderUser.game_role_name || "-")}</span>
-    <span class="chip">游戏 ID：${escapeHtml(linkedOrderUser.game_role_id || "-")}</span>
-    <button id="clear-linked-order-user-btn" class="ghost" type="button">清除联动</button>
+    <span class="chip">璁㈠崟鑱斿姩鐢ㄦ埛锛?{escapeHtml(linkedOrderUser.game_role_name || "-")}</span>
+    <span class="chip">娓告垙 ID锛?{escapeHtml(linkedOrderUser.game_role_id || "-")}</span>
+    <button id="clear-linked-order-user-btn" class="ghost" type="button">娓呴櫎鑱斿姩</button>
   `;
 }
 
@@ -169,7 +193,7 @@ function setLinkedOrderUser(user) {
 }
 
 function syncSelectedProducts() {
-  selectedProductsChip.textContent = `已选 ${selectedProductIds.size}`;
+  selectedProductsChip.textContent = `宸查€?${selectedProductIds.size}`;
 }
 
 function getPricingMeta(product) {
@@ -278,16 +302,16 @@ function openProductModal(product) {
         <div class="detail-list">
           <div class="detail-row"><strong>UID</strong><span>${escapeHtml(product.uid || "-")}</span></div>
           <div class="detail-row"><strong>Legacy</strong><span>${escapeHtml(product.legacy_id || "-")}</span></div>
-          <div class="detail-row"><strong>攻击 / 血量</strong><span>${Number(product.attack_value || 0)} / ${Number(product.hp_value || 0)}</span></div>
-          <div class="detail-row"><strong>主词条</strong><span>${escapeHtml(product.main_attrs || "-")}</span></div>
-          <div class="detail-row"><strong>额外词条</strong><span>${escapeHtml(product.ext_attrs || "-")}</span></div>
-          <div class="detail-row"><strong>库存 / 状态</strong><span>${Number(product.stock || 0)} / ${escapeHtml(product.status || "-")}</span></div>
+          <div class="detail-row"><strong>鏀诲嚮 / 琛€閲?/strong><span>${Number(product.attack_value || 0)} / ${Number(product.hp_value || 0)}</span></div>
+          <div class="detail-row"><strong>涓昏瘝鏉?/strong><span>${escapeHtml(product.main_attrs || "-")}</span></div>
+          <div class="detail-row"><strong>棰濆璇嶆潯</strong><span>${escapeHtml(product.ext_attrs || "-")}</span></div>
+          <div class="detail-row"><strong>搴撳瓨 / 鐘舵€?/strong><span>${Number(product.stock || 0)} / ${escapeHtml(product.status || "-")}</span></div>
         </div>
         ${renderPricingSummary(product, pricingMeta)}
       </div>
     </div>
     <div class="detail-list">
-      <div class="card-title">原始商品快照</div>
+      <div class="card-title">鍘熷鍟嗗搧蹇収</div>
       <pre class="admin-detail-pre">${escapeHtml(JSON.stringify(rawSnapshot, null, 2))}</pre>
     </div>
   `;
@@ -338,7 +362,7 @@ function getFilteredUsers() {
 
 function renderProducts(products) {
   if (!products.length) {
-    productsRoot.innerHTML = '<div class="stack-item">当前筛选条件下没有商品。</div>';
+    productsRoot.innerHTML = '<div class="stack-item">褰撳墠绛涢€夋潯浠朵笅娌℃湁鍟嗗搧銆?/div>';
     syncSelectedProducts();
     return;
   }
@@ -346,7 +370,7 @@ function renderProducts(products) {
   productsRoot.innerHTML = products
     .map((product) => {
       const pricingMeta = getPricingMeta(product);
-      const pricingLabel = pricingMeta.source === "manual" ? "手动价" : "自动价";
+      const pricingLabel = pricingMeta.source === "manual" ? "鎵嬪姩浠? : "鑷姩浠?;
       const dominantLabel = pricingMeta.dominant_reason_label || "-";
       const marketFactor = Number(pricingMeta?.market?.factor || 1).toFixed(2);
       const floorPrice = Number(pricingMeta.floor_price || 0);
@@ -363,7 +387,7 @@ function renderProducts(products) {
               <input class="product-select" type="checkbox" data-product-id="${product.id}" ${
                 selectedProductIds.has(product.id) ? "checked" : ""
               } />
-              <span>选中</span>
+              <span>閫変腑</span>
             </label>
             <span class="chip">${escapeHtml(product.status)}</span>
           </div>
@@ -399,9 +423,9 @@ function renderProducts(products) {
           </div>
           <div class="actions">
             <button class="ghost view-product-detail-btn" type="button">????</button>
-            <button class="primary save-product-btn" type="button">保存商品</button>
-            <button class="ghost save-status-btn" type="button">仅更新状态</button>
-            <button class="ghost clear-manual-price-btn" type="button">恢复自动价</button>
+            <button class="primary save-product-btn" type="button">淇濆瓨鍟嗗搧</button>
+            <button class="ghost save-status-btn" type="button">浠呮洿鏂扮姸鎬?/button>
+            <button class="ghost clear-manual-price-btn" type="button">鎭㈠鑷姩浠?/button>
           </div>
         </div>
       `;
@@ -413,7 +437,7 @@ function renderProducts(products) {
 
 function renderUsers(users) {
   if (!users.length) {
-    usersRoot.innerHTML = '<div class="stack-item">没有匹配到用户。</div>';
+    usersRoot.innerHTML = '<div class="stack-item">娌℃湁鍖归厤鍒扮敤鎴枫€?/div>';
     return;
   }
 
@@ -427,24 +451,24 @@ function renderUsers(users) {
           </div>
           <div class="product-meta">
             <div>${escapeHtml(user.game_server || "-")} / ${escapeHtml(user.game_role_id || "-")}</div>
-            <div>当前额度：${Number(user.quota_balance || 0)}</div>
-            <div>账号状态：${escapeHtml(user.status || "-")}</div>
-            <div>昵称：${escapeHtml(user.nickname || "-")}</div>
+            <div>褰撳墠棰濆害锛?{Number(user.quota_balance || 0)}</div>
+            <div>璐﹀彿鐘舵€侊細${escapeHtml(user.status || "-")}</div>
+            <div>鏄电О锛?{escapeHtml(user.nickname || "-")}</div>
           </div>
           <div class="inline-form">
-            <input data-field="change_amount" type="number" placeholder="额度增减，可填负数" />
-            <input data-field="remark" type="text" placeholder="备注" />
+            <input data-field="change_amount" type="number" placeholder="棰濆害澧炲噺锛屽彲濉礋鏁? />
+            <input data-field="remark" type="text" placeholder="澶囨敞" />
           </div>
           <div class="actions tight">
             <button class="ghost quick-quota-btn" type="button" data-amount="1000">+1000</button>
             <button class="ghost quick-quota-btn" type="button" data-amount="5000">+5000</button>
             <button class="ghost quick-quota-btn" type="button" data-amount="10000">+10000</button>
-            <button class="ghost view-user-orders-btn" type="button">查看订单</button>
+            <button class="ghost view-user-orders-btn" type="button">鏌ョ湅璁㈠崟</button>
           </div>
           <div class="actions">
-            <button class="primary save-quota-btn" type="button">调整额度</button>
+            <button class="primary save-quota-btn" type="button">璋冩暣棰濆害</button>
             <button class="ghost toggle-status-btn" type="button">${
-              user.status === "active" ? "禁用" : "启用"
+              user.status === "active" ? "绂佺敤" : "鍚敤"
             }</button>
           </div>
         </div>
@@ -455,7 +479,7 @@ function renderUsers(users) {
 
 function renderBundles(bundles) {
   if (!bundles.length) {
-    bundlesRoot.innerHTML = '<div class="stack-item">暂无套餐 SKU。</div>';
+    bundlesRoot.innerHTML = '<div class="stack-item">鏆傛棤濂楅 SKU銆?/div>';
     return;
   }
 
@@ -468,13 +492,13 @@ function renderBundles(bundles) {
             <span class="chip">${escapeHtml(bundle.status)}</span>
           </div>
           <div class="product-meta">
-            <div>编码：${escapeHtml(bundle.code)}</div>
-            <div>说明：${escapeHtml(bundle.description || "-")}</div>
-            <div>标签：${escapeHtml((bundle.tags || []).join(" / ") || "-")}</div>
-            <div>价格：${Number(bundle.price_quota || 0)} / 库存：${
-              bundle.stock === null || bundle.stock === undefined ? "不限" : Number(bundle.stock)
+            <div>缂栫爜锛?{escapeHtml(bundle.code)}</div>
+            <div>璇存槑锛?{escapeHtml(bundle.description || "-")}</div>
+            <div>鏍囩锛?{escapeHtml((bundle.tags || []).join(" / ") || "-")}</div>
+            <div>浠锋牸锛?{Number(bundle.price_quota || 0)} / 搴撳瓨锛?{
+              bundle.stock === null || bundle.stock === undefined ? "涓嶉檺" : Number(bundle.stock)
             }</div>
-            <div>展示顺序：${Number(bundle.display_rank || 999)}</div>
+            <div>灞曠ず椤哄簭锛?{Number(bundle.display_rank || 999)}</div>
           </div>
           <div class="inline-form">
             <input data-field="name" value="${escapeHtml(bundle.name)}" />
@@ -482,20 +506,20 @@ function renderBundles(bundles) {
             <input
               data-field="tags"
               value="${escapeHtml((bundle.tags || []).join(", "))}"
-              placeholder="标签，逗号分隔"
+              placeholder="鏍囩锛岄€楀彿鍒嗛殧"
             />
             <input data-field="price_quota" type="number" value="${Number(bundle.price_quota || 0)}" />
             <input
               data-field="stock"
               type="text"
               value="${bundle.stock === null || bundle.stock === undefined ? "" : Number(bundle.stock)}"
-              placeholder="留空表示不限量"
+              placeholder="鐣欑┖琛ㄧず涓嶉檺閲?
             />
             <input
               data-field="display_rank"
               type="number"
               value="${Number(bundle.display_rank || 999)}"
-              placeholder="排序"
+              placeholder="鎺掑簭"
             />
             <select data-field="status">
               ${["on_sale", "off_sale", "sold"]
@@ -507,8 +531,8 @@ function renderBundles(bundles) {
             </select>
           </div>
           <div class="actions">
-            <button class="primary save-bundle-btn" type="button">保存套餐</button>
-            <button class="ghost save-bundle-status-btn" type="button">仅更新状态</button>
+            <button class="primary save-bundle-btn" type="button">淇濆瓨濂楅</button>
+            <button class="ghost save-bundle-status-btn" type="button">浠呮洿鏂扮姸鎬?/button>
           </div>
         </div>
       `
@@ -523,7 +547,7 @@ function renderOrders(orders) {
   renderOverview();
 
   if (!orders.length) {
-    ordersRoot.innerHTML = '<div class="stack-item">当前筛选条件下没有订单。</div>';
+    ordersRoot.innerHTML = '<div class="stack-item">褰撳墠绛涢€夋潯浠朵笅娌℃湁璁㈠崟銆?/div>';
     return;
   }
 
@@ -534,46 +558,46 @@ function renderOrders(orders) {
           (item) =>
             `<div class="order-item-line">${escapeHtml(item.product_name || "-")} / ${Number(
               item.price_quota || 0
-            )} 额度</div>`
+            )} 棰濆害</div>`
         )
         .join("");
 
       const isCancelRequested = order.status === "cancel_requested";
       const statusHint = isCancelRequested
-        ? '<div class="muted">用户已发起取消申请，请在确认后通过或驳回。</div>'
+        ? '<div class="muted">鐢ㄦ埛宸插彂璧峰彇娑堢敵璇凤紝璇峰湪纭鍚庨€氳繃鎴栭┏鍥炪€?/div>'
         : "";
       const actionButtons = isCancelRequested
         ? `
-            <button class="ghost save-order-remark-btn" type="button">保存备注</button>
-            <button class="danger approve-cancel-order-btn" type="button">通过取消</button>
-            <button class="primary reject-cancel-order-btn" type="button">驳回取消</button>
+            <button class="ghost save-order-remark-btn" type="button">淇濆瓨澶囨敞</button>
+            <button class="danger approve-cancel-order-btn" type="button">閫氳繃鍙栨秷</button>
+            <button class="primary reject-cancel-order-btn" type="button">椹冲洖鍙栨秷</button>
           `
         : `
-            <button class="ghost save-order-remark-btn" type="button">保存备注</button>
-            <button class="primary confirm-order-btn" type="button">确认订单</button>
-            <button class="danger cancel-order-btn" type="button">取消订单</button>
+            <button class="ghost save-order-remark-btn" type="button">淇濆瓨澶囨敞</button>
+            <button class="primary confirm-order-btn" type="button">纭璁㈠崟</button>
+            <button class="danger cancel-order-btn" type="button">鍙栨秷璁㈠崟</button>
           `;
 
       return `
         <div class="admin-card" data-order-id="${order.id}">
           <div class="admin-card-head">
-            <div class="product-name">订单 #${order.id}</div>
+            <div class="product-name">璁㈠崟 #${order.id}</div>
             <span class="chip">${escapeHtml(formatOrderStatusLabel(order.status))}</span>
           </div>
           <div class="product-meta">
-            <div>用户：${escapeHtml(order.game_role_name || "-")} / ${escapeHtml(
+            <div>鐢ㄦ埛锛?{escapeHtml(order.game_role_name || "-")} / ${escapeHtml(
               order.game_server || "-"
             )} / ${escapeHtml(order.game_role_id || "-")}</div>
-            <div>订单总额：${Number(order.total_quota || 0)}</div>
-            <div>创建时间：${formatDate(order.created_at)}</div>
+            <div>璁㈠崟鎬婚锛?{Number(order.total_quota || 0)}</div>
+            <div>鍒涘缓鏃堕棿锛?{formatDate(order.created_at)}</div>
           </div>
-          <div class="order-item-list">${items || '<div class="order-item-line">没有订单明细。</div>'}</div>
+          <div class="order-item-list">${items || '<div class="order-item-line">娌℃湁璁㈠崟鏄庣粏銆?/div>'}</div>
           <div class="inline-form order-toolbar">
             <input
               data-field="remark"
               type="text"
               value="${escapeHtml(order.remark || "")}"
-              placeholder="填写后台备注或处理说明"
+              placeholder="濉啓鍚庡彴澶囨敞鎴栧鐞嗚鏄?
             />
           </div>
           ${statusHint}
@@ -588,7 +612,7 @@ function renderOrders(orders) {
 
 function renderAudits(logs) {
   if (!logs.length) {
-    auditsRoot.innerHTML = '<div class="stack-item">暂无审计日志。</div>';
+    auditsRoot.innerHTML = '<div class="stack-item">鏆傛棤瀹¤鏃ュ織銆?/div>';
     return;
   }
 
@@ -644,13 +668,13 @@ async function loadAudits() {
 function formatQuotaLogType(type) {
   switch (type) {
     case "admin_add":
-      return "管理员加额度";
+      return "绠＄悊鍛樺姞棰濆害";
     case "admin_subtract":
-      return "管理员扣额度";
+      return "绠＄悊鍛樻墸棰濆害";
     case "order_deduct":
-      return "下单扣减";
+      return "涓嬪崟鎵ｅ噺";
     case "order_refund":
-      return "订单退款";
+      return "璁㈠崟閫€娆?;
     default:
       return type || "-";
   }
@@ -658,7 +682,7 @@ function formatQuotaLogType(type) {
 
 function renderQuotaLogs(logs) {
   if (!logs.length) {
-    quotaLogsRoot.innerHTML = '<div class="stack-item">暂无额度流水。</div>';
+    quotaLogsRoot.innerHTML = '<div class="stack-item">鏆傛棤棰濆害娴佹按銆?/div>';
     return;
   }
 
@@ -672,7 +696,7 @@ function renderQuotaLogs(logs) {
           <div class="muted">${escapeHtml(formatQuotaLogType(log.type))} / ${prefix}${amount} / ${formatDate(
             log.created_at
           )}</div>
-          <div class="muted">订单：${escapeHtml(log.order_id || "-")} / 备注：${escapeHtml(log.remark || "-")}</div>
+          <div class="muted">璁㈠崟锛?{escapeHtml(log.order_id || "-")} / 澶囨敞锛?{escapeHtml(log.remark || "-")}</div>
         </div>
       `;
     })
@@ -700,7 +724,7 @@ async function reloadAll() {
     const profile = await apiFetch("/auth/me");
     const isAdmin = renderSession(profile);
     if (!isAdmin) {
-      setMessage("当前账号不是 admin，后台接口会返回 403。", "error");
+      setMessage("褰撳墠璐﹀彿涓嶆槸 admin锛屽悗鍙版帴鍙ｄ細杩斿洖 403銆?, "error");
       adminOverview.innerHTML = "";
       return;
     }
@@ -726,16 +750,17 @@ async function reloadAll() {
     renderAudits(allAudits);
     await loadOrders();
     renderOverview();
-    setMessage("后台数据已刷新。", "success");
+    setMessage("鍚庡彴鏁版嵁宸插埛鏂般€?, "success");
   } catch (error) {
     renderSession(null);
     adminOverview.innerHTML = "";
-    setMessage(`后台加载失败：${pickErrorMessage(error, "加载失败")}`, "error");
+    setMessage(`鍚庡彴鍔犺浇澶辫触锛?{pickErrorMessage(error, "鍔犺浇澶辫触")}`, "error");
   }
 }
 
 async function submitAdminLogin(event) {
   event.preventDefault();
+  markDebugAction("login_click");
   try {
     const result = await apiFetch("/auth/login", {
       method: "POST",
@@ -749,11 +774,13 @@ async function submitAdminLogin(event) {
       token: result.token,
       profile: result.user,
     });
+    markDebugSession(`login_ok role=${result.user?.role || "-"}`);
     adminLoginPasswordInput.value = "";
-    setMessage("后台登录成功。", "success");
+    setMessage("鍚庡彴鐧诲綍鎴愬姛銆?, "success");
     await reloadAll();
   } catch (error) {
-    setMessage(`后台登录失败：${pickErrorMessage(error, "登录失败")}`, "error");
+    markDebugError(`login_failed ${pickErrorMessage(error, "login_failed")}`);
+    setMessage(`鍚庡彴鐧诲綍澶辫触锛?{pickErrorMessage(error, "鐧诲綍澶辫触")}`, "error");
   }
 }
 
@@ -762,16 +789,17 @@ function logoutAdmin() {
   adminLoginPasswordInput.value = "";
   renderSession(null);
   adminOverview.innerHTML = "";
-  setMessage("已退出后台登录。", "success");
+  setMessage("宸查€€鍑哄悗鍙扮櫥褰曘€?, "success");
 }
 
 async function submitImport(event) {
   event.preventDefault();
+  markDebugAction("import_click");
   if (importSubmitBtn) {
     importSubmitBtn.disabled = true;
-    importSubmitBtn.textContent = "导入中...";
+    importSubmitBtn.textContent = "瀵煎叆涓?..";
   }
-  setMessage("正在导入商品，请稍等...", "success");
+  setMessage("姝ｅ湪瀵煎叆鍟嗗搧锛岃绋嶇瓑...", "success");
   try {
     const result = await apiFetch("/admin/imports/cards-json", {
       method: "POST",
@@ -781,10 +809,17 @@ async function submitImport(event) {
         raw_json: importJsonInput.value,
       }),
     });
-    setMessage(`导入完成，共解析 ${result.parsed_count} 个商品。`, "success");
+    markDebugAction(`import_ok count=${result.parsed_count}`);
+    setMessage(`瀵煎叆瀹屾垚锛屽叡瑙ｆ瀽 ${result.parsed_count} 涓晢鍝併€俙, "success");
     await reloadAll();
   } catch (error) {
-    setMessage(`导入失败：${pickErrorMessage(error, "导入失败")}`, "error");
+    markDebugError(`import_failed ${pickErrorMessage(error, "import_failed")}`);
+    setMessage(`瀵煎叆澶辫触锛?{pickErrorMessage(error, "瀵煎叆澶辫触")}`, "error");
+  } finally {
+    if (importSubmitBtn) {
+      importSubmitBtn.disabled = false;
+      importSubmitBtn.textContent = "导入并生成商品";
+    }
   }
 }
 
@@ -793,16 +828,16 @@ async function loadSampleJson() {
     const response = await fetch("./legacy-json/legacy_getinfo-2026-03-13T17-54-19.json");
     importJsonInput.value = await response.text();
     importFileNameInput.value = "legacy_getinfo-2026-03-13T17-54-19.json";
-    setMessage("已载入示例 JSON。", "success");
+    setMessage("宸茶浇鍏ョず渚?JSON銆?, "success");
   } catch (error) {
-    setMessage(`载入示例失败：${pickErrorMessage(error, "载入失败")}`, "error");
+    setMessage(`杞藉叆绀轰緥澶辫触锛?{pickErrorMessage(error, "杞藉叆澶辫触")}`, "error");
   }
 }
 
 async function bulkUpdateSelectedProducts(status) {
   const productIds = [...selectedProductIds];
   if (productIds.length === 0) {
-    setMessage("请先选择商品。", "error");
+    setMessage("璇峰厛閫夋嫨鍟嗗搧銆?, "error");
     return;
   }
 
@@ -814,17 +849,17 @@ async function bulkUpdateSelectedProducts(status) {
         status,
       }),
     });
-    setMessage(`批量操作完成，已更新 ${result.updated_count} 个商品。`, "success");
+    setMessage(`鎵归噺鎿嶄綔瀹屾垚锛屽凡鏇存柊 ${result.updated_count} 涓晢鍝併€俙, "success");
     await reloadAll();
   } catch (error) {
-    setMessage(`批量操作失败：${pickErrorMessage(error, "操作失败")}`, "error");
+    setMessage(`鎵归噺鎿嶄綔澶辫触锛?{pickErrorMessage(error, "鎿嶄綔澶辫触")}`, "error");
   }
 }
 
 async function bulkPatchSelectedProducts(patch) {
   const productIds = [...selectedProductIds];
   if (productIds.length === 0) {
-    setMessage("请先选择商品。", "error");
+    setMessage("璇峰厛閫夋嫨鍟嗗搧銆?, "error");
     return;
   }
 
@@ -836,10 +871,10 @@ async function bulkPatchSelectedProducts(patch) {
         ...patch,
       }),
     });
-    setMessage(`批量更新完成，已更新 ${result.updated_count} 个商品。`, "success");
+    setMessage(`鎵归噺鏇存柊瀹屾垚锛屽凡鏇存柊 ${result.updated_count} 涓晢鍝併€俙, "success");
     await reloadAll();
   } catch (error) {
-    setMessage(`批量更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
+    setMessage(`鎵归噺鏇存柊澶辫触锛?{pickErrorMessage(error, "鏇存柊澶辫触")}`, "error");
   }
 }
 
@@ -866,7 +901,7 @@ productsRoot.addEventListener("click", async (event) => {
           stock: Number(card.querySelector('[data-field="stock"]').value),
         }),
       });
-      setMessage(`商品 #${productId} 已保存。`, "success");
+      setMessage(`鍟嗗搧 #${productId} 宸蹭繚瀛樸€俙, "success");
       await reloadAll();
       return;
     }
@@ -878,7 +913,7 @@ productsRoot.addEventListener("click", async (event) => {
           status: card.querySelector('[data-field="status"]').value,
         }),
       });
-      setMessage(`商品 #${productId} 状态已更新。`, "success");
+      setMessage(`鍟嗗搧 #${productId} 鐘舵€佸凡鏇存柊銆俙, "success");
       await reloadAll();
       return;
     }
@@ -887,11 +922,11 @@ productsRoot.addEventListener("click", async (event) => {
       await apiFetch(`/admin/products/${productId}/manual-price`, {
         method: "DELETE",
       });
-      setMessage(`商品 #${productId} 已恢复自动价。`, "success");
+      setMessage(`鍟嗗搧 #${productId} 宸叉仮澶嶈嚜鍔ㄤ环銆俙, "success");
       await reloadAll();
     }
   } catch (error) {
-    setMessage(`商品更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
+    setMessage(`鍟嗗搧鏇存柊澶辫触锛?{pickErrorMessage(error, "鏇存柊澶辫触")}`, "error");
   }
 });
 
@@ -920,7 +955,7 @@ bundlesRoot.addEventListener("click", async (event) => {
           description: card.querySelector('[data-field="description"]').value.trim(),
           tags: tagsRaw
             ? tagsRaw
-                .split(/[,，|]/)
+                .split(/[,锛寍]/)
                 .map((item) => item.trim())
                 .filter(Boolean)
             : [],
@@ -929,7 +964,7 @@ bundlesRoot.addEventListener("click", async (event) => {
           display_rank: Number(card.querySelector('[data-field="display_rank"]').value),
         }),
       });
-      setMessage(`套餐 #${bundleId} 已保存。`, "success");
+      setMessage(`濂楅 #${bundleId} 宸蹭繚瀛樸€俙, "success");
       await reloadAll();
       return;
     }
@@ -941,11 +976,11 @@ bundlesRoot.addEventListener("click", async (event) => {
           status: card.querySelector('[data-field="status"]').value,
         }),
       });
-      setMessage(`套餐 #${bundleId} 状态已更新。`, "success");
+      setMessage(`濂楅 #${bundleId} 鐘舵€佸凡鏇存柊銆俙, "success");
       await reloadAll();
     }
   } catch (error) {
-    setMessage(`套餐更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
+    setMessage(`濂楅鏇存柊澶辫触锛?{pickErrorMessage(error, "鏇存柊澶辫触")}`, "error");
   }
 });
 
@@ -962,7 +997,7 @@ usersRoot.addEventListener("click", async (event) => {
       await loadOrders();
       await loadQuotaLogs({ userId, limit: 100 });
       document.getElementById("orders")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      setMessage(`已切换到用户 ${user?.game_role_name || userId} 的订单视图。`, "success");
+      setMessage(`宸插垏鎹㈠埌鐢ㄦ埛 ${user?.game_role_name || userId} 鐨勮鍗曡鍥俱€俙, "success");
       return;
     }
 
@@ -975,7 +1010,7 @@ usersRoot.addEventListener("click", async (event) => {
           remark: `quick_add_${amount}`,
         }),
       });
-      setMessage(`用户 #${userId} 已快捷增加 ${amount} 额度。`, "success");
+      setMessage(`鐢ㄦ埛 #${userId} 宸插揩鎹峰鍔?${amount} 棰濆害銆俙, "success");
       await reloadAll();
       return;
     }
@@ -988,22 +1023,22 @@ usersRoot.addEventListener("click", async (event) => {
           remark: card.querySelector('[data-field="remark"]').value.trim(),
         }),
       });
-      setMessage(`用户 #${userId} 额度已更新。`, "success");
+      setMessage(`鐢ㄦ埛 #${userId} 棰濆害宸叉洿鏂般€俙, "success");
       await reloadAll();
       return;
     }
 
     if (event.target.closest(".toggle-status-btn")) {
-      const nextStatus = event.target.textContent.includes("禁用") ? "disabled" : "active";
+      const nextStatus = event.target.textContent.includes("绂佺敤") ? "disabled" : "active";
       await apiFetch(`/admin/users/${userId}/status`, {
         method: "PATCH",
         body: JSON.stringify({ status: nextStatus }),
       });
-      setMessage(`用户 #${userId} 状态已更新。`, "success");
+      setMessage(`鐢ㄦ埛 #${userId} 鐘舵€佸凡鏇存柊銆俙, "success");
       await reloadAll();
     }
   } catch (error) {
-    setMessage(`用户更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
+    setMessage(`鐢ㄦ埛鏇存柊澶辫触锛?{pickErrorMessage(error, "鏇存柊澶辫触")}`, "error");
   }
 });
 
@@ -1019,7 +1054,7 @@ ordersRoot.addEventListener("click", async (event) => {
         method: "PATCH",
         body: JSON.stringify({ remark }),
       });
-      setMessage(`订单 #${orderId} 备注已保存。`, "success");
+      setMessage(`璁㈠崟 #${orderId} 澶囨敞宸蹭繚瀛樸€俙, "success");
       await loadOrders();
       return;
     }
@@ -1029,7 +1064,7 @@ ordersRoot.addEventListener("click", async (event) => {
         method: "PATCH",
         body: JSON.stringify({ status: "confirmed", remark }),
       });
-      setMessage(`订单 #${orderId} 已确认。`, "success");
+      setMessage(`璁㈠崟 #${orderId} 宸茬‘璁ゃ€俙, "success");
       await reloadAll();
       return;
     }
@@ -1039,7 +1074,7 @@ ordersRoot.addEventListener("click", async (event) => {
         method: "PATCH",
         body: JSON.stringify({ status: "cancelled", remark }),
       });
-      setMessage(`订单 #${orderId} 已取消。`, "success");
+      setMessage(`璁㈠崟 #${orderId} 宸插彇娑堛€俙, "success");
       await reloadAll();
       return;
     }
@@ -1049,7 +1084,7 @@ ordersRoot.addEventListener("click", async (event) => {
         method: "PATCH",
         body: JSON.stringify({ status: "cancelled", remark }),
       });
-      setMessage(`订单 #${orderId} 的取消申请已通过。`, "success");
+      setMessage(`璁㈠崟 #${orderId} 鐨勫彇娑堢敵璇峰凡閫氳繃銆俙, "success");
       await reloadAll();
       return;
     }
@@ -1059,12 +1094,12 @@ ordersRoot.addEventListener("click", async (event) => {
         method: "PATCH",
         body: JSON.stringify({ status: "pending", remark }),
       });
-      setMessage(`订单 #${orderId} 的取消申请已驳回。`, "success");
+      setMessage(`璁㈠崟 #${orderId} 鐨勫彇娑堢敵璇峰凡椹冲洖銆俙, "success");
       await reloadAll();
       return;
     }
   } catch (error) {
-    setMessage(`订单更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
+    setMessage(`璁㈠崟鏇存柊澶辫触锛?{pickErrorMessage(error, "鏇存柊澶辫触")}`, "error");
   }
 });
 
@@ -1084,7 +1119,7 @@ importSubmitBtn?.addEventListener("click", () => {
 document.getElementById("load-sample-json-btn").addEventListener("click", loadSampleJson);
 document.getElementById("reload-admin-btn").addEventListener("click", reloadAll);
 document.getElementById("reload-orders-btn").addEventListener("click", () => {
-  loadOrders().catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+  loadOrders().catch((error) => setMessage(`璁㈠崟鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 document.getElementById("select-all-products-btn").addEventListener("click", () => {
   selectedProductIds.clear();
@@ -1107,7 +1142,7 @@ document.getElementById("bulk-off-sale-btn").addEventListener("click", () => {
 document.getElementById("bulk-price-btn").addEventListener("click", () => {
   const price = Number(bulkPriceInput.value);
   if (!Number.isInteger(price) || price < 0) {
-    setMessage("批量价格必须是大于等于 0 的整数。", "error");
+    setMessage("鎵归噺浠锋牸蹇呴』鏄ぇ浜庣瓑浜?0 鐨勬暣鏁般€?, "error");
     return;
   }
   bulkPatchSelectedProducts({ price_quota: price });
@@ -1115,7 +1150,7 @@ document.getElementById("bulk-price-btn").addEventListener("click", () => {
 document.getElementById("bulk-stock-btn").addEventListener("click", () => {
   const stock = Number(bulkStockInput.value);
   if (!Number.isInteger(stock) || stock < 0) {
-    setMessage("批量库存必须是大于等于 0 的整数。", "error");
+    setMessage("鎵归噺搴撳瓨蹇呴』鏄ぇ浜庣瓑浜?0 鐨勬暣鏁般€?, "error");
     return;
   }
   bulkPatchSelectedProducts({ stock });
@@ -1124,10 +1159,10 @@ document.getElementById("bulk-stock-btn").addEventListener("click", () => {
 recalculatePricingBtn?.addEventListener("click", async () => {
   try {
     const result = await apiFetch("/admin/pricing/recalculate", { method: "POST" });
-    setMessage(`定价已重算，共处理 ${result.product_count} 个商品。`, "success");
+    setMessage(`瀹氫环宸查噸绠楋紝鍏卞鐞?${result.product_count} 涓晢鍝併€俙, "success");
     await reloadAll();
   } catch (error) {
-    setMessage(`重算定价失败：${pickErrorMessage(error, "重算失败")}`, "error");
+    setMessage(`閲嶇畻瀹氫环澶辫触锛?{pickErrorMessage(error, "閲嶇畻澶辫触")}`, "error");
   }
 });
 
@@ -1145,16 +1180,16 @@ linkedOrderUserState?.addEventListener("click", (event) => {
   linkedOrderUser = null;
   adminOrderKeywordInput.value = "";
   renderLinkedOrderUserState();
-  loadQuotaLogs().catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
-  loadOrders().catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+  loadQuotaLogs().catch((error) => setMessage(`棰濆害娴佹按鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
+  loadOrders().catch((error) => setMessage(`璁㈠崟鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 adminOrderStatusFilter.addEventListener("change", () => {
-  loadOrders().catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+  loadOrders().catch((error) => setMessage(`璁㈠崟鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 adminOrderKeywordInput.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadOrders().catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+  loadOrders().catch((error) => setMessage(`璁㈠崟鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 adminOrderKeywordInput.addEventListener("input", () => {
   if (linkedOrderUser && adminOrderKeywordInput.value.trim() !== linkedOrderUser.game_role_id) {
@@ -1169,28 +1204,31 @@ adminProductModal?.addEventListener("click", (event) => {
   }
 });
 document.getElementById("reload-quota-logs-btn").addEventListener("click", () => {
-  loadQuotaLogs().catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
+  loadQuotaLogs().catch((error) => setMessage(`棰濆害娴佹按鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 document.getElementById("reload-audits-btn").addEventListener("click", () => {
-  loadAudits().catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
+  loadAudits().catch((error) => setMessage(`瀹¤鏃ュ織鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 adminQuotaLogTypeFilter?.addEventListener("change", () => {
-  loadQuotaLogs().catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
+  loadQuotaLogs().catch((error) => setMessage(`棰濆害娴佹按鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 adminQuotaLogKeywordInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadQuotaLogs().catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
+  loadQuotaLogs().catch((error) => setMessage(`棰濆害娴佹按鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 adminAuditKeywordInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadAudits().catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
+  loadAudits().catch((error) => setMessage(`瀹¤鏃ュ織鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 adminAuditActionInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadAudits().catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
+  loadAudits().catch((error) => setMessage(`瀹¤鏃ュ織鍔犺浇澶辫触锛?{pickErrorMessage(error)}`, "error"));
 });
 
+markDebugAction("page_loaded");
+markDebugSession(loadSession()?.token ? "token_present" : "no_token");
+markDebugError("none");
 reloadAll();

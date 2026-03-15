@@ -312,6 +312,37 @@ button {
   color: var(--success);
 }
 
+.debug-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  width: min(360px, calc(100vw - 32px));
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(45, 35, 24, 0.18);
+  background: rgba(32, 27, 22, 0.92);
+  color: #f5ede3;
+  box-shadow: 0 20px 40px rgba(16, 12, 8, 0.22);
+}
+
+.debug-title {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f0bb88;
+  font-size: 12px;
+}
+
+.debug-line {
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+  color: rgba(245, 237, 227, 0.92);
+}
+
 .product-grid,
 .admin-list,
 .stack-list {
