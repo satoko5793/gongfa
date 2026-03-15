@@ -30,20 +30,36 @@
       <section class="card">
         <div class="section-head">
           <div>
-            <div class="card-title">后台会话</div>
-            <div class="card-sub">使用前台登录后的登录态。当前账号需要具备 `admin` 角色。</div>
+            <div class="card-title">管理员会话</div>
+            <div class="card-sub">支持在后台页直接登录。当前账号需要具备 `admin` 角色。</div>
           </div>
-          <button id="reload-admin-btn" class="ghost">刷新后台数据</button>
+          <button id="reload-admin-btn" class="ghost" type="button">刷新后台数据</button>
         </div>
         <div id="admin-session" class="stack-list"></div>
+        <form id="admin-login-form" class="inline-form" style="margin-top: 16px;">
+          <input id="admin-login-role-id" type="text" value="584967604" placeholder="游戏 ID" />
+          <input id="admin-login-password" type="password" placeholder="密码" />
+          <button type="submit" class="primary">登录后台</button>
+          <button id="admin-logout-btn" type="button" class="ghost">退出登录</button>
+        </form>
         <div id="admin-message" class="notice"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <div class="card-title">运营概览</div>
+            <div class="card-sub">快速查看当前商品、套餐、用户和订单情况。</div>
+          </div>
+        </div>
+        <div id="admin-overview" class="overview-grid"></div>
       </section>
 
       <section id="imports" class="card">
         <div class="card-title">导入卡片 JSON</div>
-        <div class="card-sub">把 `legacy_getinfo*.json` 粘贴到这里，后端会解析、合并并默认上架商品。</div>
+        <div class="card-sub">粘贴 `legacy_getinfo*.json` 后自动解析、合并并默认上架。</div>
         <div class="actions">
-          <button id="load-sample-json-btn" class="ghost">载入示例 JSON</button>
+          <button id="load-sample-json-btn" class="ghost" type="button">载入示例 JSON</button>
         </div>
         <form id="import-form" class="form-grid">
           <label>
@@ -62,9 +78,9 @@
 
       <section id="products" class="card">
         <div class="card-title">商品管理</div>
-        <div class="card-sub">导入后默认自动上架。后台支持多选、全选和批量下架。</div>
+        <div class="card-sub">支持筛选、批量上下架、批量改价、批量改库存和重算定价。</div>
         <div class="toolbar">
-          <input id="admin-product-keyword-input" type="text" placeholder="搜索名称 / 词条 / 来源" />
+          <input id="admin-product-keyword-input" type="text" placeholder="搜索名称 / 词条 / 来源 / legacy id" />
           <div class="filters">
             <select id="admin-product-status-filter">
               <option value="all">全部状态</option>
@@ -81,18 +97,18 @@
           </div>
           <div class="actions">
             <button id="recalculate-pricing-btn" class="ghost" type="button">重算定价</button>
-            <button id="select-all-products-btn" class="ghost">按当前筛选全选</button>
-            <button id="clear-selected-products-btn" class="ghost">清空</button>
-            <button id="bulk-on-sale-btn" class="ghost">批量上架</button>
-            <button id="bulk-off-sale-btn" class="danger">批量下架</button>
+            <button id="select-all-products-btn" class="ghost" type="button">按当前筛选全选</button>
+            <button id="clear-selected-products-btn" class="ghost" type="button">清空</button>
+            <button id="bulk-on-sale-btn" class="ghost" type="button">批量上架</button>
+            <button id="bulk-off-sale-btn" class="danger" type="button">批量下架</button>
           </div>
         </div>
         <div class="bulk-toolbar">
           <div class="inline-form bulk-inline-form">
             <input id="bulk-price-input" type="number" placeholder="批量设置价格" />
-            <button id="bulk-price-btn" class="ghost">批量改价</button>
+            <button id="bulk-price-btn" class="ghost" type="button">批量改价</button>
             <input id="bulk-stock-input" type="number" placeholder="批量设置库存" />
-            <button id="bulk-stock-btn" class="ghost">批量改库存</button>
+            <button id="bulk-stock-btn" class="ghost" type="button">批量改库存</button>
           </div>
         </div>
         <div id="admin-products" class="admin-list"></div>
@@ -100,7 +116,16 @@
 
       <section id="users" class="card">
         <div class="card-title">用户管理</div>
-        <div class="card-sub">查看绑定用户并调额度。</div>
+        <div class="card-sub">查看账号信息、搜索用户、调整额度、启用或禁用账号。</div>
+        <div class="toolbar">
+          <input id="admin-user-keyword-input" type="text" placeholder="搜索游戏名 / 游戏 ID / 区服 / 角色" />
+        </div>
+        <div class="chip-row" style="margin: 12px 0 0;">
+          <span class="chip">快捷额度</span>
+          <span class="chip">+1000</span>
+          <span class="chip">+5000</span>
+          <span class="chip">+10000</span>
+        </div>
         <div id="admin-users" class="admin-list"></div>
       </section>
 
@@ -112,30 +137,71 @@
 
       <section id="orders" class="card">
         <div class="card-title">订单管理</div>
-        <div class="card-sub">确认或取消订单。取消会自动回补额度并返还库存。</div>
+        <div class="card-sub">支持订单查询、备注、确认、取消，以及取消申请审核。</div>
         <div class="toolbar">
-          <input id="admin-order-keyword-input" type="text" placeholder="搜索订单号 / 角色 / 商品" />
+          <input id="admin-order-keyword-input" type="text" placeholder="搜索订单号 / 游戏名 / 游戏 ID / 商品" />
           <div class="filters">
             <select id="admin-order-status-filter">
               <option value="all">全部状态</option>
               <option value="pending">待处理</option>
+              <option value="cancel_requested">待审核取消</option>
               <option value="confirmed">已确认</option>
               <option value="cancelled">已取消</option>
             </select>
             <button id="reload-orders-btn" class="ghost" type="button">查询订单</button>
           </div>
         </div>
+        <div id="linked-order-user-state" class="chip-row"></div>
         <div id="admin-orders" class="admin-list"></div>
+      </section>
+
+      <section id="quota-logs" class="card">
+        <div class="card-title">额度流水</div>
+        <div class="card-sub">查看管理员加额度、下单扣减、取消退款等额度变化记录。</div>
+        <div class="toolbar">
+          <input id="admin-quota-log-keyword-input" type="text" placeholder="搜索游戏名 / 游戏 ID / 订单 / 备注" />
+          <div class="filters">
+            <select id="admin-quota-log-type-filter">
+              <option value="all">全部类型</option>
+              <option value="admin_add">管理员加额度</option>
+              <option value="admin_subtract">管理员扣额度</option>
+              <option value="order_deduct">下单扣减</option>
+              <option value="order_refund">订单退款</option>
+            </select>
+            <button id="reload-quota-logs-btn" class="ghost" type="button">查询流水</button>
+          </div>
+        </div>
+        <div id="admin-quota-logs" class="stack-list"></div>
       </section>
 
       <section id="audit" class="card">
         <div class="card-title">审计日志</div>
-        <div class="card-sub">便于追踪导入、调额度和订单操作。</div>
+        <div class="card-sub">查看导入、额度调整和订单状态变更记录。</div>
+        <div class="toolbar">
+          <input id="admin-audit-keyword-input" type="text" placeholder="搜索动作 / 用户 / 目标 / 详情" />
+          <div class="filters">
+            <input id="admin-audit-action-input" type="text" placeholder="按 action 精确筛选，可留空" />
+            <button id="reload-audits-btn" class="ghost" type="button">查询日志</button>
+          </div>
+        </div>
         <div id="admin-audits" class="stack-list"></div>
       </section>
     </main>
 
-    <footer class="footer">后台页面当前是纯静态骨架，数据由后端 API 提供。</footer>
+    <div id="admin-product-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <div class="card-title">商品详情</div>
+            <div class="card-sub">查看大图、原始属性和定价明细。</div>
+          </div>
+          <button id="close-admin-product-modal-btn" class="ghost" type="button">关闭</button>
+        </div>
+        <div id="admin-product-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <footer class="footer">后台页面当前为静态页面，数据由后端 API 提供。</footer>
     <script type="module" src="./admin.js"></script>
   </body>
 </html>

@@ -1,0 +1,5 @@
+module.exports = {
+  API_BASE_URL: "http://127.0.0.1:8090",
+  APP_ENV: "local",
+  APP_ENV_LABEL: "本地开发",
+};

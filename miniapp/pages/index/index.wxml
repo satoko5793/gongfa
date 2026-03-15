@@ -1,0 +1,43 @@
+<view class="page">
+  <view class="section hero-card">
+    <view class="section-title">卡牌商城</view>
+    <view class="muted">先完成商品浏览、账户和下单闭环，后续再接云托管和正式发布。</view>
+  </view>
+
+  <view class="section" wx:if="{{error}}">
+    <view>{{error}}</view>
+  </view>
+
+  <view class="section" wx:if="{{loading}}">
+    <view>商品加载中...</view>
+  </view>
+
+  <view class="section empty-card" wx:if="{{!loading && !error && !products.length}}">
+    <view class="section-title">暂时没有商品</view>
+    <view class="muted">等后台导入并上架后，这里会自动显示。</view>
+  </view>
+
+  <view
+    class="section product-card"
+    wx:for="{{products}}"
+    wx:key="item_id"
+    data-item-id="{{item.item_id}}"
+    data-item-kind="{{item.item_kind}}"
+    bindtap="openProductDetail"
+  >
+    <view class="product-head">
+      <view>
+        <view class="product-name">{{item.name}}</view>
+        <view class="product-subtitle">ID {{item.legacy_id}} / {{item.item_kind}}</view>
+      </view>
+      <view class="product-price">{{item.price_quota}}</view>
+    </view>
+
+    <view class="product-metrics">
+      <view class="metric-pill">库存 {{item.stock_label}}</view>
+      <view class="metric-pill">额度商品</view>
+    </view>
+
+    <view class="tap-hint">点击查看详情并购买</view>
+  </view>
+</view>

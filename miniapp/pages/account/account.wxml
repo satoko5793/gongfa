@@ -1,0 +1,123 @@
+<view class="page">
+  <view class="section">
+    <view class="section-title">我的账户</view>
+    <view class="muted">当前主流程只保留游戏 ID、游戏名称和密码，不接 helper。</view>
+    <view class="notice" wx:if="{{notice}}">{{notice}}</view>
+  </view>
+
+  <view class="section" wx:if="{{!session}}">
+    <view class="section-title">快速注册</view>
+    <view class="field">
+      <text class="field-label">游戏 ID</text>
+      <input
+        class="field-input"
+        value="{{registerForm.game_role_id}}"
+        data-field="game_role_id"
+        bindinput="onRegisterInput"
+        placeholder="输入你的游戏 ID"
+      />
+    </view>
+    <view class="field">
+      <text class="field-label">游戏名称</text>
+      <input
+        class="field-input"
+        value="{{registerForm.game_role_name}}"
+        data-field="game_role_name"
+        bindinput="onRegisterInput"
+        placeholder="输入你的游戏名称"
+      />
+    </view>
+    <view class="field">
+      <text class="field-label">密码</text>
+      <input
+        class="field-input"
+        password
+        value="{{registerForm.password}}"
+        data-field="password"
+        bindinput="onRegisterInput"
+        placeholder="至少 6 位"
+      />
+    </view>
+    <view class="actions">
+      <button class="primary-btn" loading="{{submitting}}" bindtap="submitRegister">注册并登录</button>
+    </view>
+  </view>
+
+  <view class="section" wx:if="{{!session}}">
+    <view class="section-title">密码登录</view>
+    <view class="field">
+      <text class="field-label">游戏 ID</text>
+      <input
+        class="field-input"
+        value="{{loginForm.game_role_id}}"
+        data-field="game_role_id"
+        bindinput="onLoginInput"
+        placeholder="输入你的游戏 ID"
+      />
+    </view>
+    <view class="field">
+      <text class="field-label">密码</text>
+      <input
+        class="field-input"
+        password
+        value="{{loginForm.password}}"
+        data-field="password"
+        bindinput="onLoginInput"
+        placeholder="输入密码"
+      />
+    </view>
+    <view class="actions">
+      <button class="primary-btn" loading="{{submitting}}" bindtap="submitLogin">登录</button>
+    </view>
+  </view>
+
+  <view class="section" wx:if="{{session}}">
+    <view class="section-title">账号信息</view>
+    <view wx:if="{{loading}}" class="muted">账户加载中...</view>
+    <block wx:if="{{profile}}">
+      <view class="stack-item">
+        <view class="info-label">游戏名称</view>
+        <view class="info-value">{{profile.game_role_name}}</view>
+      </view>
+      <view class="stack-item">
+        <view class="info-label">游戏 ID</view>
+        <view class="info-value">{{profile.game_role_id}}</view>
+      </view>
+      <view class="stack-item">
+        <view class="info-label">角色权限</view>
+        <view class="info-value">{{profile.role}}</view>
+      </view>
+      <view class="stack-item">
+        <view class="info-label">登录方式</view>
+        <view class="info-value">{{profile.auth_provider}}</view>
+      </view>
+    </block>
+    <view class="actions">
+      <button class="ghost-btn" bindtap="loadAccount">刷新账户</button>
+      <button class="ghost-btn" bindtap="logout">退出登录</button>
+    </view>
+  </view>
+
+  <view class="section" wx:if="{{session}}">
+    <view class="section-title">额度余额</view>
+    <view class="quota-value">{{quota ? quota.balance : "-"}}</view>
+  </view>
+
+  <view class="section" wx:if="{{session}}">
+    <view class="section-title">最近订单</view>
+    <view wx:if="{{loading && !orders.length}}" class="muted">订单加载中...</view>
+    <view wx:if="{{!loading && !orders.length}}" class="muted">暂时还没有订单。</view>
+    <block wx:for="{{orders}}" wx:key="id">
+      <view class="order-card">
+        <view class="order-head">
+          <view class="order-number">订单 #{{item.id}}</view>
+          <view class="order-status {{item.status_class}}">{{item.status_label}}</view>
+        </view>
+        <view class="order-main">{{item.item_summary}}</view>
+        <view class="order-meta">总额度：{{item.total_quota}}</view>
+        <view class="order-meta">商品数：{{item.item_count}}</view>
+        <view class="order-meta">创建时间：{{item.created_at_label}}</view>
+      </view>
+    </block>
+  </view>
+</view>

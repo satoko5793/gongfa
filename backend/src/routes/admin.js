@@ -735,6 +735,59 @@ adminRouter.get("/orders", async (req, res, next) => {
   }
 });
 
+adminRouter.get("/quota-logs", async (req, res, next) => {
+  try {
+    const userId = req.query.user_id ? Number(req.query.user_id) : null;
+    const keyword = String(req.query.keyword || "").trim();
+    const type = String(req.query.type || "").trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+
+    if (useFileStore()) {
+      return res.json(devStore.listQuotaLogs({ userId, keyword, type, limit }));
+    }
+
+    const values = [];
+    const filters = [];
+
+    if (userId) {
+      values.push(userId);
+      filters.push(`q.user_id=$${values.length}`);
+    }
+
+    if (type && type !== "all") {
+      values.push(type);
+      filters.push(`q.type=$${values.length}`);
+    }
+
+    if (keyword) {
+      values.push(`%${keyword}%`);
+      filters.push(
+        `(u.game_role_id ILIKE $${values.length} OR u.game_role_name ILIKE $${values.length} OR u.game_server ILIKE $${values.length} OR COALESCE(q.remark, '') ILIKE $${values.length} OR CAST(COALESCE(q.order_id, 0) AS TEXT) ILIKE $${values.length})`
+      );
+    }
+
+    values.push(limit);
+
+    const result = await pool.query(
+      `SELECT
+        q.*,
+        u.game_role_id,
+        u.game_role_name,
+        u.game_server
+       FROM quota_logs q
+       LEFT JOIN users u ON u.id=q.user_id
+       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
+       ORDER BY q.created_at DESC
+       LIMIT $${values.length}`,
+      values
+    );
+
+    return res.json(result.rows);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 adminRouter.post("/pricing/recalculate", async (req, res, next) => {
   try {
     if (useFileStore()) {
@@ -934,9 +987,30 @@ adminRouter.patch("/orders/:id/remark", async (req, res, next) => {
 
 adminRouter.get("/audit-logs", async (req, res, next) => {
   try {
+    const keyword = String(req.query.keyword || "").trim();
+    const action = String(req.query.action || "").trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
     if (useFileStore()) {
-      return res.json(devStore.listAuditLogs());
+      return res.json(devStore.listAuditLogs({ keyword, action, limit }));
     }
+
+    const values = [];
+    const filters = [];
+
+    if (action && action !== "all") {
+      values.push(action);
+      filters.push(`a.action=$${values.length}`);
+    }
+
+    if (keyword) {
+      values.push(`%${keyword}%`);
+      filters.push(
+        `(a.action ILIKE $${values.length} OR a.target_type ILIKE $${values.length} OR CAST(a.target_id AS TEXT) ILIKE $${values.length} OR COALESCE(u.game_role_name, '') ILIKE $${values.length} OR COALESCE(u.nickname, '') ILIKE $${values.length} OR CAST(COALESCE(a.detail, '{}'::jsonb) AS TEXT) ILIKE $${values.length})`
+      );
+    }
+
+    values.push(limit);
+
     const result = await pool.query(
       `SELECT
         a.*,
@@ -944,8 +1018,10 @@ adminRouter.get("/audit-logs", async (req, res, next) => {
         u.nickname AS actor_nickname
        FROM audit_logs a
        LEFT JOIN users u ON u.id=a.actor_user_id
+       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
        ORDER BY a.created_at DESC
-       LIMIT 200`
+       LIMIT $${values.length}`,
+      values
     );
     return res.json(result.rows);
   } catch (error) {

@@ -225,6 +225,84 @@ ordersRouter.post("/", async (req, res, next) => {
   }
 });
 
+ordersRouter.post("/:id/cancel-request", async (req, res, next) => {
+  if (useFileStore()) {
+    try {
+      const body = req.body || {};
+      if (body.remark !== undefined && body.remark !== null && typeof body.remark !== "string") {
+        return res.status(400).json({ error: "remark_invalid" });
+      }
+      const order = devStore.requestOrderCancellation(req.params.id, req.user.id, body.remark || null);
+      if (!order) {
+        return res.status(404).json({ error: "order_not_found" });
+      }
+      return res.json(order);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    const body = req.body || {};
+    if (body.remark !== undefined && body.remark !== null && typeof body.remark !== "string") {
+      return res.status(400).json({ error: "remark_invalid" });
+    }
+
+    const allowed = await canAccessOrder(req.user, req.params.id);
+    if (!allowed) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+
+    await client.query("BEGIN");
+    const orderResult = await client.query(
+      "SELECT * FROM orders WHERE id=$1 AND user_id=$2 FOR UPDATE",
+      [req.params.id, req.user.id]
+    );
+    if (orderResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "order_not_found" });
+    }
+
+    const order = orderResult.rows[0];
+    if (order.status !== "pending") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "order_cancel_request_not_allowed" });
+    }
+
+    await client.query(
+      `UPDATE orders
+       SET status='cancel_requested', remark=$2, updated_at=NOW()
+       WHERE id=$1`,
+      [order.id, body.remark || order.remark || null]
+    );
+
+    await writeAuditLog(
+      {
+        actorUserId: req.user.id,
+        targetType: "order",
+        targetId: order.id,
+        action: "order_cancel_request",
+        detail: { remark: body.remark || null },
+      },
+      client
+    );
+
+    await client.query("COMMIT");
+    const [fullOrder] = await listOrders(pool, {
+      orderId: order.id,
+      userId: req.user.id,
+      limit: 1,
+    });
+    return res.json(fullOrder);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    return next(error);
+  } finally {
+    client.release();
+  }
+});
+
 ordersRouter.get("/:id", async (req, res, next) => {
   try {
     if (useFileStore()) {

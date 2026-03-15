@@ -1,0 +1,112 @@
+<view class="page has-floating-tab">
+  <view class="section hero-card">
+  <view class="section-title">{{storeCopy.heroTitle}}</view>
+  <view class="muted">{{storeCopy.heroSubtitle}}</view>
+  <view class="hero-badges">
+    <view wx:for="{{storeCopy.heroBadges}}" wx:key="*this" class="hero-badge">
+      {{item}}
+    </view>
+  </view>
+</view>
+
+<view class="section guide-card">
+  <view class="section-title">{{storeCopy.introTitle}}</view>
+  <view wx:for="{{storeCopy.introLines}}" wx:key="*this" class="guide-line">
+    {{index + 1}}. {{item}}
+  </view>
+</view>
+
+<view class="section search-card">
+    <input
+      class="search-input"
+      value="{{keyword}}"
+      bindinput="onKeywordInput"
+      placeholder="搜索名称、ID 或词条"
+      confirm-type="search"
+    />
+    <button class="ghost-btn search-clear" wx:if="{{keyword}}" bindtap="clearKeyword">清空</button>
+    <scroll-view class="category-scroll" scroll-x enable-flex>
+      <view class="category-row">
+        <view
+          wx:for="{{categories}}"
+          wx:key="key"
+          class="category-chip {{activeCategory === item.key ? 'active' : ''}}"
+          data-category="{{item.key}}"
+          bindtap="selectCategory"
+        >
+          {{item.label}} {{item.count}}
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="section" wx:if="{{error}}">
+    <view>{{error}}</view>
+  </view>
+
+  <view class="section" wx:if="{{loading}}">
+    <view>商品加载中...</view>
+  </view>
+
+  <view class="section empty-card" wx:if="{{!loading && !error && !filteredProducts.length}}">
+    <view class="section-title">没有匹配商品</view>
+    <view class="muted">换个筛选条件，或者等后台继续上架。</view>
+  </view>
+
+  <view
+    class="section product-card {{item.theme_class}}"
+    wx:for="{{filteredProducts}}"
+    wx:key="list_key"
+    data-item-id="{{item.item_id}}"
+    data-item-kind="{{item.item_kind}}"
+    bindtap="openProductDetail"
+  >
+    <view class="product-body">
+      <view class="product-cover">
+        <image wx:if="{{item.cover_mode === 'single'}}" class="cover-image" src="{{item.cover_url}}" mode="aspectFill" />
+        <view wx:elif="{{item.cover_mode === 'collage'}}" class="cover-collage {{item.cover_images.length >= 6 ? 'six' : 'four'}}">
+          <image
+            wx:for="{{item.cover_images}}"
+            wx:key="key"
+            class="collage-image"
+            src="{{item.url}}"
+            mode="aspectFill"
+          />
+        </view>
+        <view wx:else class="cover-fallback">{{item.cover_text}}</view>
+      </view>
+
+      <view class="product-main">
+        <view class="product-head">
+          <view class="product-title-wrap">
+            <view class="product-name">{{item.name}}</view>
+            <view class="product-subtitle">{{item.tier_label}} / ID {{item.legacy_id}} / {{item.item_kind}}</view>
+          </view>
+          <view class="product-price">{{item.price_label}}</view>
+        </view>
+
+        <view class="product-summary">{{item.summary}}</view>
+
+        <view class="product-metrics">
+          <view class="metric-pill">库存 {{item.stock_label}}</view>
+          <view class="metric-pill">{{item.item_kind_label}}</view>
+          <view class="metric-pill" wx:if="{{item.item_kind === 'card' && item.attack_value}}">攻 {{item.attack_label}}</view>
+          <view class="metric-pill" wx:if="{{item.item_kind === 'card' && item.hp_value}}">血 {{item.hp_label}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="tap-hint">点击查看详情并购买</view>
+  </view>
+
+  <view class="floating-tab-bar">
+    <view class="floating-tab-item active" bindtap="goMallTab">
+      <view class="floating-tab-icon">商</view>
+      <view class="floating-tab-label">商城</view>
+    </view>
+    <view class="floating-tab-item" bindtap="goAccountTab">
+      <view class="floating-tab-icon">我</view>
+      <view class="floating-tab-label">个人信息</view>
+    </view>
+  </view>
+</view>

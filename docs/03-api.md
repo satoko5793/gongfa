@@ -3,13 +3,13 @@
 ## Auth
 
 - `POST /auth/register`
-  - 用游戏 ID + 密码注册并直接建立登录态
-  - body: `game_role_id`, `password`, `nickname?`
+  - 用游戏 ID + 游戏名称 + 密码注册，并直接建立登录态
+  - body: `game_role_id`, `game_role_name`, `password`, `game_server?`, `nickname?`
 - `POST /auth/login`
   - 用游戏 ID + 密码登录
   - body: `game_role_id`, `password`
 - `POST /auth/game/bind`
-  - 绑定游戏账号并建立登录态
+  - 兼容旧绑定流程，按角色资料建立登录态
   - body: `game_role_id`, `game_server`, `game_role_name`, `bind_token_id`, `nickname`
 - `GET /auth/me`
   - 获取当前登录用户
@@ -31,7 +31,8 @@
   - query:
     - `item_kind`: `card / bundle`
 
-返回字段补充：
+补充字段：
+
 - `item_kind`
 - `item_id`
 - `pricing_meta`
@@ -53,7 +54,10 @@
   - 兼容旧参数：
     - `product_id`
 - `GET /orders/:id`
-  - 查看单个订单详情
+  - 查询单个订单详情
+- `POST /orders/:id/cancel-request`
+  - 用户发起取消申请
+  - 仅允许对 `pending` 订单发起
 
 ## Admin Imports
 
@@ -87,7 +91,6 @@
 
 - `GET /admin/bundles`
   - 套餐 SKU 列表
-  - PostgreSQL 模式下会自动补齐缺失的默认套餐种子
 - `PATCH /admin/bundles/:id`
   - 更新套餐信息
   - body 可包含：
@@ -110,6 +113,13 @@
 
 - `GET /admin/users`
   - 用户列表和额度信息
+- `GET /admin/quota-logs`
+  - 额度流水
+  - query:
+    - `user_id`: 可选，按用户筛选
+    - `keyword`: 可选，按游戏名、游戏 ID、订单号、备注筛选
+    - `type`: 可选，按流水类型筛选
+    - `limit`: 返回数量上限，默认 `200`
 - `PATCH /admin/users/:id/quota`
   - 调整额度
   - body: `change_amount`, `remark`
@@ -121,8 +131,8 @@
 - `GET /admin/orders`
   - 订单列表
   - query:
-    - `status`: `pending / confirmed / cancelled / all`
-    - `keyword`: 支持订单号、角色名、角色 ID、区服、商品名、套餐 ID 搜索
+    - `status`: `pending / cancel_requested / confirmed / cancelled / all`
+    - `keyword`: 支持订单号、角色名、角色 ID、区服、商品名搜索
     - `limit`: 返回数量上限，默认 `200`
 - `PATCH /admin/orders/:id/status`
   - 更新订单状态：`pending / confirmed / cancelled`
@@ -132,23 +142,27 @@
     - 返还单卡或套餐库存
     - 重算单卡自动价格
 - `PATCH /admin/orders/:id/remark`
-  - 单独保存履约备注
+  - 单独保存后台备注
   - body: `remark`
 
 ## Admin Audit
 
 - `GET /admin/audit-logs`
-  - 最新操作日志
+  - 最近操作日志
+  - query:
+    - `keyword`: 可选，按动作、目标、用户、详情筛选
+    - `action`: 可选，按 `action` 精确筛选
+    - `limit`: 返回数量上限，默认 `200`
 
 ## 权限规则
 
-- `/products/*` 对游客开放，只返回已上架商品
+- `/products/*` 对游客开放，只返回可见商品
 - `/auth/me`、`/me/*`、`/orders/*` 仅限已登录用户
 - `/admin/*` 仅限管理员
 
 ## 关键约束
 
 - 创建订单时同时校验：用户状态、商品状态、库存、额度余额
-- `item_kind='bundle'` 时走套餐 SKU 库存和固定价
-- `item_kind='card'` 时走单卡库存和自动/手动价
-- 套餐 SKU 不参与单卡自动定价，但会参与订单和额度流水
+- `item_kind='bundle'` 时走套餐 SKU 库存和固定价格
+- `item_kind='card'` 时走单卡库存和自动 / 手动价格
+- 套餐 SKU 不参与单卡自动定价，但参与订单和额度流水

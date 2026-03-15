@@ -133,7 +133,7 @@ VALUES
   ('atlas_orange_and_below', '橙卡及以下图鉴', '用于补齐橙卡及以下图鉴，词条不计入套餐价值。', ARRAY['图鉴', '橙卡及以下', '固定价'], 1000, NULL, 'on_sale', 10, NOW(), NOW()),
   ('atlas_red_and_below', '红及以下图鉴', '用于补齐红卡及以下图鉴，优先满足图鉴需求。', ARRAY['图鉴', '红及以下', '固定价'], 3000, NULL, 'on_sale', 20, NOW(), NOW()),
   ('atlas_full_attack_set', '满攻击全套图鉴', '按满攻击标准提供整套图鉴，不强调词条。', ARRAY['图鉴', '满攻击', '全套'], 15000, NULL, 'on_sale', 30, NOW(), NOW()),
-  ('atlas_high_attack_full_dex', '高攻全图鉴', '按高攻击目标提供整套图鉴，优先图鉴价值。', ARRAY['图鉴', '高攻', '全图鉴'], 80000, NULL, 'on_sale', 40, NOW(), NOW())
+  ('atlas_high_attack_full_dex', '高攻全图鉴', '按高攻击目标提供整套图鉴，优先图鉴价值。', ARRAY['图鉴', '高攻', '全图鉴'], 8000, NULL, 'on_sale', 40, NOW(), NOW())
 ON CONFLICT (code) DO NOTHING;
 
 DELETE FROM bundle_skus

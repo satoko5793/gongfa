@@ -1,0 +1,63 @@
+.section + .section {
+  margin-top: 24rpx;
+}
+
+.hero-card {
+  background: linear-gradient(135deg, #f6e8d4 0%, #f1efe8 100%);
+}
+
+.empty-card {
+  text-align: center;
+}
+
+.product-card {
+  position: relative;
+}
+
+.product-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.product-name {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #201b16;
+}
+
+.product-subtitle {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #6a6157;
+}
+
+.product-price {
+  min-width: 120rpx;
+  text-align: right;
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #c4552d;
+}
+
+.product-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.metric-pill {
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: #f2e7d8;
+  color: #5b3f24;
+  font-size: 24rpx;
+}
+
+.tap-hint {
+  margin-top: 18rpx;
+  font-size: 24rpx;
+  color: #8a7d70;
+}

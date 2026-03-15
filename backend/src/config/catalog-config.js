@@ -49,7 +49,7 @@ const BUNDLE_SKU_SEEDS = [
     name: "高攻全图鉴",
     description: "按高攻击目标提供整套图鉴，优先图鉴价值。",
     tags: ["图鉴", "高攻", "全图鉴"],
-    price_quota: 80000,
+    price_quota: 8000,
     stock: null,
     status: "on_sale",
     display_rank: 40,

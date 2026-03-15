@@ -25,8 +25,8 @@ authRouter.post("/register", async (req, res, next) => {
     if (useFileStore()) {
       const user = await devStore.registerPasswordUser({
         game_role_id: body.game_role_id.trim(),
+        game_role_name: body.game_role_name.trim(),
         password: body.password,
-        nickname: body.nickname?.trim() || null,
       });
       const token = signUser(user);
       return res.json({ token, user });
@@ -40,8 +40,8 @@ authRouter.post("/register", async (req, res, next) => {
        RETURNING id, role, status, auth_provider, game_role_id, game_server, game_role_name, bind_token_id, nickname`,
       [
         body.game_role_id.trim(),
-        body.nickname?.trim() || body.game_role_id.trim(),
-        body.nickname?.trim() || null,
+        body.game_role_name.trim(),
+        null,
         passwordHash,
       ]
     );

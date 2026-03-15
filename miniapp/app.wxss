@@ -1,0 +1,89 @@
+page {
+  background: #f6f1e7;
+  color: #201b16;
+  font-family: sans-serif;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 24rpx;
+}
+
+.section {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 12rpx 40rpx rgba(43, 32, 20, 0.08);
+}
+
+.section-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  margin-bottom: 16rpx;
+}
+
+.muted {
+  color: #6a6157;
+}
+
+.primary-btn {
+  background: #c4552d;
+  color: #fff;
+  border-radius: 999rpx;
+}
+
+.ghost-btn {
+  background: #f2e7d8;
+  color: #5b3f24;
+  border-radius: 999rpx;
+}
+
+.field {
+  margin-top: 16rpx;
+}
+
+.field-label {
+  display: block;
+  font-size: 24rpx;
+  color: #6a6157;
+  margin-bottom: 8rpx;
+}
+
+.field-input {
+  width: 100%;
+  min-height: 84rpx;
+  border-radius: 18rpx;
+  background: #fff;
+  border: 1px solid rgba(118, 93, 67, 0.18);
+  padding: 0 24rpx;
+}
+
+.actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.notice {
+  margin-top: 16rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #fff7ef;
+  color: #8a4f18;
+}
+
+.stack-item {
+  padding: 16rpx 0;
+  border-bottom: 1px solid rgba(118, 93, 67, 0.12);
+}
+
+.stack-item:last-child {
+  border-bottom: none;
+}
+
+.quota-value {
+  font-size: 52rpx;
+  font-weight: 700;
+  color: #c4552d;
+}

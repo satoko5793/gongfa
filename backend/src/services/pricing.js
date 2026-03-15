@@ -1,7 +1,7 @@
 const { LEGACY_CAPS } = require("../config/catalog-config");
 
 const PRICE_CONFIG = {
-  version: "pricing_v1",
+  version: "pricing_v2",
   marketFactor: {
     min: 0.5,
     max: 4.0,

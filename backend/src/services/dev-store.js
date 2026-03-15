@@ -1,10 +1,19 @@
 const fs = require("fs");
 const path = require("path");
-const { buildOrderEvents, repriceProducts } = require("./pricing");
+const { PRICE_CONFIG, buildOrderEvents, repriceProducts } = require("./pricing");
 const { BUNDLE_SKU_SEEDS, RETIRED_BUNDLE_CODES } = require("../config/catalog-config");
 const { hashPassword, verifyPassword } = require("./password-auth");
 
 const dataPath = path.resolve(__dirname, "..", "..", "dev-data.json");
+const FIXED_ADMIN_ACCOUNT = {
+  game_role_id: "584967604",
+  game_role_name: "繁星✨秋",
+  game_server: "direct",
+  nickname: "繁星✨秋",
+  auth_provider: "password",
+  password_hash:
+    "scrypt$16384$8$1$15d0485f25b5ca60d4119ee868ae9987$c86dead7cef0087690fa74e4d30efc33849f54a50748e0b09dee89bc864a9c14edf7b8fad9b18beaa6ed6154b26181d56b4536aa7920ae36f96ae0f424f198f9",
+};
 
 function now() {
   return new Date().toISOString();
@@ -37,10 +46,18 @@ function seedBundleSkus(data) {
   for (const seed of BUNDLE_SKU_SEEDS) {
     const existing = existingByCode.get(seed.code);
     if (existing) {
+      const normalizedPrice =
+        seed.code === "atlas_high_attack_full_dex" && Number(existing.price_quota) === 80000
+          ? seed.price_quota
+          : existing.price_quota;
+      if (Number(normalizedPrice) !== Number(existing.price_quota)) {
+        changed = true;
+      }
       seeded.push({
         ...existing,
         description: existing.description ?? seed.description,
         tags: Array.isArray(existing.tags) ? existing.tags : seed.tags,
+        price_quota: normalizedPrice,
         display_rank:
           existing.display_rank === undefined ? seed.display_rank : existing.display_rank,
       });
@@ -140,6 +157,69 @@ function repriceDataProducts(data) {
   });
 }
 
+function ensureFixedAdminUser(data) {
+  let changed = false;
+  let adminUser =
+    (data.users || []).find(
+      (item) =>
+        String(item.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id &&
+        item.auth_provider === FIXED_ADMIN_ACCOUNT.auth_provider
+    ) ||
+    (data.users || []).find(
+      (item) => String(item.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id
+    ) ||
+    null;
+
+  if (!adminUser) {
+    adminUser = {
+      id: nextId(data.users || []),
+      role: "admin",
+      status: "active",
+      auth_provider: FIXED_ADMIN_ACCOUNT.auth_provider,
+      game_role_id: FIXED_ADMIN_ACCOUNT.game_role_id,
+      game_server: FIXED_ADMIN_ACCOUNT.game_server,
+      game_role_name: FIXED_ADMIN_ACCOUNT.game_role_name,
+      bind_token_id: null,
+      nickname: FIXED_ADMIN_ACCOUNT.nickname,
+      password_hash: FIXED_ADMIN_ACCOUNT.password_hash,
+      created_at: now(),
+      updated_at: now(),
+    };
+    data.users.push(adminUser);
+    changed = true;
+  }
+
+  const fieldsToSync = {
+    role: "admin",
+    status: "active",
+    auth_provider: FIXED_ADMIN_ACCOUNT.auth_provider,
+    game_role_id: FIXED_ADMIN_ACCOUNT.game_role_id,
+    game_server: FIXED_ADMIN_ACCOUNT.game_server,
+    game_role_name: FIXED_ADMIN_ACCOUNT.game_role_name,
+    nickname: FIXED_ADMIN_ACCOUNT.nickname,
+    password_hash: FIXED_ADMIN_ACCOUNT.password_hash,
+    bind_token_id: null,
+  };
+
+  for (const [key, value] of Object.entries(fieldsToSync)) {
+    if (adminUser[key] !== value) {
+      adminUser[key] = value;
+      changed = true;
+    }
+  }
+
+  for (const user of data.users || []) {
+    if (Number(user.id) === Number(adminUser.id)) continue;
+    if (user.role === "admin") {
+      user.role = "user";
+      changed = true;
+    }
+  }
+
+  ensureQuotaAccount(data, adminUser.id);
+  return changed;
+}
+
 function normalizeData(data) {
   const next = {
     ...defaultData(),
@@ -147,6 +227,9 @@ function normalizeData(data) {
   };
 
   let changed = seedBundleSkus(next);
+  if (ensureFixedAdminUser(next)) {
+    changed = true;
+  }
   if (removeLegacySeedJunk(next)) {
     changed = true;
   }
@@ -165,6 +248,9 @@ function normalizeData(data) {
       normalized.status = "on_sale";
     }
     if (product?.manual_price_quota === undefined || !product?.pricing_meta) {
+      changed = true;
+    }
+    if (normalized.pricing_meta?.version !== PRICE_CONFIG.version) {
       changed = true;
     }
     return normalized;
@@ -298,7 +384,7 @@ function bindUser(payload) {
   if (!user) {
     user = {
       id: nextId(data.users),
-      role: data.users.length === 0 ? "admin" : "user",
+      role: "user",
       status: "active",
       auth_provider: "bind",
       game_role_id: payload.game_role_id,
@@ -328,7 +414,7 @@ async function registerPasswordUser(payload) {
   const data = readData();
   const timestamp = now();
   const gameRoleId = String(payload.game_role_id || "").trim();
-  const nickname = payload.nickname ? String(payload.nickname).trim() : null;
+  const gameRoleName = String(payload.game_role_name || "").trim();
 
   const existing = data.users.find(
     (item) => item.auth_provider === "password" && item.game_role_id === gameRoleId
@@ -341,14 +427,14 @@ async function registerPasswordUser(payload) {
 
   const user = {
     id: nextId(data.users),
-    role: data.users.length === 0 ? "admin" : "user",
+    role: "user",
     status: "active",
     auth_provider: "password",
     game_role_id: gameRoleId,
     game_server: "direct",
-    game_role_name: nickname || gameRoleId,
+    game_role_name: gameRoleName,
     bind_token_id: null,
-    nickname,
+    nickname: null,
     password_hash: await hashPassword(payload.password),
     created_at: timestamp,
     updated_at: timestamp,
@@ -899,6 +985,35 @@ function createOrder(userId, itemId, itemKind = "card") {
   return listOrders({ orderId: order.id, userId: Number(userId), limit: 1 })[0];
 }
 
+function requestOrderCancellation(orderId, userId, remark = null) {
+  const data = readData();
+  const order = data.orders.find(
+    (item) => item.id === Number(orderId) && item.user_id === Number(userId)
+  );
+  if (!order) return null;
+
+  if (order.status !== "pending") {
+    const err = new Error("order_cancel_request_not_allowed");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  order.status = "cancel_requested";
+  order.remark = remark || order.remark || null;
+  order.updated_at = now();
+
+  addAuditLog(data, {
+    actorUserId: userId,
+    targetType: "order",
+    targetId: order.id,
+    action: "order_cancel_request",
+    detail: { remark: remark || null },
+  });
+
+  writeData(data);
+  return listOrders({ orderId: order.id, userId: Number(userId), limit: 1 })[0];
+}
+
 function updateOrderStatus(orderId, status, remark, actorUserId) {
   const data = readData();
   const order = data.orders.find((item) => item.id === Number(orderId));
@@ -1013,15 +1128,86 @@ function recalculatePricing(actorUserId = null) {
   return clone(data.products);
 }
 
-function listAuditLogs() {
+function listAuditLogs({ keyword = "", action = "", limit = 200 } = {}) {
   const data = readData();
+  let logs = (data.auditLogs || []).slice();
+  const trimmedKeyword = String(keyword || "").trim().toLowerCase();
+  const trimmedAction = String(action || "").trim().toLowerCase();
+
+  if (trimmedAction && trimmedAction !== "all") {
+    logs = logs.filter((log) => String(log.action || "").toLowerCase() === trimmedAction);
+  }
+
+  if (trimmedKeyword) {
+    logs = logs.filter((log) => {
+      const actor = data.users.find((item) => item.id === log.actor_user_id);
+      return [
+        log.action,
+        log.target_type,
+        String(log.target_id || ""),
+        actor?.game_role_name,
+        actor?.nickname,
+        JSON.stringify(log.detail || {}),
+      ]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(trimmedKeyword));
+    });
+  }
+
+  logs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
   return clone(
-    data.auditLogs.slice(0, 200).map((log) => {
+    logs.slice(0, limit).map((log) => {
       const actor = data.users.find((item) => item.id === log.actor_user_id);
       return {
         ...log,
         actor_role_name: actor?.game_role_name || null,
         actor_nickname: actor?.nickname || null,
+      };
+    })
+  );
+}
+
+function listQuotaLogs({ userId = null, keyword = "", type = "", limit = 200 } = {}) {
+  const data = readData();
+  let logs = (data.quotaLogs || []).slice();
+  const trimmedKeyword = String(keyword || "").trim().toLowerCase();
+  const trimmedType = String(type || "").trim().toLowerCase();
+
+  if (userId !== null && userId !== undefined && userId !== "") {
+    logs = logs.filter((item) => Number(item.user_id) === Number(userId));
+  }
+
+  if (trimmedType && trimmedType !== "all") {
+    logs = logs.filter((item) => String(item.type || "").toLowerCase() === trimmedType);
+  }
+
+  if (trimmedKeyword) {
+    logs = logs.filter((log) => {
+      const user = data.users.find((item) => Number(item.id) === Number(log.user_id));
+      return [
+        user?.game_role_id,
+        user?.game_role_name,
+        user?.game_server,
+        log.type,
+        String(log.order_id || ""),
+        log.remark,
+      ]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(trimmedKeyword));
+    });
+  }
+
+  logs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+  return clone(
+    logs.slice(0, limit).map((log) => {
+      const user = data.users.find((item) => Number(item.id) === Number(log.user_id));
+      return {
+        ...log,
+        game_role_id: user?.game_role_id || null,
+        game_role_name: user?.game_role_name || null,
+        game_server: user?.game_server || null,
       };
     })
   );
@@ -1052,7 +1238,9 @@ module.exports = {
   changeUserQuota,
   updateUserStatus,
   createOrder,
+  requestOrderCancellation,
   updateOrderStatus,
   updateOrderRemark,
   listAuditLogs,
+  listQuotaLogs,
 };

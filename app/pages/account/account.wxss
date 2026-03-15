@@ -1,0 +1,100 @@
+.section {
+  margin-top: 0;
+}
+
+.guide-card,
+.contact-card {
+  background: linear-gradient(180deg, rgba(255, 248, 240, 0.95) 0%, rgba(255, 252, 248, 0.98) 100%);
+}
+
+.guide-line {
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: #4d4338;
+}
+
+.guide-line + .guide-line {
+  margin-top: 10rpx;
+}
+
+.info-label {
+  font-size: 24rpx;
+  color: #6a6157;
+}
+
+.info-value {
+  margin-top: 8rpx;
+  font-size: 30rpx;
+  color: #201b16;
+  font-weight: 600;
+}
+
+.order-card {
+  padding: 20rpx 0;
+  border-bottom: 1px solid rgba(118, 93, 67, 0.12);
+}
+
+.order-card:last-child {
+  border-bottom: none;
+}
+
+.order-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.order-number {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #201b16;
+}
+
+.order-status {
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+}
+
+.status-pending {
+  background: #fff2d8;
+  color: #9a5b0e;
+}
+
+.status-confirmed {
+  background: #e5f5e9;
+  color: #23653a;
+}
+
+.status-cancel-requested {
+  background: #f3e8ff;
+  color: #6c3ca3;
+}
+
+.status-cancelled {
+  background: #f8e1de;
+  color: #9d3528;
+}
+
+.status-neutral {
+  background: #eee4d6;
+  color: #6a6157;
+}
+
+.order-main {
+  margin-top: 12rpx;
+  font-size: 28rpx;
+  color: #201b16;
+}
+
+.order-meta {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #6a6157;
+}
+
+
+.order-actions {
+  margin-top: 16rpx;
+}

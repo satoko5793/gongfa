@@ -1,0 +1,26 @@
+{
+  "appid": "wxd777b732c680e77f",
+  "projectname": "miniapp",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "./",
+  "simulatorType": "wechat",
+  "setting": {
+    "es6": true,
+    "postcss": true,
+    "minified": false,
+    "uglifyFileName": false,
+    "enhance": true,
+    "packNpmRelationList": [],
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "useCompilerPlugins": false
+  },
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "editorSetting": {}
+}

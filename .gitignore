@@ -5,6 +5,12 @@
 backend/node_modules/
 backend/run-logs/
 backend/dev-data.json
+backend/server.log
+
+tmp-products.json
+miniapp1/
+app/project.private.config.json
+mp-app/project.private.config.json
 
 message-history-*.json
 

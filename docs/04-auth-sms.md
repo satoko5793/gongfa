@@ -14,15 +14,16 @@
 ### 流程
 
 1. 用户在商城前台输入 `游戏 ID`
-2. 首次使用时设置密码并注册
-3. 服务端创建 `auth_provider='password'` 的商城用户
-4. 服务端签发 JWT
-5. 前端保存 JWT，后续直接访问 `/auth/me`、`/me/*`、`/orders/*`
+2. 输入 `游戏名称`
+3. 首次使用时设置密码并注册
+4. 服务端创建 `auth_provider='password'` 的商城用户
+5. 服务端签发 JWT
+6. 前端保存 JWT，后续直接访问 `/auth/me`、`/me/*`、`/orders/*`
 
 ### 约束
 
 - 当前密码登录用户固定使用 `game_server='direct'`
-- `game_role_name` 默认回填为昵称或游戏 ID
+- `game_role_name` 由用户注册时直接填写
 - 只保存密码哈希，不保存明文密码
 
 ## 辅助方案：helper 扫码绑定

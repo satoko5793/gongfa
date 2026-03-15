@@ -1,0 +1,16 @@
+node_modules
+backend/node_modules
+xyzw_web_helper/node_modules
+app
+miniapp
+miniapp1
+mp-app
+exports
+.git
+.env
+.env.*
+!.env.production.example
+backend/dev-data.json
+*.log
+npm-debug.log*
+yarn-error.log*

@@ -1,0 +1,71 @@
+<view class="page">
+  <view class="section" wx:if="{{notice}}">
+    <view class="notice">{{notice}}</view>
+  </view>
+
+  <view class="section" wx:if="{{error}}">
+    <view>{{error}}</view>
+  </view>
+
+  <view class="section" wx:if="{{loading}}">
+    <view>商品详情加载中...</view>
+  </view>
+
+  <view class="section detail-card" wx:if="{{product}}">
+    <view class="detail-head">
+      <view>
+        <view class="section-title">{{product.name}}</view>
+        <view class="muted">ID {{product.legacy_id}} / {{product.item_kind}}</view>
+      </view>
+      <view class="detail-price">{{product.price_quota}}</view>
+    </view>
+
+    <view class="detail-badges">
+      <view class="detail-badge">库存 {{product.stock_label}}</view>
+      <view class="detail-badge" wx:if="{{product.status}}">{{product.status}}</view>
+    </view>
+
+    <view class="detail-grid">
+      <view class="detail-metric" wx:if="{{product.attack_value}}">
+        <view class="metric-label">攻击</view>
+        <view class="metric-value">{{product.attack_value}}</view>
+      </view>
+      <view class="detail-metric" wx:if="{{product.hp_value}}">
+        <view class="metric-label">血量</view>
+        <view class="metric-value">{{product.hp_value}}</view>
+      </view>
+    </view>
+
+    <view class="detail-line" wx:if="{{product.main_attrs}}">
+      <text class="metric-label">主词条</text>
+      <text class="line-value">{{product.main_attrs}}</text>
+    </view>
+    <view class="detail-line" wx:if="{{product.ext_attrs}}">
+      <text class="metric-label">额外词条</text>
+      <text class="line-value">{{product.ext_attrs}}</text>
+    </view>
+  </view>
+
+  <view class="section" wx:if="{{orderResult}}">
+    <view class="section-title">下单结果</view>
+    <view class="stack-item">订单号：#{{orderResult.id}}</view>
+    <view class="stack-item">状态：{{orderResult.status}}</view>
+    <view class="stack-item">扣除额度：{{orderResult.total_quota}}</view>
+    <view class="actions">
+      <button class="ghost-btn" bindtap="goToOrders">查看我的订单</button>
+    </view>
+  </view>
+
+  <view class="section action-card">
+    <view class="muted" wx:if="{{!session}}">当前未登录，点击购买会先跳到账户页。</view>
+    <button
+      class="primary-btn"
+      loading="{{submitting}}"
+      disabled="{{loading || !product || product.status === 'sold' || product.status === 'off_sale'}}"
+      bindtap="submitOrder"
+    >
+      确认购买
+    </button>
+    <button class="ghost-btn secondary-action" bindtap="goToAccount">去账户页</button>
+  </view>
+</view>

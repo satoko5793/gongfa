@@ -23,11 +23,11 @@ function validateBindInput(body) {
 function validatePasswordRegisterInput(body) {
   const errors = [];
   if (!requiredString(body.game_role_id)) errors.push("game_role_id_required");
+  if (!requiredString(body.game_role_name)) errors.push("game_role_name_required");
   if (!requiredString(body.password)) errors.push("password_required");
   if (requiredString(body.password) && body.password.trim().length < 6) {
     errors.push("password_too_short");
   }
-  if (!optionalString(body.nickname)) errors.push("nickname_invalid");
   return errors;
 }
 
@@ -97,7 +97,7 @@ function validateOrderCreate(body) {
 }
 
 function validateOrderStatus(status) {
-  return ["pending", "confirmed", "cancelled"].includes(status);
+  return ["pending", "confirmed", "cancel_requested", "cancelled"].includes(status);
 }
 
 function validateBundleUpdate(body) {

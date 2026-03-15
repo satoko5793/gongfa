@@ -23,7 +23,7 @@ const orderList = document.getElementById("order-list");
 
 const registerForm = document.getElementById("register-form");
 const registerRoleIdInput = document.getElementById("register-role-id");
-const registerNicknameInput = document.getElementById("register-nickname");
+const registerRoleNameInput = document.getElementById("register-role-name");
 const registerPasswordInput = document.getElementById("register-password");
 const loginForm = document.getElementById("login-form");
 const loginRoleIdInput = document.getElementById("login-role-id");
@@ -118,6 +118,19 @@ function setProductDetailMessage(text, type = "") {
   productDetailMessage.className = type ? `notice ${type}` : "notice";
 }
 
+function pickErrorMessage(error, fallback) {
+  const details = error?.payload?.details;
+  if (Array.isArray(details) && details.length > 0) {
+    return details.join(", ");
+  }
+  return error?.payload?.error || error?.message || fallback;
+}
+
+function getCurrentQuotaValue() {
+  const value = Number(String(quotaBalance.textContent || "").trim());
+  return Number.isFinite(value) ? value : null;
+}
+
 function fillBindForm(payload) {
   if (!payload) return;
   bindRoleIdInput.value = payload.game_role_id || "";
@@ -137,7 +150,8 @@ function renderSessionSummary(profile) {
 
   sessionSummary.textContent = profile.game_role_name || "已登录";
   const authLabel = profile.auth_provider === "password" ? "密码登录" : "绑定登录";
-  sessionRole.textContent = `${profile.game_server} / ${profile.role} / ${authLabel}`;
+  const serverText = profile.auth_provider === "password" ? "免区服" : profile.game_server;
+  sessionRole.textContent = `${serverText} / ${profile.role} / ${authLabel}`;
 }
 
 function isBundle(product) {
@@ -665,19 +679,18 @@ function renderProducts(products) {
 
 function renderProfile(profile, quota, orders) {
   if (!profile) {
-    accountProfile.innerHTML = '<div class="stack-item">尚未登录。</div>';
+    accountProfile.innerHTML = '<div class="stack-item">?????</div>';
     quotaBalance.textContent = "-";
-    orderList.innerHTML = '<div class="stack-item">请先登录账号。</div>';
+    orderList.innerHTML = '<div class="stack-item">???????</div>';
     return;
   }
 
   accountProfile.innerHTML = [
-    `角色名：${escapeHtml(profile.game_role_name)}`,
-    `角色 ID：${escapeHtml(profile.game_role_id)}`,
-    `区服：${escapeHtml(profile.game_server)}`,
-    `角色：${escapeHtml(profile.role)}`,
-    `登录方式：${escapeHtml(profile.auth_provider === "password" ? "密码登录" : "绑定登录")}`,
-    `昵称：${escapeHtml(profile.nickname || "-")}`,
+    `????${escapeHtml(profile.game_role_name)}` ,
+    `?? ID?${escapeHtml(profile.game_role_id)}` ,
+    `???${escapeHtml(profile.auth_provider === "password" ? "-" : profile.game_server)}` ,
+    `???${escapeHtml(profile.role)}` ,
+    `?????${escapeHtml(profile.auth_provider === "password" ? "????" : "????")}` ,
   ]
     .map((line) => `<div class="stack-item">${line}</div>`)
     .join("");
@@ -685,26 +698,41 @@ function renderProfile(profile, quota, orders) {
   quotaBalance.textContent = String(quota?.balance ?? profile.quota_balance ?? 0);
 
   if (!orders || orders.length === 0) {
-    orderList.innerHTML = '<div class="stack-item">暂无订单。</div>';
+    orderList.innerHTML = '<div class="stack-item">?????</div>';
     return;
   }
 
   orderList.innerHTML = orders
     .map((order) => {
       const itemNames = (order.items || []).map((item) => item.product_name).join(" / ");
-      const remark = order.remark ? `<div class="muted">备注：${escapeHtml(order.remark)}</div>` : "";
+      const remark = order.remark
+        ? `<div class="muted">???${escapeHtml(order.remark)}</div>`
+        : "";
+      const actions =
+        order.status === "pending"
+          ? `
+            <div class="actions">
+              <button class="ghost request-cancel-btn" type="button" data-order-id="${order.id}">
+                ????
+              </button>
+            </div>
+          `
+          : order.status === "cancel_requested"
+            ? '<div class="muted">????????????????</div>'
+            : "";
+
       return `
         <div class="stack-item">
-          <div>订单 #${order.id} / ${escapeHtml(order.status)}</div>
-          <div class="muted">商品：${escapeHtml(itemNames || "-")}</div>
-          <div class="muted">额度：${Number(order.total_quota || 0)} / 创建时间：${formatDate(order.created_at)}</div>
+          <div>?? #${order.id} / ${escapeHtml(order.status)}</div>
+          <div class="muted">???${escapeHtml(itemNames || "-")}</div>
+          <div class="muted">???${Number(order.total_quota || 0)} / ?????${formatDate(order.created_at)}</div>
           ${remark}
+          ${actions}
         </div>
       `;
     })
     .join("");
 }
-
 function findProduct(itemId, itemKind) {
   return (
     currentProducts.find(
@@ -857,12 +885,12 @@ async function registerAccount(event) {
   try {
     const result = await apiFetch("/auth/register", {
       method: "POST",
-      body: JSON.stringify({
-        game_role_id: registerRoleIdInput.value.trim(),
-        nickname: registerNicknameInput.value.trim(),
-        password: registerPasswordInput.value,
-      }),
-    });
+        body: JSON.stringify({
+          game_role_id: registerRoleIdInput.value.trim(),
+          game_role_name: registerRoleNameInput.value.trim(),
+          password: registerPasswordInput.value,
+        }),
+      });
     saveSession(result);
     setNotice("注册成功，已自动登录。", "success");
     registerPasswordInput.value = "";
@@ -895,29 +923,74 @@ async function loginAccount(event) {
 async function confirmPurchase() {
   const session = loadSession();
   if (!session?.token) {
-    setProductDetailMessage("请先登录账号后再购买。", "error");
-    setNotice("请先登录账号后再购买。", "error");
+    setProductDetailMessage("???????????", "error");
+    setNotice("???????????", "error");
     window.location.hash = "bind";
     return;
   }
 
+  const product = findProduct(activeItemId, activeItemKind);
+  if (!product) {
+    setProductDetailMessage("????????????", "error");
+    return;
+  }
+
+  const currentQuota = getCurrentQuotaValue();
+  const price = Number(product.price_quota || 0);
+  if (currentQuota !== null && currentQuota < price) {
+    setProductDetailMessage(`??????? ${price - currentQuota}?`, "error");
+    return;
+  }
+
+  const remaining = currentQuota === null ? null : currentQuota - price;
+  const confirmed = window.confirm([
+    `?????${product.name}`,
+    `?????${price}`,
+    remaining === null ? "??????????" : `??????${remaining}`,
+  ].join("\n"));
+
+  if (!confirmed) {
+    setProductDetailMessage("??????");
+    return;
+  }
+
   try {
-    await apiFetch("/orders", {
+    const order = await apiFetch("/orders", {
       method: "POST",
       body: JSON.stringify({
         item_id: Number(activeItemId),
         item_kind: activeItemKind,
       }),
     });
-    setNotice("下单成功。", "success");
+    const latestQuota = await apiFetch("/me/quota");
+    const nextBalance = Number(latestQuota?.balance ?? remaining ?? 0);
+    setNotice(`??????? #${order.id} ????`, "success");
+    setProductDetailMessage(`??? ${price} ??????? ${nextBalance}?`, "success");
     closeProductModal();
     await Promise.all([loadProducts(), loadAccount()]);
   } catch (error) {
-    setProductDetailMessage(`下单失败：${error.message}`, "error");
-    setNotice(`下单失败：${error.message}`, "error");
+    const message = pickErrorMessage(error, "????");
+    setProductDetailMessage(`?????${message}`, "error");
+    setNotice(`?????${message}`, "error");
   }
 }
 
+async function requestCancelOrder(orderId) {
+  const confirmed = window.confirm("?????????????????????");
+  if (!confirmed) return;
+
+  try {
+    await apiFetch(`/orders/${orderId}/cancel-request`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    setNotice(`?? #${orderId} ????????`, "success");
+    await loadAccount();
+  } catch (error) {
+    const message = pickErrorMessage(error, "??????");
+    setNotice(`???????${message}`, "error");
+  }
+}
 function openHelper() {
   const origin = helperOriginInput.value.trim();
   if (!origin) {
@@ -968,6 +1041,11 @@ productGrid.addEventListener("click", (event) => {
   const button = event.target.closest(".detail-btn, .buy-btn");
   if (!button) return;
   openProductModal(button.getAttribute("data-item-id"), button.getAttribute("data-item-kind"));
+});
+orderList.addEventListener("click", (event) => {
+  const button = event.target.closest(".request-cancel-btn");
+  if (!button) return;
+  requestCancelOrder(button.getAttribute("data-order-id"));
 });
 productDetailModal.addEventListener("click", (event) => {
   if (event.target === productDetailModal) closeProductModal();

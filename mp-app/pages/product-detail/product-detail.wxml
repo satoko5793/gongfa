@@ -1,0 +1,114 @@
+<view class="page has-floating-tab">
+  <view class="section" wx:if="{{notice}}">
+    <view class="notice">{{notice}}</view>
+  </view>
+
+  <view class="section" wx:if="{{error}}">
+    <view>{{error}}</view>
+  </view>
+
+  <view class="section" wx:if="{{loading}}">
+    <view>商品详情加载中...</view>
+  </view>
+
+  <view class="section detail-card {{product.theme_class}}" wx:if="{{product}}">
+    <view class="detail-cover">
+      <image wx:if="{{product.cover_mode === 'single'}}" class="detail-cover-image" src="{{product.cover_url}}" mode="aspectFill" />
+      <view wx:elif="{{product.cover_mode === 'collage'}}" class="detail-cover-collage {{product.cover_images.length >= 6 ? 'six' : 'four'}}">
+        <image
+          wx:for="{{product.cover_images}}"
+          wx:key="key"
+          class="detail-collage-image"
+          src="{{item.url}}"
+          mode="aspectFill"
+        />
+      </view>
+      <view wx:else class="detail-cover-fallback">{{product.tier_label}}</view>
+    </view>
+
+    <view class="detail-head">
+      <view>
+        <view class="section-title">{{product.name}}</view>
+        <view class="muted">{{product.tier_label}} / ID {{product.legacy_id}} / {{product.item_kind}}</view>
+      </view>
+      <view class="detail-price">{{product.price_quota}}</view>
+    </view>
+
+    <view class="detail-badges">
+      <view class="detail-badge">库存 {{product.stock_label}}</view>
+      <view class="detail-badge" wx:if="{{product.status_label}}">{{product.status_label}}</view>
+    </view>
+
+    <view class="detail-grid">
+      <view class="detail-metric" wx:if="{{product.attack_value}}">
+        <view class="metric-label-row">
+          <view class="metric-label">攻击</view>
+          <view class="metric-full" wx:if="{{product.attack_is_full}}">满攻</view>
+        </view>
+        <view class="metric-value">{{product.attack_value}}</view>
+      </view>
+      <view class="detail-metric" wx:if="{{product.hp_value}}">
+        <view class="metric-label-row">
+          <view class="metric-label">血量</view>
+          <view class="metric-full" wx:if="{{product.hp_is_full}}">满血</view>
+        </view>
+        <view class="metric-value">{{product.hp_value}}</view>
+      </view>
+    </view>
+
+    <view class="term-row" wx:if="{{product.term_badges.length}}">
+      <view
+        wx:for="{{product.term_badges}}"
+        wx:key="key"
+        class="term-badge term-{{item.kind}} {{item.isFull ? 'full' : ''}}"
+      >
+        {{item.label}}
+        <text wx:if="{{item.isFull}}"> 满词条</text>
+      </view>
+    </view>
+
+    <view class="detail-line" wx:if="{{product.main_attrs_label}}">
+      <text class="metric-label">主词条</text>
+      <text class="line-value">{{product.main_attrs_label}}</text>
+    </view>
+    <view class="detail-line" wx:if="{{product.ext_attrs_label && !product.term_badges.length}}">
+      <text class="metric-label">额外词条</text>
+      <text class="line-value">{{product.ext_attrs_label}}</text>
+    </view>
+  </view>
+
+  <view class="section" wx:if="{{orderResult}}">
+    <view class="section-title">下单结果</view>
+    <view class="stack-item">订单号：#{{orderResult.id}}</view>
+    <view class="stack-item">状态：{{orderResult.status}}</view>
+    <view class="stack-item">扣除额度：{{orderResult.total_quota}}</view>
+    <view class="stack-item">剩余额度：{{orderResult.remaining_balance}}</view>
+    <view class="actions">
+      <button class="ghost-btn" bindtap="goToOrders">查看我的订单</button>
+    </view>
+  </view>
+
+  <view class="section action-card">
+    <view class="muted" wx:if="{{!session}}">当前未登录，点击购买会先跳到账户页。</view>
+    <button
+      class="primary-btn"
+      loading="{{submitting}}"
+      disabled="{{loading || !product || product.status === 'sold' || product.status === 'off_sale'}}"
+      bindtap="submitOrder"
+    >
+      确认购买
+    </button>
+    <button class="ghost-btn secondary-action" bindtap="goToAccount">去账户页</button>
+  </view>
+
+  <view class="floating-tab-bar">
+    <view class="floating-tab-item" bindtap="goMallTab">
+      <view class="floating-tab-icon">商</view>
+      <view class="floating-tab-label">商城</view>
+    </view>
+    <view class="floating-tab-item" bindtap="goAccountTab">
+      <view class="floating-tab-icon">我</view>
+      <view class="floating-tab-label">个人信息</view>
+    </view>
+  </view>
+</view>
