@@ -189,6 +189,19 @@ function ensureFixedAdminUser(data) {
     changed = true;
   }
 
+  const duplicatePasswordUsers = (data.users || []).filter(
+    (item) =>
+      Number(item.id) !== Number(adminUser.id) &&
+      item.auth_provider === FIXED_ADMIN_ACCOUNT.auth_provider &&
+      String(item.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id
+  );
+  if (duplicatePasswordUsers.length) {
+    data.users = (data.users || []).filter(
+      (item) => !duplicatePasswordUsers.some((duplicate) => Number(duplicate.id) === Number(item.id))
+    );
+    changed = true;
+  }
+
   const fieldsToSync = {
     role: "admin",
     status: "active",
@@ -448,16 +461,57 @@ async function registerPasswordUser(payload) {
 
 async function loginPasswordUser(gameRoleId, password) {
   const data = readData();
-  const user = data.users.find(
-    (item) => item.auth_provider === "password" && item.game_role_id === String(gameRoleId || "").trim()
-  );
-  if (!user) {
+  const normalizedGameRoleId = String(gameRoleId || "").trim();
+  const candidates = (data.users || [])
+    .filter(
+      (item) =>
+        item.auth_provider === "password" && String(item.game_role_id || "") === normalizedGameRoleId
+    )
+    .sort((left, right) => {
+      const leftPriority =
+        String(left.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id && left.role === "admin" ? 1 : 0;
+      const rightPriority =
+        String(right.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id && right.role === "admin" ? 1 : 0;
+      if (leftPriority !== rightPriority) {
+        return rightPriority - leftPriority;
+      }
+      return Number(right.id || 0) - Number(left.id || 0);
+    });
+
+  if (!candidates.length) {
     const err = new Error("invalid_credentials");
     err.statusCode = 401;
     throw err;
   }
-  const matched = await verifyPassword(password, user.password_hash);
-  if (!matched) {
+
+  let user = null;
+  for (const candidate of candidates) {
+    const matched = await verifyPassword(password, candidate.password_hash);
+    if (matched) {
+      user = candidate;
+      break;
+    }
+  }
+
+  if (!user) {
+    const fixedAdminMatched =
+      normalizedGameRoleId === FIXED_ADMIN_ACCOUNT.game_role_id &&
+      (await verifyPassword(password, FIXED_ADMIN_ACCOUNT.password_hash));
+    if (fixedAdminMatched) {
+      const fixedAdminUser =
+        (data.users || []).find(
+          (item) =>
+            item.auth_provider === FIXED_ADMIN_ACCOUNT.auth_provider &&
+            String(item.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id &&
+            item.role === "admin"
+        ) || null;
+      if (fixedAdminUser) {
+        user = fixedAdminUser;
+      }
+    }
+  }
+
+  if (!user) {
     const err = new Error("invalid_credentials");
     err.statusCode = 401;
     throw err;
