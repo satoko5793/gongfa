@@ -29,6 +29,20 @@ function unwrapRawJson(rawValue) {
   return value;
 }
 
+function buildImportSummary(result) {
+  const importRow = result?.import || {};
+  return {
+    import: {
+      id: importRow.id || null,
+      source_type: importRow.source_type || null,
+      source_file_name: importRow.source_file_name || null,
+      imported_by: importRow.imported_by || null,
+      created_at: importRow.created_at || null,
+    },
+    parsed_count: Number(result?.parsed_count || 0),
+  };
+}
+
 adminRouter.post("/imports/cards-json", async (req, res, next) => {
   if (useFileStore()) {
     try {
@@ -43,13 +57,15 @@ adminRouter.post("/imports/cards-json", async (req, res, next) => {
         return res.status(400).json({ error: "legacy_cards_not_found" });
       }
       return res.json(
-        devStore.importCards({
-          sourceType: body.source_type || "upload",
-          sourceFileName: body.source_file_name || null,
-          rawJson,
-          importedBy: req.user.id,
-          parsedProducts,
-        })
+        buildImportSummary(
+          devStore.importCards({
+            sourceType: body.source_type || "upload",
+            sourceFileName: body.source_file_name || null,
+            rawJson,
+            importedBy: req.user.id,
+            parsedProducts,
+          })
+        )
       );
     } catch (error) {
       return next(error);
@@ -138,10 +154,12 @@ adminRouter.post("/imports/cards-json", async (req, res, next) => {
     );
 
     await client.query("COMMIT");
-    return res.json({
-      import: importRow,
-      parsed_count: parsedProducts.length,
-    });
+    return res.json(
+      buildImportSummary({
+        import: importRow,
+        parsed_count: parsedProducts.length,
+      })
+    );
   } catch (error) {
     await client.query("ROLLBACK");
     return next(error);

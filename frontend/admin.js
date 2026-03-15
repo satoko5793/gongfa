@@ -32,6 +32,8 @@ const linkedOrderUserState = document.getElementById("linked-order-user-state");
 const bulkPriceInput = document.getElementById("bulk-price-input");
 const bulkStockInput = document.getElementById("bulk-stock-input");
 const recalculatePricingBtn = document.getElementById("recalculate-pricing-btn");
+const importForm = document.getElementById("import-form");
+const importSubmitBtn = importForm?.querySelector('button[type="submit"]') || null;
 
 const selectedProductIds = new Set();
 let allProducts = [];
@@ -71,6 +73,11 @@ function formatOrderStatusLabel(status) {
       return "已取消";
     default:
       return status || "-";
+  } finally {
+    if (importSubmitBtn) {
+      importSubmitBtn.disabled = false;
+      importSubmitBtn.textContent = "导入并生成商品";
+    }
   }
 }
 
@@ -759,6 +766,11 @@ function logoutAdmin() {
 
 async function submitImport(event) {
   event.preventDefault();
+  if (importSubmitBtn) {
+    importSubmitBtn.disabled = true;
+    importSubmitBtn.textContent = "导入中...";
+  }
+  setMessage("正在导入商品，请稍等...", "success");
   try {
     const result = await apiFetch("/admin/imports/cards-json", {
       method: "POST",
@@ -1057,7 +1069,7 @@ ordersRoot.addEventListener("click", async (event) => {
 
 adminLoginForm?.addEventListener("submit", submitAdminLogin);
 adminLogoutBtn?.addEventListener("click", logoutAdmin);
-document.getElementById("import-form").addEventListener("submit", submitImport);
+importForm?.addEventListener("submit", submitImport);
 document.getElementById("load-sample-json-btn").addEventListener("click", loadSampleJson);
 document.getElementById("reload-admin-btn").addEventListener("click", reloadAll);
 document.getElementById("reload-orders-btn").addEventListener("click", () => {
