@@ -22,6 +22,7 @@ const navAdminLink = document.getElementById("nav-admin-link");
 const helperOriginInput = document.getElementById("helper-origin-input");
 const bindMessage = document.getElementById("bind-message");
 const bindSection = document.getElementById("bind");
+const accountSection = document.getElementById("account");
 const accountProfile = document.getElementById("account-profile");
 const quotaBalance = document.getElementById("quota-balance");
 const orderList = document.getElementById("order-list");
@@ -39,6 +40,12 @@ const accountNewPasswordInput = document.getElementById("account-new-password");
 const accountConfirmPasswordInput = document.getElementById("account-confirm-password");
 const rechargeBody = document.getElementById("recharge-body");
 const rechargeOrderList = document.getElementById("recharge-order-list");
+const authTabButtons = Array.from(document.querySelectorAll("[data-auth-tab]"));
+const authTabPanels = Array.from(document.querySelectorAll("[data-auth-panel]"));
+const accountTabButtons = Array.from(document.querySelectorAll("[data-account-tab]"));
+const accountTabPanels = Array.from(document.querySelectorAll("[data-account-panel]"));
+const accountTabLinks = Array.from(document.querySelectorAll("[data-account-tab-target]"));
+const accountSecurityTabButton = document.querySelector('[data-account-tab="security"]');
 
 const registerForm = document.getElementById("register-form");
 const registerRoleIdInput = document.getElementById("register-role-id");
@@ -69,6 +76,8 @@ let currentRechargeOrders = [];
 let selectedRechargeAmount = null;
 let selectedRechargeOrderType = "normal";
 let productSearchTimer = null;
+let activeAuthTab = "register";
+let activeAccountTab = "overview";
 const productPaginationState = {
   page: 1,
   pageSize: 12,
@@ -219,18 +228,64 @@ function setAccountMessage(text, type = "") {
   accountMessage.className = type ? `notice ${type}` : "notice";
 }
 
+function activateAuthTab(tab) {
+  activeAuthTab = tab === "login" ? "login" : "register";
+  authTabButtons.forEach((button) => {
+    button.classList.toggle("active", button.getAttribute("data-auth-tab") === activeAuthTab);
+  });
+  authTabPanels.forEach((panel) => {
+    panel.classList.toggle("hidden", panel.getAttribute("data-auth-panel") !== activeAuthTab);
+  });
+}
+
+function activateAccountTab(tab, { scroll = false } = {}) {
+  const allowedTabs = new Set(["overview", "profile", "security", "recharge", "orders"]);
+  let nextTab = allowedTabs.has(tab) ? tab : "overview";
+  if (nextTab === "security" && accountSecurityTabButton?.classList.contains("hidden")) {
+    nextTab = "overview";
+  }
+  activeAccountTab = nextTab;
+  accountTabButtons.forEach((button) => {
+    button.classList.toggle("active", button.getAttribute("data-account-tab") === activeAccountTab);
+  });
+  accountTabPanels.forEach((panel) => {
+    panel.classList.toggle("hidden", panel.getAttribute("data-account-panel") !== activeAccountTab);
+  });
+  if (scroll) {
+    accountSection?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+}
+
+function syncAccountTabWithHash() {
+  const hash = String(window.location.hash || "").replace(/^#/, "");
+  const hashMap = {
+    account: "overview",
+    "recharge-panel": "recharge",
+    "help-panel": "orders",
+    "order-panel": "orders",
+  };
+  if (!hashMap[hash]) return;
+  activateAccountTab(hashMap[hash]);
+}
+
 function updateShellVisibility(profile) {
   const loggedIn = Boolean(profile);
   const isAdmin = profile?.role === "admin";
+  const canChangePassword = loggedIn && profile?.auth_provider === "password";
   navBindLink?.classList.toggle("hidden", loggedIn);
   navAdminLink?.classList.toggle("hidden", !isAdmin);
   bindSection?.classList.toggle("hidden", loggedIn);
   accountLogoutBtn?.classList.toggle("hidden", !loggedIn);
   accountSwitchLink?.classList.toggle("hidden", !loggedIn);
-  accountPasswordPanel?.classList.toggle(
-    "hidden",
-    !loggedIn || profile?.auth_provider !== "password"
-  );
+  accountSecurityTabButton?.classList.toggle("hidden", !canChangePassword);
+  if (!canChangePassword && activeAccountTab === "security") {
+    activeAccountTab = "overview";
+  }
+  accountPasswordPanel?.classList.toggle("hidden", !canChangePassword || activeAccountTab !== "security");
+  activateAccountTab(activeAccountTab);
 }
 
 function fillAccountForms(profile) {
@@ -1179,6 +1234,7 @@ async function bindAccount(event) {
     });
     saveSession(result);
     setNotice("绑定成功，已保存登录状态。", "success");
+    activateAccountTab("overview");
     window.location.hash = "account";
     await loadAccount();
   } catch (error) {
@@ -1200,6 +1256,7 @@ async function loginAccount(event) {
     saveSession(result);
     setNotice("登录成功。", "success");
     loginPasswordInput.value = "";
+    activateAccountTab("overview");
     window.location.hash = "account";
     await loadAccount();
   } catch (error) {
@@ -1343,6 +1400,7 @@ function logoutCurrentSession(options = {}) {
   clearSession();
   currentRechargeConfig = null;
   currentRechargeOrders = [];
+  activateAccountTab("overview");
   renderSessionSummary(null);
   renderProfile(null, null, []);
   renderRechargeSection(null, null, []);
@@ -1401,6 +1459,7 @@ async function handleRegisterSubmit(event) {
     registerPasswordInput.value = "";
     registerPasswordConfirmInput.value = "";
     syncRegisterPasswordValidation(false);
+    activateAccountTab("overview");
     window.location.hash = "account";
     await loadAccount();
   } catch (error) {
@@ -1441,6 +1500,25 @@ registerPasswordInput?.addEventListener("input", () => syncRegisterPasswordValid
 registerPasswordConfirmInput?.addEventListener("input", () => syncRegisterPasswordValidation(false));
 registerPasswordConfirmInput?.addEventListener("blur", () => syncRegisterPasswordValidation(true));
 registerRoleIdInput?.addEventListener("input", () => registerRoleIdInput.setCustomValidity(""));
+authTabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    activateAuthTab(button.getAttribute("data-auth-tab"));
+  });
+});
+accountTabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    activateAccountTab(button.getAttribute("data-account-tab"));
+  });
+});
+accountTabLinks.forEach((link) => {
+  link.addEventListener("click", (event) => {
+    const targetTab = link.getAttribute("data-account-tab-target") || "overview";
+    event.preventDefault();
+    window.location.hash =
+      targetTab === "recharge" ? "recharge-panel" : targetTab === "orders" ? "help-panel" : "account";
+    activateAccountTab(targetTab, { scroll: true });
+  });
+});
 keywordInput.addEventListener("input", () => {
   resetProductPagination();
   if (productSearchTimer) {
@@ -1526,7 +1604,11 @@ window.addEventListener("message", (event) => applyIncomingPayload(event.data));
 window.addEventListener("storage", (event) => {
   if (event.key === "gongfa_session_v1") loadAccount();
 });
+window.addEventListener("hashchange", syncAccountTabWithHash);
 
+activateAuthTab(activeAuthTab);
+activateAccountTab(activeAccountTab);
+syncAccountTabWithHash();
 helperOriginInput.value = getHelperOrigin();
 loadProducts().catch((error) => setNotice(`商品加载失败：${error.message}`, "error"));
 loadAccount();

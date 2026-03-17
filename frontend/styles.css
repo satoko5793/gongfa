@@ -230,11 +230,35 @@ body {
 .admin-card-head,
 .checkbox-line,
 .category-tabs,
+.section-tabs,
 .admin-page-tabs,
 .pagination-bar {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.section-tabs {
+  margin-bottom: 18px;
+}
+
+.section-tabs.compact {
+  margin-bottom: 16px;
+}
+
+.section-tab {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 11px 18px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.section-tab.active {
+  border-color: rgba(196, 85, 45, 0.28);
+  background: rgba(196, 85, 45, 0.12);
+  color: var(--accent);
 }
 
 .admin-page-tabs {
@@ -284,6 +308,83 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   margin-bottom: 16px;
   min-width: 0;
+}
+
+.section-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-entry-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.auth-entry-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.method-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.muted-panel {
+  background: rgba(255, 250, 244, 0.78);
+}
+
+.more-methods {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.more-methods summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+
+.more-methods[open] {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.beginner-flow {
+  background:
+    linear-gradient(180deg, rgba(255, 249, 243, 0.94), rgba(255, 255, 255, 0.86)),
+    var(--card);
+}
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.flow-step {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(196, 85, 45, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.flow-step-index {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.flow-step-title {
+  font-size: 20px;
+  font-weight: 700;
 }
 
 #recharge-panel,
@@ -1314,6 +1415,11 @@ button {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   }
 
+  .flow-grid,
+  .auth-entry-grid {
+    grid-template-columns: 1fr;
+  }
+
   .recharge-layout-split {
     grid-template-columns: 1fr;
   }
@@ -1424,7 +1530,8 @@ button {
 
   .toolbar,
   .actions,
-  .filters {
+  .filters,
+  .section-tabs {
     gap: 10px;
   }
 
@@ -1434,7 +1541,8 @@ button {
 
   .toolbar > *,
   .actions > *,
-  .filters > * {
+  .filters > *,
+  .section-tabs > * {
     width: 100%;
     min-width: 0;
   }
@@ -1442,6 +1550,11 @@ button {
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+
+  .flow-grid,
+  .method-grid {
+    grid-template-columns: 1fr;
   }
 
   .product-card,

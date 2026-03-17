@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>功法卡片商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260317f" />
+    <link rel="stylesheet" href="styles.css?v=20260317g" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -43,9 +43,38 @@
           <div class="quick-links">
             <a class="quick-link" href="#products">查看商品</a>
             <a class="quick-link" href="#bind">注册登录</a>
-            <a class="quick-link" href="#recharge-panel">前往充值</a>
-            <a class="quick-link" href="#help-panel">加群咨询</a>
+            <a class="quick-link" href="#account" data-account-tab-target="recharge">前往充值</a>
+            <a class="quick-link" href="#account" data-account-tab-target="orders">加群咨询</a>
           </div>
+        </div>
+      </section>
+
+      <section class="card beginner-flow">
+        <div class="section-head">
+          <div>
+            <div class="card-title">新手三步</div>
+            <div class="card-sub">第一次使用时，按这个顺序走，基本不会迷路。</div>
+          </div>
+        </div>
+        <div class="flow-grid">
+          <article class="flow-step">
+            <div class="flow-step-index">01</div>
+            <div class="flow-step-title">注册或登录</div>
+            <div class="muted">先绑定一个可识别的游戏账号，后面充值和下单都基于这个账号。</div>
+            <a class="ghost-link" href="#bind">去注册登录</a>
+          </article>
+          <article class="flow-step">
+            <div class="flow-step-index">02</div>
+            <div class="flow-step-title">充值额度</div>
+            <div class="muted">登录后去“我的”里提交充值申请，审核通过后额度会自动到账。</div>
+            <a class="ghost-link" href="#account" data-account-tab-target="recharge">去充值</a>
+          </article>
+          <article class="flow-step">
+            <div class="flow-step-index">03</div>
+            <div class="flow-step-title">选商品下单</div>
+            <div class="muted">回到商品页挑选卡片或套餐，确认详情后直接用额度购买。</div>
+            <a class="ghost-link" href="#products">去选商品</a>
+          </article>
         </div>
       </section>
 
@@ -76,104 +105,116 @@
 
       <section id="bind" class="card">
         <div class="card-title">账号登录与注册</div>
-        <div class="card-sub">当前支持直接注册、密码登录和手动绑定，主流程不依赖 helper。</div>
+        <div class="card-sub">先用注册或密码登录。手动绑定和 helper 暂时归到“更多方式”，避免新用户被无关入口干扰。</div>
 
-        <div class="panel-grid">
-          <div class="panel">
-            <div class="panel-title">快速注册</div>
-            <form id="register-form" class="form-grid">
-              <label>
-                游戏 ID
-                <input id="register-role-id" name="game_role_id" type="text" required />
-              </label>
-              <label>
-                游戏名称
-                <input id="register-role-name" name="game_role_name" type="text" required />
-              </label>
-              <label>
-                登录密码
-                <input id="register-password" name="password" type="password" minlength="6" required />
-              </label>
-              <label>
-                确认密码
-                <input
-                  id="register-password-confirm"
-                  name="password_confirm"
-                  type="password"
-                  minlength="6"
-                  required
-                />
-              </label>
-              <div class="actions">
-                <button type="submit" class="primary">注册并登录</button>
-              </div>
-            </form>
-          </div>
-
+        <div class="auth-entry-grid">
           <div class="panel guide-panel">
             <div class="panel-title">游戏 ID 获取指导</div>
             <div class="muted">注册前先按下图去游戏内确认区服和游戏 ID，避免注册错账号。</div>
             <img class="guide-image" src="./guides/id-guide.jpg" alt="游戏 ID 获取指导" />
           </div>
 
-          <div class="panel">
-            <div class="panel-title">密码登录</div>
-            <form id="login-form" class="form-grid">
-              <label>
-                游戏 ID
-                <input id="login-role-id" name="game_role_id" type="text" required />
-              </label>
-              <label>
-                密码
-                <input id="login-password" name="password" type="password" required />
-              </label>
-              <div class="actions">
-                <button type="submit" class="primary">登录</button>
-                <button id="logout-btn" type="button" class="ghost">退出登录</button>
-              </div>
-            </form>
-          </div>
-
-          <div class="panel">
-            <div class="panel-title">helper 工具入口</div>
-            <label>
-              helper 地址
-              <input id="helper-origin-input" type="text" placeholder="例如 http://localhost:3000" />
-            </label>
-            <div class="actions">
-              <button id="save-helper-origin-btn" class="ghost">保存地址</button>
-              <button id="open-helper-btn" class="ghost">打开 helper</button>
+          <div class="panel auth-entry-panel">
+            <div class="section-tabs compact">
+              <button class="section-tab active" type="button" data-auth-tab="register">快速注册</button>
+              <button class="section-tab" type="button" data-auth-tab="login">密码登录</button>
             </div>
-            <div class="muted">当前主流程不依赖 helper，这里只保留给历史兼容或调试使用。</div>
-          </div>
 
-          <div class="panel">
-            <div class="panel-title">手动绑定</div>
-            <form id="bind-form" class="form-grid">
-              <label>
-                角色 ID
-                <input id="bind-role-id" name="game_role_id" type="text" required />
-              </label>
-              <label>
-                区服
-                <input id="bind-server" name="game_server" type="text" required />
-              </label>
-              <label>
-                角色名称
-                <input id="bind-role-name" name="game_role_name" type="text" required />
-              </label>
-              <label>
-                helper token 标识
-                <input id="bind-token-id" name="bind_token_id" type="text" />
-              </label>
-              <label>
-                备注昵称
-                <input id="bind-nickname" name="nickname" type="text" />
-              </label>
-              <div class="actions">
-                <button type="submit" class="ghost">绑定并登录</button>
+            <div class="section-panel" data-auth-panel="register">
+              <div class="panel-title">快速注册</div>
+              <form id="register-form" class="form-grid">
+                <label>
+                  游戏 ID
+                  <input id="register-role-id" name="game_role_id" type="text" required />
+                </label>
+                <label>
+                  游戏名称
+                  <input id="register-role-name" name="game_role_name" type="text" required />
+                </label>
+                <label>
+                  登录密码
+                  <input id="register-password" name="password" type="password" minlength="6" required />
+                </label>
+                <label>
+                  确认密码
+                  <input
+                    id="register-password-confirm"
+                    name="password_confirm"
+                    type="password"
+                    minlength="6"
+                    required
+                  />
+                </label>
+                <div class="actions">
+                  <button type="submit" class="primary">注册并登录</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="section-panel hidden" data-auth-panel="login">
+              <div class="panel-title">密码登录</div>
+              <form id="login-form" class="form-grid">
+                <label>
+                  游戏 ID
+                  <input id="login-role-id" name="game_role_id" type="text" required />
+                </label>
+                <label>
+                  密码
+                  <input id="login-password" name="password" type="password" required />
+                </label>
+                <div class="actions">
+                  <button type="submit" class="primary">登录</button>
+                  <button id="logout-btn" type="button" class="ghost">退出登录</button>
+                </div>
+              </form>
+            </div>
+
+            <details class="more-methods">
+              <summary>更多方式</summary>
+              <div class="method-grid">
+                <div class="panel muted-panel">
+                  <div class="panel-title">helper 工具入口</div>
+                  <label>
+                    helper 地址
+                    <input id="helper-origin-input" type="text" placeholder="例如 http://localhost:3000" />
+                  </label>
+                  <div class="actions">
+                    <button id="save-helper-origin-btn" class="ghost">保存地址</button>
+                    <button id="open-helper-btn" class="ghost">打开 helper</button>
+                  </div>
+                  <div class="muted">当前主流程不依赖 helper，这里只保留给历史兼容或调试使用。</div>
+                </div>
+
+                <div class="panel muted-panel">
+                  <div class="panel-title">手动绑定</div>
+                  <form id="bind-form" class="form-grid">
+                    <label>
+                      角色 ID
+                      <input id="bind-role-id" name="game_role_id" type="text" required />
+                    </label>
+                    <label>
+                      区服
+                      <input id="bind-server" name="game_server" type="text" required />
+                    </label>
+                    <label>
+                      角色名称
+                      <input id="bind-role-name" name="game_role_name" type="text" required />
+                    </label>
+                    <label>
+                      helper token 标识
+                      <input id="bind-token-id" name="bind_token_id" type="text" />
+                    </label>
+                    <label>
+                      备注昵称
+                      <input id="bind-nickname" name="nickname" type="text" />
+                    </label>
+                    <div class="actions">
+                      <button type="submit" class="ghost">绑定并登录</button>
+                    </div>
+                  </form>
+                </div>
               </div>
-            </form>
+            </details>
           </div>
         </div>
 
@@ -182,24 +223,37 @@
 
       <section id="account" class="card">
         <div class="card-title">我的账户</div>
-        <div class="card-sub">这里显示当前账号信息、额度余额、资料修改入口、充值记录和最近订单。</div>
+        <div class="card-sub">把常用操作拆开后，查看余额、改资料、充值和查订单都会更直接。</div>
 
-        <div class="account-grid">
-          <div class="panel">
-            <div class="panel-title">账户信息</div>
-            <div id="account-profile" class="stack-list"></div>
-            <div class="actions" style="margin-top: 12px;">
-              <button id="account-logout-btn" type="button" class="ghost">退出登录</button>
-              <a id="account-switch-link" class="ghost-link" href="#bind">切换账号</a>
+        <div class="section-tabs">
+          <button class="section-tab active" type="button" data-account-tab="overview">概览</button>
+          <button class="section-tab" type="button" data-account-tab="profile">资料</button>
+          <button class="section-tab" type="button" data-account-tab="security">安全</button>
+          <button class="section-tab" type="button" data-account-tab="recharge">充值</button>
+          <button class="section-tab" type="button" data-account-tab="orders">订单帮助</button>
+        </div>
+
+        <div id="account-message" class="notice"></div>
+
+        <div class="section-panel" data-account-panel="overview">
+          <div class="account-grid">
+            <div class="panel">
+              <div class="panel-title">账户信息</div>
+              <div id="account-profile" class="stack-list"></div>
+              <div class="actions" style="margin-top: 12px;">
+                <button id="account-logout-btn" type="button" class="ghost">退出登录</button>
+                <a id="account-switch-link" class="ghost-link" href="#bind">切换账号</a>
+              </div>
             </div>
-          </div>
-          <div class="panel">
-            <div class="panel-title">额度余额</div>
-            <div id="quota-balance" class="quota-balance">-</div>
+            <div class="panel">
+              <div class="panel-title">额度余额</div>
+              <div id="quota-balance" class="quota-balance">-</div>
+              <div class="muted">充值审核通过后会自动到账，订单扣减和退款也会同步更新。</div>
+            </div>
           </div>
         </div>
 
-        <div class="panel-grid">
+        <div class="section-panel hidden" data-account-panel="profile">
           <div class="panel">
             <div class="panel-title">修改资料</div>
             <form id="account-profile-form" class="form-grid">
@@ -220,8 +274,10 @@
               </div>
             </form>
           </div>
+        </div>
 
-          <div id="account-password-panel" class="panel hidden">
+        <div id="account-password-panel" class="section-panel hidden" data-account-panel="security">
+          <div class="panel">
             <div class="panel-title">修改密码</div>
             <form id="account-password-form" class="form-grid">
               <label>
@@ -243,28 +299,30 @@
           </div>
         </div>
 
-        <div id="account-message" class="notice"></div>
-
-        <div class="panel-grid">
-          <div id="recharge-panel" class="panel">
-            <div class="panel-title">额度充值</div>
-            <div id="recharge-body" class="stack-list"></div>
-          </div>
-          <div class="panel">
-            <div class="panel-title">充值记录</div>
-            <div id="recharge-order-list" class="stack-list"></div>
+        <div class="section-panel hidden" data-account-panel="recharge">
+          <div class="panel-grid">
+            <div id="recharge-panel" class="panel">
+              <div class="panel-title">额度充值</div>
+              <div id="recharge-body" class="stack-list"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">充值记录</div>
+              <div id="recharge-order-list" class="stack-list"></div>
+            </div>
           </div>
         </div>
 
-        <div class="panel-grid">
-          <div class="panel" id="help-panel">
-            <div class="panel-title">有问题加群咨询</div>
-            <div class="muted">遇到注册、充值、下单、补货或订单处理问题，可以扫码进群联系管理员。</div>
-            <img class="guide-image help-qr-image" src="./guides/wechat-group.png" alt="微信群二维码" />
-          </div>
-          <div id="order-panel" class="panel">
-            <div class="panel-title">最近订单</div>
-            <div id="order-list" class="stack-list"></div>
+        <div class="section-panel hidden" data-account-panel="orders">
+          <div class="panel-grid">
+            <div class="panel" id="help-panel">
+              <div class="panel-title">有问题加群咨询</div>
+              <div class="muted">遇到注册、充值、下单、补货或订单处理问题，可以扫码进群联系管理员。</div>
+              <img class="guide-image help-qr-image" src="./guides/wechat-group.png" alt="微信群二维码" />
+            </div>
+            <div id="order-panel" class="panel">
+              <div class="panel-title">最近订单</div>
+              <div id="order-list" class="stack-list"></div>
+            </div>
           </div>
         </div>
       </section>
@@ -290,6 +348,6 @@
     </div>
 
     <footer class="footer">当前先把网页商城主流程跑通，支付与更多自动化能力后续再补。</footer>
-    <script type="module" src="./app.js?v=20260317f"></script>
+    <script type="module" src="./app.js?v=20260317g"></script>
   </body>
 </html>
