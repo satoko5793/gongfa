@@ -750,18 +750,16 @@ function renderProducts(products) {
                 .join("")}
             </select>
           </div>
+          <div class="inline-form">
+            <input data-field="external-buyer-label" type="text" placeholder="外部交易对象，例如微信直卖 / 熟人代拍" />
+            <input data-field="external-order-remark" type="text" placeholder="外部成交备注，可选" />
+            <button class="danger create-external-order-btn" type="button">记外部成交</button>
+          </div>
           <div class="actions">
             <button class="ghost view-product-detail-btn" type="button">查看详情</button>
             <button class="primary save-product-btn" type="button">保存商品</button>
             <button class="ghost save-status-btn" type="button">仅更新状态</button>
             <button class="ghost clear-manual-price-btn" type="button">恢复自动价</button>
-          </div>
-          <div class="inline-form">
-            <input data-field="external-buyer-label" type="text" placeholder="外部交易对象，例如微信直卖 / 熟人代拍" />
-            <input data-field="external-order-remark" type="text" placeholder="外部成交备注，可选" />
-          </div>
-          <div class="actions">
-            <button class="danger create-external-order-btn" type="button">记外部成交并扣库存</button>
           </div>
         </div>
       `;
