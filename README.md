@@ -30,6 +30,7 @@
 
 - 前台：`http://101.34.247.186/`
 - 后台：`http://101.34.247.186/admin.html`
+- 测试服：`http://101.34.247.186:8081/`
 
 ## 项目目录
 
@@ -49,6 +50,7 @@
 - `frontend/legacy-json/`：后台导入用的历史数据快照
 - `scripts/validate_frontend.py`：发版前端校验脚本
 - `infra/docker-compose.app.yml`：线上容器启动文件
+- `infra/docker-compose.staging.yml`：测试服容器启动文件
 
 ## 本地启动
 
@@ -108,4 +110,9 @@ docker compose -f infra/docker-compose.app.yml ps
 docker compose -f infra/docker-compose.app.yml logs -f
 docker compose -f infra/docker-compose.app.yml up -d --build
 docker compose -f infra/docker-compose.app.yml restart
+
+# staging
+docker compose -f infra/docker-compose.staging.yml ps
+docker compose -f infra/docker-compose.staging.yml logs -f
+docker compose -f infra/docker-compose.staging.yml up -d --build
 ```
