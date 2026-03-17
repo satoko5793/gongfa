@@ -40,6 +40,9 @@ const accountNewPasswordInput = document.getElementById("account-new-password");
 const accountConfirmPasswordInput = document.getElementById("account-confirm-password");
 const rechargeBody = document.getElementById("recharge-body");
 const rechargeOrderList = document.getElementById("recharge-order-list");
+const beginnerGuideSummary = document.getElementById("beginner-guide-summary");
+const beginnerGuideReward = document.getElementById("beginner-guide-reward");
+const beginnerGuideSteps = document.getElementById("beginner-guide-steps");
 const authTabButtons = Array.from(document.querySelectorAll("[data-auth-tab]"));
 const authTabPanels = Array.from(document.querySelectorAll("[data-auth-panel]"));
 const accountTabButtons = Array.from(document.querySelectorAll("[data-account-tab]"));
@@ -84,6 +87,7 @@ const productPaginationState = {
   total: 0,
   totalPages: 0,
 };
+const BEGINNER_GUIDE_REWARD_QUOTA = 1000;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -798,6 +802,125 @@ function formatRechargeStatus(status) {
 }
 
 
+function renderGuideGlyph(type) {
+  if (type === "account") {
+    return `
+      <svg viewBox="0 0 48 48" class="guide-glyph" aria-hidden="true">
+        <circle cx="24" cy="16" r="8" fill="currentColor" opacity="0.22"></circle>
+        <path d="M24 9a7 7 0 1 1 0 14 7 7 0 0 1 0-14Zm0 20c8.6 0 15 4.4 15 10v2H9v-2c0-5.6 6.4-10 15-10Z" fill="currentColor"></path>
+      </svg>
+    `;
+  }
+  if (type === "recharge") {
+    return `
+      <svg viewBox="0 0 48 48" class="guide-glyph" aria-hidden="true">
+        <rect x="8" y="12" width="32" height="24" rx="8" fill="currentColor" opacity="0.18"></rect>
+        <path d="M14 20h20M14 28h9" stroke="currentColor" stroke-width="4" stroke-linecap="round"></path>
+        <circle cx="33" cy="28" r="5" fill="currentColor"></circle>
+      </svg>
+    `;
+  }
+  return `
+    <svg viewBox="0 0 48 48" class="guide-glyph" aria-hidden="true">
+      <path d="M10 15h18l10 9-10 9H10a4 4 0 0 1-4-4V19a4 4 0 0 1 4-4Z" fill="currentColor" opacity="0.18"></path>
+      <path d="M12 18h14l7 6-7 6H12Z" fill="currentColor"></path>
+      <circle cx="35" cy="24" r="4" fill="#fff6e8"></circle>
+    </svg>
+  `;
+}
+
+function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
+  if (!beginnerGuideSteps || !beginnerGuideSummary || !beginnerGuideReward) return;
+
+  const rewardQuota = Number(profile?.beginner_guide_reward_quota || BEGINNER_GUIDE_REWARD_QUOTA);
+  const hasAccount = Boolean(profile);
+  const hasApprovedRecharge = rechargeOrders.some((order) => order.status === "approved");
+  const hasPendingRecharge = rechargeOrders.some((order) => order.status === "pending_review");
+  const hasConfirmedOrder = orders.some((order) => order.status === "confirmed");
+  const hasPendingOrder = orders.some((order) =>
+    ["pending", "cancel_requested"].includes(String(order.status || ""))
+  );
+  const rewardEarned = Boolean(profile?.beginner_guide_reward_earned);
+
+  const steps = [
+    {
+      index: "01",
+      type: "account",
+      title: "注册并登录",
+      done: hasAccount,
+      current: !hasAccount,
+      description: hasAccount
+        ? `当前账号：${escapeHtml(profile.game_role_name || profile.game_role_id || "已登录")}`
+        : "先进入注册或登录，后续充值和下单都会绑定在这个账号下。",
+      actionLabel: hasAccount ? "已完成" : "去注册登录",
+      actionHref: "#bind",
+      actionTarget: "",
+    },
+    {
+      index: "02",
+      type: "recharge",
+      title: "完成一次充值",
+      done: hasApprovedRecharge,
+      current: hasAccount && !hasApprovedRecharge,
+      description: hasApprovedRecharge
+        ? "至少有一笔充值审核通过，额度已经到账。"
+        : hasPendingRecharge
+          ? "你已经提交过充值申请，等待管理员审核通过后就算完成这一步。"
+          : "去“我的”里提交一次充值或残卷转赠，审核通过后会自动到账。",
+      actionLabel: hasApprovedRecharge ? "已完成" : hasPendingRecharge ? "查看进度" : "去充值",
+      actionHref: "#account",
+      actionTarget: "recharge",
+    },
+    {
+      index: "03",
+      type: "order",
+      title: "完成首单消费",
+      done: hasConfirmedOrder,
+      current: hasAccount && hasApprovedRecharge && !hasConfirmedOrder,
+      description: hasConfirmedOrder
+        ? rewardEarned
+          ? `首单已完成，奖励 ${rewardQuota} 额度已经发放。`
+          : "首单已完成，奖励会自动到账。"
+        : hasPendingOrder
+          ? "你已经提交过订单，等管理员确认后就算完成首单。"
+          : "从商城挑一件合适的商品下单，管理员确认后就能完成首单。",
+      actionLabel: hasConfirmedOrder ? "已完成" : hasPendingOrder ? "查看订单" : "去选商品",
+      actionHref: hasConfirmedOrder || hasPendingOrder ? "#account" : "#products",
+      actionTarget: hasConfirmedOrder || hasPendingOrder ? "orders" : "",
+    },
+  ];
+
+  beginnerGuideSummary.textContent = rewardEarned
+    ? `新手教学奖励已到账 ${rewardQuota} 额度，你可以继续直接下单或充值。`
+    : hasConfirmedOrder && hasApprovedRecharge
+      ? `三步已完成，系统会自动发放 ${rewardQuota} 额度奖励。`
+      : `完成注册、完成充值、完成首单后，额外奖励 ${rewardQuota} 额度。`;
+  beginnerGuideReward.textContent = rewardEarned
+    ? `奖励已发放 +${rewardQuota}`
+    : `完成三步奖励 ${rewardQuota} 额度`;
+  beginnerGuideReward.classList.toggle("claimed", rewardEarned);
+
+  beginnerGuideSteps.innerHTML = steps
+    .map((step) => {
+      const statusLabel = step.done ? "已完成" : step.current ? "当前推荐" : "未完成";
+      const statusClass = step.done ? "done" : step.current ? "current" : "pending";
+      const actionAttrs = step.actionTarget ? ` data-account-tab-target="${step.actionTarget}"` : "";
+      return `
+        <article class="flow-step tutorial-step ${statusClass}">
+          <div class="tutorial-step-top">
+            <div class="tutorial-step-icon">${renderGuideGlyph(step.type)}</div>
+            <span class="tutorial-status ${statusClass}">${statusLabel}</span>
+          </div>
+          <div class="flow-step-index">${step.index}</div>
+          <div class="flow-step-title">${step.title}</div>
+          <div class="muted">${step.description}</div>
+          <a class="ghost-link tutorial-link" href="${step.actionHref}"${actionAttrs}>${step.actionLabel}</a>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function renderProfile(profile, quota, orders) {
   if (!profile) {
     accountProfile.innerHTML = '<div class="stack-item">请先登录后查看账号信息。</div>';
@@ -813,6 +936,9 @@ function renderProfile(profile, quota, orders) {
   const memberBenefit = profile.season_member_active
     ? `后续获得额度额外 +${Number(profile.season_member_bonus_percent || 0)}%`
     : `开通后获得额度额外 +${Number(profile.season_member_bonus_percent || 0)}%`;
+  const beginnerRewardStatus = profile.beginner_guide_reward_earned
+    ? `已领取 ${Number(profile.beginner_guide_reward_quota || BEGINNER_GUIDE_REWARD_QUOTA)} 额度`
+    : `完成教学三步后可领取 ${Number(profile.beginner_guide_reward_quota || BEGINNER_GUIDE_REWARD_QUOTA)} 额度`;
 
   accountProfile.innerHTML = [
     `角色名称：${escapeHtml(profile.game_role_name || "-")}`,
@@ -823,6 +949,7 @@ function renderProfile(profile, quota, orders) {
     `昵称：${escapeHtml(profile.nickname || "-")}`,
     `会员状态：${memberStatus}`,
     `会员权益：${memberBenefit}`,
+    `新手奖励：${beginnerRewardStatus}`,
   ]
     .map((line) => `<div class="stack-item">${line}</div>`)
     .join("");
@@ -1245,6 +1372,7 @@ async function loadAccount() {
     currentRechargeOrders = [];
     renderSessionSummary(null);
     renderProfile(null, null, []);
+    renderBeginnerGuide(null, [], []);
     renderRechargeSection(null, null, []);
     return;
   }
@@ -1262,6 +1390,7 @@ async function loadAccount() {
     currentRechargeOrders = rechargeOrders || [];
     renderSessionSummary(profile);
     renderProfile(profile, quota, orders || []);
+    renderBeginnerGuide(profile, orders || [], rechargeOrders || []);
     renderRechargeSection(profile, rechargeConfig, rechargeOrders || []);
     setNotice("");
   } catch (error) {
@@ -1271,6 +1400,7 @@ async function loadAccount() {
       currentRechargeOrders = [];
       renderSessionSummary(null);
       renderProfile(null, null, []);
+      renderBeginnerGuide(null, [], []);
       renderRechargeSection(null, null, []);
       setNotice("登录状态已失效，请重新登录。", "error");
       return;
@@ -1668,6 +1798,15 @@ accountTabLinks.forEach((link) => {
     activateAccountTab(targetTab, { scroll: true });
   });
 });
+document.addEventListener("click", (event) => {
+  const link = event.target.closest("[data-account-tab-target]");
+  if (!link || accountTabLinks.includes(link)) return;
+  const targetTab = link.getAttribute("data-account-tab-target") || "overview";
+  event.preventDefault();
+  window.location.hash =
+    targetTab === "recharge" ? "recharge-panel" : targetTab === "orders" ? "help-panel" : "account";
+  activateAccountTab(targetTab, { scroll: true });
+});
 keywordInput.addEventListener("input", () => {
   resetProductPagination();
   if (productSearchTimer) {
@@ -1755,5 +1894,6 @@ activateAuthTab(activeAuthTab);
 activateAccountTab(activeAccountTab);
 syncAccountTabWithHash();
 helperOriginInput.value = getHelperOrigin();
+renderBeginnerGuide(null, [], []);
 loadProducts().catch((error) => setNotice(`商品加载失败：${error.message}`, "error"));
 loadAccount();

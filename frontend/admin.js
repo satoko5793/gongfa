@@ -1037,6 +1037,8 @@ function formatQuotaLogType(type) {
       return "充值到账";
     case "residual_transfer_credit":
       return "残卷到账";
+    case "beginner_guide_reward":
+      return "新手教学奖励";
     default:
       return type || "-";
   }

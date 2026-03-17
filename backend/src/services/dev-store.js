@@ -16,6 +16,8 @@ const FIXED_ADMIN_ACCOUNT = {
   password_hash:
     "scrypt$16384$8$1$15d0485f25b5ca60d4119ee868ae9987$c86dead7cef0087690fa74e4d30efc33849f54a50748e0b09dee89bc864a9c14edf7b8fad9b18beaa6ed6154b26181d56b4536aa7920ae36f96ae0f424f198f9",
 };
+const BEGINNER_GUIDE_REWARD_QUOTA = 1000;
+const BEGINNER_GUIDE_REWARD_REMARK = "beginner_guide_reward";
 
 function now() {
   return new Date().toISOString();
@@ -288,13 +290,24 @@ function normalizeData(data) {
       ...user,
       auth_provider: user?.auth_provider || "bind",
       password_hash: user?.password_hash || null,
+      beginner_guide_reward:
+        user?.beginner_guide_reward && typeof user.beginner_guide_reward === "object"
+          ? user.beginner_guide_reward
+          : null,
     };
-    if (!user?.auth_provider || user?.password_hash === undefined) {
+    if (
+      !user?.auth_provider ||
+      user?.password_hash === undefined ||
+      user?.beginner_guide_reward === undefined
+    ) {
       changed = true;
     }
     return normalized;
   });
   next.rechargeConfig = normalizeRechargeConfig(next.rechargeConfig || {});
+  if (backfillBeginnerGuideRewards(next)) {
+    changed = true;
+  }
 
   if (changed) {
     repriceDataProducts(next);
@@ -370,6 +383,7 @@ function ensureQuotaAccount(data, userId) {
 function withQuota(user, data) {
   const account = ensureQuotaAccount(data, user.id);
   const memberState = getSeasonMemberState(user, data.rechargeConfig || {});
+  const guideReward = user?.beginner_guide_reward || null;
   return {
     ...sanitizeUser(user),
     quota_balance: account.balance,
@@ -379,7 +393,75 @@ function withQuota(user, data) {
     season_member_bonus_rate: memberState.bonus_rate,
     season_member_bonus_percent: memberState.bonus_percent,
     season_member_activated_at: memberState.activated_at,
+    beginner_guide_reward_quota: BEGINNER_GUIDE_REWARD_QUOTA,
+    beginner_guide_reward_earned: Boolean(guideReward?.granted_at),
+    beginner_guide_reward_granted_at: guideReward?.granted_at || null,
+    beginner_guide_reward_source_order_id: guideReward?.source_order_id || null,
   };
+}
+
+function maybeGrantBeginnerGuideReward(data, userId, actorUserId = null, sourceTrigger = "system") {
+  const user = (data.users || []).find((item) => Number(item.id) === Number(userId));
+  if (!user || user.role !== "user") return false;
+  if (user.beginner_guide_reward?.granted_at) return false;
+
+  const approvedRechargeOrder = (data.rechargeOrders || []).find(
+    (item) =>
+      Number(item.user_id) === Number(userId) &&
+      String(item.status || "") === "approved"
+  );
+  const confirmedOrder = (data.orders || []).find(
+    (item) =>
+      Number(item.user_id) === Number(userId) &&
+      String(item.status || "") === "confirmed"
+  );
+
+  if (!approvedRechargeOrder || !confirmedOrder) {
+    return false;
+  }
+
+  applyQuotaChange(data, {
+    userId: Number(userId),
+    changeAmount: BEGINNER_GUIDE_REWARD_QUOTA,
+    type: "beginner_guide_reward",
+    orderId: Number(confirmedOrder.id),
+    remark: BEGINNER_GUIDE_REWARD_REMARK,
+    bonusAmount: 0,
+  });
+
+  user.beginner_guide_reward = {
+    quota_amount: BEGINNER_GUIDE_REWARD_QUOTA,
+    granted_at: now(),
+    source_trigger: sourceTrigger,
+    source_order_id: Number(confirmedOrder.id),
+    source_recharge_order_id: Number(approvedRechargeOrder.id),
+  };
+  user.updated_at = now();
+
+  addAuditLog(data, {
+    actorUserId,
+    targetType: "user",
+    targetId: Number(userId),
+    action: "beginner_guide_reward_grant",
+    detail: {
+      quota_amount: BEGINNER_GUIDE_REWARD_QUOTA,
+      source_trigger: sourceTrigger,
+      source_order_id: Number(confirmedOrder.id),
+      source_recharge_order_id: Number(approvedRechargeOrder.id),
+    },
+  });
+
+  return true;
+}
+
+function backfillBeginnerGuideRewards(data) {
+  let changed = false;
+  for (const user of data.users || []) {
+    if (maybeGrantBeginnerGuideReward(data, user.id, null, "backfill")) {
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function normalizeCardProduct(product) {
@@ -1360,6 +1442,7 @@ function reviewRechargeOrder(rechargeOrderId, { status, adminRemark = null }, ac
         bonusAmount: Number(rechargeOrder.bonus_quota_amount || 0),
       });
     }
+    maybeGrantBeginnerGuideReward(data, rechargeOrder.user_id, actorUserId, "recharge_approved");
   }
 
   addAuditLog(data, {
@@ -1579,6 +1662,9 @@ function updateOrderStatus(orderId, status, remark, actorUserId) {
   order.status = status;
   order.remark = remark || null;
   order.updated_at = now();
+  if (status === "confirmed" && previousStatus !== "confirmed") {
+    maybeGrantBeginnerGuideReward(data, order.user_id, actorUserId, "order_confirmed");
+  }
 
   addAuditLog(data, {
     actorUserId,

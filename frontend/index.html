@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260317k" />
+    <link rel="stylesheet" href="styles.css?v=20260317l" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -30,9 +30,13 @@
           <div class="eyebrow">Web MVP</div>
           <h1>25000 繁星功法商城</h1>
           <p class="hero-text">
-            当前提供商品浏览、账号登录、额度充值、额度购买和订单管理。普通用户默认只看商城和个人中心，
-            管理员在后台处理商品、订单和充值审核。
+            当前提供商品浏览、账号登录、额度充值、额度购买和订单管理。新用户按教学完成注册、充值和首单后，
+            还会额外拿到 1000 额度奖励。
           </p>
+          <div class="hero-badges">
+            <span class="hero-badge">新手教学奖励 1000 额度</span>
+            <span class="hero-badge">会员充值与残卷转赠额外 +5%</span>
+          </div>
         </div>
         <div class="hero-side">
           <div class="status-panel">
@@ -46,35 +50,57 @@
             <a class="quick-link" href="#account" data-account-tab-target="recharge">前往充值</a>
             <a class="quick-link" href="#account" data-account-tab-target="orders">加群咨询</a>
           </div>
+          <div class="hero-scene" aria-hidden="true">
+            <svg viewBox="0 0 320 220" class="hero-scene-svg">
+              <defs>
+                <linearGradient id="heroCardGlow" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#f7d9a6" />
+                  <stop offset="100%" stop-color="#cf6b3f" />
+                </linearGradient>
+                <linearGradient id="heroPanelGlow" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#224d52" />
+                  <stop offset="100%" stop-color="#5f8b8f" />
+                </linearGradient>
+              </defs>
+              <rect x="14" y="36" width="180" height="118" rx="24" fill="url(#heroCardGlow)" opacity="0.95" />
+              <rect x="126" y="72" width="164" height="104" rx="24" fill="url(#heroPanelGlow)" opacity="0.92" />
+              <circle cx="248" cy="54" r="28" fill="#f6efe2" />
+              <path d="M248 33 252 45 265 45 254 53 259 66 248 58 237 66 242 53 231 45 244 45Z" fill="#d9783a" />
+              <path d="M45 90h116M45 112h86M45 134h102" stroke="#fff8ec" stroke-width="10" stroke-linecap="round" opacity="0.88" />
+              <path d="M154 106c12 0 22 10 22 22s-10 22-22 22-22-10-22-22 10-22 22-22Z" fill="#fff7ea" opacity="0.92" />
+              <path d="M154 115 157 124 166 124 159 130 162 139 154 133 146 139 149 130 142 124 151 124Z" fill="#c4552d" />
+              <path d="M188 104h70M188 126h58M188 148h42" stroke="#d7eceb" stroke-width="8" stroke-linecap="round" opacity="0.82" />
+              <circle cx="48" cy="42" r="5" fill="#d9783a" />
+              <circle cx="86" cy="28" r="4" fill="#224d52" />
+              <circle cx="295" cy="30" r="4" fill="#d9783a" />
+              <circle cx="282" cy="193" r="6" fill="#224d52" />
+            </svg>
+          </div>
         </div>
       </section>
 
       <section class="card beginner-flow">
-        <div class="section-head">
+        <div class="section-head beginner-flow-head">
           <div>
-            <div class="card-title">新手三步</div>
-            <div class="card-sub">第一次使用时，按这个顺序走，基本不会迷路。</div>
+            <div class="eyebrow">Starter Quest</div>
+            <div class="card-title">新手教学</div>
+            <div id="beginner-guide-summary" class="card-sub">完成注册、完成充值、完成首单后，额外奖励 1000 额度。</div>
           </div>
+          <div id="beginner-guide-reward" class="guide-reward-chip">完成三步奖励 1000 额度</div>
         </div>
-        <div class="flow-grid">
-          <article class="flow-step">
-            <div class="flow-step-index">01</div>
-            <div class="flow-step-title">注册或登录</div>
-            <div class="muted">先绑定一个可识别的游戏账号，后面充值和下单都基于这个账号。</div>
-            <a class="ghost-link" href="#bind">去注册登录</a>
-          </article>
-          <article class="flow-step">
-            <div class="flow-step-index">02</div>
-            <div class="flow-step-title">充值额度</div>
-            <div class="muted">登录后去“我的”里提交充值申请，审核通过后额度会自动到账。</div>
-            <a class="ghost-link" href="#account" data-account-tab-target="recharge">去充值</a>
-          </article>
-          <article class="flow-step">
-            <div class="flow-step-index">03</div>
-            <div class="flow-step-title">选商品下单</div>
-            <div class="muted">回到商品页挑选卡片或套餐，确认详情后直接用额度购买。</div>
-            <a class="ghost-link" href="#products">去选商品</a>
-          </article>
+        <div class="beginner-flow-layout">
+          <div id="beginner-guide-steps" class="flow-grid tutorial-grid"></div>
+          <aside class="tutorial-side">
+            <div class="tutorial-side-card">
+              <div class="tutorial-side-badge">教学奖励</div>
+              <div class="tutorial-side-value">+1000</div>
+              <div class="tutorial-side-copy">只要完成新手教学三步，系统会自动发放奖励额度。</div>
+            </div>
+            <div class="tutorial-side-note">
+              <div class="tutorial-side-title">推荐顺序</div>
+              <div class="muted">先注册，再完成一次充值，最后确认一单消费。奖励会在条件满足后自动到账。</div>
+            </div>
+          </aside>
         </div>
       </section>
 
@@ -348,6 +374,6 @@
     </div>
 
     <footer class="footer">当前先把网页商城主流程跑通，支付与更多自动化能力后续再补。</footer>
-    <script type="module" src="./app.js?v=20260317k"></script>
+    <script type="module" src="./app.js?v=20260317l"></script>
   </body>
 </html>

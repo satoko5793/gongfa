@@ -132,6 +132,26 @@ body {
   min-width: 0;
 }
 
+.hero-badges {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(196, 85, 45, 0.18);
+  background: rgba(255, 248, 240, 0.92);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .quick-links {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -236,6 +256,22 @@ body {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.hero-scene {
+  border-radius: 22px;
+  border: 1px solid rgba(118, 93, 67, 0.12);
+  background:
+    radial-gradient(circle at top right, rgba(255, 241, 214, 0.96), rgba(255, 255, 255, 0.82)),
+    rgba(255, 255, 255, 0.78);
+  padding: 14px;
+  overflow: hidden;
+}
+
+.hero-scene-svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .section-tabs {
@@ -360,10 +396,45 @@ body {
     var(--card);
 }
 
+.beginner-flow-head {
+  align-items: center;
+}
+
+.guide-reward-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(196, 85, 45, 0.14), rgba(35, 78, 82, 0.12));
+  border: 1px solid rgba(196, 85, 45, 0.16);
+  color: var(--accent);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.guide-reward-chip.claimed {
+  color: var(--success);
+  border-color: rgba(34, 100, 77, 0.2);
+  background: linear-gradient(135deg, rgba(34, 100, 77, 0.14), rgba(247, 217, 166, 0.18));
+}
+
+.beginner-flow-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.7fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
 .flow-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.tutorial-grid {
+  position: relative;
 }
 
 .flow-step {
@@ -373,6 +444,145 @@ body {
   border-radius: 18px;
   border: 1px solid rgba(196, 85, 45, 0.14);
   background: rgba(255, 255, 255, 0.72);
+}
+
+.tutorial-step {
+  position: relative;
+  gap: 12px;
+  min-height: 240px;
+  overflow: hidden;
+}
+
+.tutorial-step::after {
+  content: "";
+  position: absolute;
+  inset: auto -24px 28px auto;
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(247, 217, 166, 0.42), transparent 70%);
+  pointer-events: none;
+}
+
+.tutorial-step.done {
+  border-color: rgba(34, 100, 77, 0.2);
+  background: linear-gradient(180deg, rgba(241, 251, 246, 0.96), rgba(255, 255, 255, 0.84));
+}
+
+.tutorial-step.current {
+  border-color: rgba(196, 85, 45, 0.24);
+  background: linear-gradient(180deg, rgba(255, 247, 240, 0.98), rgba(255, 255, 255, 0.84));
+  box-shadow: 0 18px 36px rgba(196, 85, 45, 0.1);
+}
+
+.tutorial-step-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tutorial-step-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: rgba(196, 85, 45, 0.1);
+}
+
+.tutorial-step.done .tutorial-step-icon {
+  color: var(--success);
+  background: rgba(34, 100, 77, 0.12);
+}
+
+.guide-glyph {
+  width: 30px;
+  height: 30px;
+  display: block;
+}
+
+.tutorial-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tutorial-status.done {
+  color: var(--success);
+  background: rgba(34, 100, 77, 0.12);
+}
+
+.tutorial-status.current {
+  color: var(--accent);
+  background: rgba(196, 85, 45, 0.12);
+}
+
+.tutorial-status.pending {
+  color: var(--muted);
+  background: rgba(118, 93, 67, 0.1);
+}
+
+.tutorial-link {
+  margin-top: auto;
+}
+
+.tutorial-side {
+  display: grid;
+  gap: 14px;
+}
+
+.tutorial-side-card,
+.tutorial-side-note {
+  border-radius: 22px;
+  border: 1px solid rgba(118, 93, 67, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 18px;
+}
+
+.tutorial-side-card {
+  min-height: 210px;
+  align-content: start;
+  background:
+    radial-gradient(circle at top right, rgba(247, 217, 166, 0.42), transparent 42%),
+    linear-gradient(180deg, rgba(255, 247, 239, 0.98), rgba(255, 255, 255, 0.88));
+}
+
+.tutorial-side-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(35, 78, 82, 0.1);
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tutorial-side-value {
+  margin-top: 16px;
+  font-family: var(--font-display);
+  font-size: clamp(42px, 5vw, 60px);
+  line-height: 0.9;
+  color: var(--accent);
+}
+
+.tutorial-side-copy {
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.tutorial-side-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--accent-2);
+  margin-bottom: 8px;
 }
 
 .flow-step-index {
@@ -1424,6 +1634,10 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .beginner-flow-layout {
+    grid-template-columns: 1fr;
+  }
+
   .recharge-layout-split {
     grid-template-columns: 1fr;
   }
@@ -1526,6 +1740,16 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .hero-badges {
+    gap: 8px;
+  }
+
+  .hero-badge,
+  .guide-reward-chip {
+    width: 100%;
+    justify-content: center;
+  }
+
   .quick-link {
     min-height: 44px;
     padding: 10px 8px;
@@ -1559,6 +1783,10 @@ button {
   .flow-grid,
   .method-grid {
     grid-template-columns: 1fr;
+  }
+
+  .tutorial-step {
+    min-height: 0;
   }
 
   .product-card,
