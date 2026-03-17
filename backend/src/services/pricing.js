@@ -1,7 +1,7 @@
 const { LEGACY_CAPS } = require("../config/catalog-config");
 
 const PRICE_CONFIG = {
-  version: "pricing_v2",
+  version: "pricing_v3",
   marketFactor: {
     min: 0.5,
     max: 4.0,
@@ -353,12 +353,17 @@ function getWearPrice(product, atlas, referenceCaps, tierRule) {
 }
 
 function getMarketFactor(demand) {
+  const previousFactor = clamp(Number(demand?.previous_factor) || 1, 0.5, 4.0);
   if (!demand) {
     return {
       factor: 1,
+      target_factor: 1,
+      previous_factor: previousFactor,
       hot_score: 0,
       cold_penalty: 0,
       reason: "no_trade_history",
+      rise_blocked: false,
+      rise_cap: null,
     };
   }
 
@@ -368,27 +373,41 @@ function getMarketFactor(demand) {
     (Number(demand.unique_buyers_30d) || 0) * 0.05;
 
   let coldPenalty = 0;
-  const staleDays = demand.days_since_active;
-  if (staleDays !== null && staleDays >= 10) coldPenalty += 0.15;
-  if (staleDays !== null && staleDays >= 20) coldPenalty += 0.25;
-  if (staleDays !== null && staleDays >= 45) coldPenalty += 0.35;
-  if (staleDays !== null && staleDays >= 90) coldPenalty += 0.45;
+  const staleDaysRaw = Number(demand.days_since_active);
+  const staleDays = Number.isFinite(staleDaysRaw) ? staleDaysRaw : null;
+  if (staleDays !== null && staleDays >= 3) coldPenalty += 0.08;
+  if (staleDays !== null && staleDays >= 7) coldPenalty += 0.12;
+  if (staleDays !== null && staleDays >= 14) coldPenalty += 0.2;
+  if (staleDays !== null && staleDays >= 30) coldPenalty += 0.25;
+  if (staleDays !== null && staleDays >= 60) coldPenalty += 0.25;
 
-  const factor = clamp(
+  const targetFactor = clamp(
     1 + hotScore - coldPenalty,
     PRICE_CONFIG.marketFactor.min,
     PRICE_CONFIG.marketFactor.max
   );
+  const confirmed7d = Number(demand.confirmed_7d) || 0;
+  const riseStep = confirmed7d >= 2 ? Math.min(0.24, 0.08 * (confirmed7d - 1)) : 0;
+  const riseCap = riseStep > 0 ? previousFactor + riseStep : previousFactor;
+  const factor =
+    targetFactor > previousFactor
+      ? confirmed7d < 2
+        ? previousFactor
+        : Math.min(targetFactor, riseCap)
+      : targetFactor;
 
   return {
     factor: Number(factor.toFixed(4)),
+    target_factor: Number(targetFactor.toFixed(4)),
+    previous_factor: Number(previousFactor.toFixed(4)),
     hot_score: Number(hotScore.toFixed(4)),
     cold_penalty: Number(coldPenalty.toFixed(4)),
-    confirmed_7d: Number(demand.confirmed_7d) || 0,
+    confirmed_7d: confirmed7d,
     active_30d_weighted: Number(Number(demand.active_30d_weighted || 0).toFixed(2)),
     unique_buyers_30d: Number(demand.unique_buyers_30d) || 0,
-    days_since_active:
-      demand.days_since_active === null ? null : Number(demand.days_since_active.toFixed(1)),
+    days_since_active: staleDays === null ? null : Number(staleDays.toFixed(1)),
+    rise_blocked: targetFactor > previousFactor && confirmed7d < 2,
+    rise_cap: riseStep > 0 ? Number(riseCap.toFixed(4)) : null,
   };
 }
 
@@ -499,7 +518,10 @@ function repriceProducts(products, orderEvents, now = new Date()) {
         ? { type: "wear", label: "佩戴价主导" }
         : { type: "atlas", label: "图鉴价主导" };
     const autoBasePrice = Math.max(floorPrice, Number(atlas.price) || 0, Number(wear.price) || 0);
-    const market = getMarketFactor(demandMap.get(Number(product.id)));
+    const market = getMarketFactor({
+      ...(demandMap.get(Number(product.id)) || {}),
+      previous_factor: Number(product?.pricing_meta?.market?.factor || 1),
+    });
     const autoPrice = Math.max(floorPrice, roundPrice(autoBasePrice * market.factor));
     const manualPrice =
       product.manual_price_quota === null || product.manual_price_quota === undefined
