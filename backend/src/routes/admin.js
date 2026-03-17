@@ -10,6 +10,7 @@ const {
   validateBundleUpdate,
   validateQuotaChange,
   validateOrderStatus,
+  validateExternalOrderCreate,
   validateRechargeReviewInput,
   validateRechargeConfigUpdateInput,
 } = require("../services/validate");
@@ -1116,6 +1117,33 @@ adminRouter.patch("/orders/:id/status", async (req, res, next) => {
     return next(error);
   } finally {
     client.release();
+  }
+});
+
+adminRouter.post("/orders/external", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateExternalOrderCreate(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    if (useFileStore()) {
+      const created = devStore.createExternalOrder(
+        body.item_id ?? body.product_id,
+        body.item_kind || "card",
+        {
+          buyerLabel: body.buyer_label,
+          remark: body.remark || null,
+        },
+        req.user.id
+      );
+      return res.json(created);
+    }
+
+    return res.status(501).json({ error: "external_order_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
   }
 });
 

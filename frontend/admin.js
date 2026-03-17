@@ -756,6 +756,13 @@ function renderProducts(products) {
             <button class="ghost save-status-btn" type="button">仅更新状态</button>
             <button class="ghost clear-manual-price-btn" type="button">恢复自动价</button>
           </div>
+          <div class="inline-form">
+            <input data-field="external-buyer-label" type="text" placeholder="外部交易对象，例如微信直卖 / 熟人代拍" />
+            <input data-field="external-order-remark" type="text" placeholder="外部成交备注，可选" />
+          </div>
+          <div class="actions">
+            <button class="danger create-external-order-btn" type="button">记外部成交并扣库存</button>
+          </div>
         </div>
       `;
     })
@@ -1116,6 +1123,11 @@ function renderOrders(orders) {
         : '<div class="order-item-line">没有订单明细</div>';
 
       const actionButtons =
+        order.order_source === "external"
+          ? `
+              <button class="ghost save-order-remark-btn" type="button">保存备注</button>
+            `
+          :
         order.status === "cancel_requested"
           ? `
               <button class="ghost save-order-remark-btn" type="button">保存备注</button>
@@ -1140,6 +1152,7 @@ function renderOrders(orders) {
           </div>
           <div class="product-meta">
             <div>用户：${escapeHtml(order.game_role_name || "-")} / ${escapeHtml(order.game_server || "-")} / ${escapeHtml(order.game_role_id || "-")}</div>
+            <div>来源：${escapeHtml(order.order_source === "external" ? "外部交易" : "商城下单")}${order.buyer_label ? ` / 对象：${escapeHtml(order.buyer_label)}` : ""}</div>
             <div>订单总额：${Number(order.total_quota || 0)} 额度</div>
             <div>创建时间：${formatDate(order.created_at)}</div>
           </div>
@@ -1491,6 +1504,27 @@ productsRoot.addEventListener("click", async (event) => {
         method: "DELETE",
       });
       setMessage(`商品 #${productId} 已恢复自动价。`, "success");
+      await reloadAll();
+      return;
+    }
+
+    if (event.target.closest(".create-external-order-btn")) {
+      const buyerLabel = card.querySelector('[data-field="external-buyer-label"]').value.trim();
+      const remark = card.querySelector('[data-field="external-order-remark"]').value.trim();
+      if (!buyerLabel) {
+        setMessage("请先填写外部交易对象。", "error");
+        return;
+      }
+      await apiFetch("/admin/orders/external", {
+        method: "POST",
+        body: JSON.stringify({
+          item_id: productId,
+          item_kind: "card",
+          buyer_label: buyerLabel,
+          remark: remark || null,
+        }),
+      });
+      setMessage(`商品 #${productId} 已记录为外部成交。`, "success");
       await reloadAll();
     }
   } catch (error) {

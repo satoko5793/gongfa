@@ -815,6 +815,8 @@ function hydrateOrders(data, orders) {
       game_server: user?.game_server || null,
       game_role_name: user?.game_role_name || null,
       nickname: user?.nickname || null,
+      order_source: order?.order_source || "mall",
+      buyer_label: order?.buyer_label || null,
       items: clone(data.orderItems.filter((item) => item.order_id === order.id)),
     };
   });
@@ -876,6 +878,9 @@ function listOrders({
       const items = data.orderItems.filter((item) => item.order_id === order.id);
       return [
         String(order.id),
+        order?.buyer_label,
+        order?.order_source,
+        order?.remark,
         user?.game_role_id,
         user?.game_server,
         user?.game_role_name,
@@ -893,6 +898,95 @@ function listOrders({
   const normalizedOffset = Math.max(Number(offset) || 0, 0);
   const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
   return hydrateOrders(data, orders.slice(normalizedOffset, end));
+}
+
+function createExternalOrder(
+  itemId,
+  itemKind = "card",
+  { buyerLabel, remark = null } = {},
+  actorUserId
+) {
+  const data = readData();
+  const isBundle = itemKind === "bundle";
+  const item = isBundle
+    ? (data.bundleSkus || []).find((bundle) => bundle.id === Number(itemId))
+    : data.products.find((product) => product.id === Number(itemId));
+
+  if (!item) {
+    const err = new Error(isBundle ? "bundle_not_found" : "product_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (item.status !== "on_sale") {
+    const err = new Error(isBundle ? "bundle_not_on_sale" : "product_not_on_sale");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!isBundle && Number(item.stock) <= 0) {
+    const err = new Error("product_out_of_stock");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (isBundle && item.stock !== null && item.stock !== undefined && Number(item.stock) <= 0) {
+    const err = new Error("bundle_out_of_stock");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const order = {
+    id: nextId(data.orders),
+    user_id: null,
+    total_quota: Number(item.price_quota),
+    status: "confirmed",
+    remark: remark || null,
+    order_source: "external",
+    buyer_label: String(buyerLabel || "").trim(),
+    created_at: now(),
+    updated_at: now(),
+  };
+  data.orders.push(order);
+
+  data.orderItems.push({
+    id: nextId(data.orderItems),
+    order_id: order.id,
+    item_kind: itemKind,
+    product_id: isBundle ? null : item.id,
+    bundle_sku_id: isBundle ? item.id : null,
+    product_name: item.name,
+    product_snapshot: clone(item),
+    price_quota: Number(item.price_quota),
+    created_at: now(),
+  });
+
+  if (isBundle) {
+    if (item.stock !== null && item.stock !== undefined) {
+      item.stock = Number(item.stock) - 1;
+      if (item.stock <= 0) item.status = "sold";
+    }
+    item.updated_at = now();
+  } else {
+    item.stock = Number(item.stock) - 1;
+    if (item.stock <= 0) item.status = "sold";
+    item.updated_at = now();
+  }
+
+  addAuditLog(data, {
+    actorUserId,
+    targetType: "order",
+    targetId: order.id,
+    action: "external_order_create",
+    detail: {
+      item_kind: itemKind,
+      item_id: item.id,
+      total_quota: item.price_quota,
+      buyer_label: order.buyer_label,
+      remark: order.remark,
+    },
+  });
+
+  repriceDataProducts(data);
+  writeData(data);
+  return listOrders({ orderId: order.id, limit: 1 })[0];
 }
 
 function listRechargeOrders({
@@ -1855,6 +1949,7 @@ module.exports = {
   bulkUpdateProducts,
   clearProductManualPrice,
   recalculatePricing,
+  createExternalOrder,
   listUsers,
   changeUserQuota,
   updateUserStatus,

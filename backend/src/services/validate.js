@@ -275,6 +275,28 @@ function validateOrderStatus(status) {
   return ["pending", "confirmed", "cancel_requested", "cancelled"].includes(status);
 }
 
+function validateExternalOrderCreate(body) {
+  const errors = [];
+  const itemId = body.item_id ?? body.product_id;
+  if (!isInteger(itemId)) errors.push("item_id_required");
+  if (
+    body.item_kind !== undefined &&
+    !["card", "bundle"].includes(String(body.item_kind).trim())
+  ) {
+    errors.push("item_kind_invalid");
+  }
+  if (!requiredString(body.buyer_label)) {
+    errors.push("buyer_label_required");
+  }
+  if (body.buyer_label !== undefined && !requiredString(body.buyer_label)) {
+    errors.push("buyer_label_invalid");
+  }
+  if (body.remark !== undefined && !optionalString(body.remark)) {
+    errors.push("remark_invalid");
+  }
+  return [...new Set(errors)];
+}
+
 function validateBundleUpdate(body) {
   const errors = [];
   const intFields = ["price_quota", "display_rank"];
@@ -318,4 +340,5 @@ module.exports = {
   validateQuotaChange,
   validateOrderCreate,
   validateOrderStatus,
+  validateExternalOrderCreate,
 };
