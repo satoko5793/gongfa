@@ -193,6 +193,29 @@
             <input id="admin-recharge-min-yuan" type="number" min="1" step="1" />
           </label>
           <label>
+            开启残卷转赠
+            <select id="admin-residual-transfer-enabled">
+              <option value="true">开启</option>
+              <option value="false">关闭</option>
+            </select>
+          </label>
+          <label>
+            转赠管理员游戏 ID
+            <input id="admin-residual-admin-role-id" type="text" placeholder="例如 584967604" />
+          </label>
+          <label>
+            转赠管理员名称
+            <input id="admin-residual-admin-role-name" type="text" placeholder="例如 admin残卷" />
+          </label>
+          <label>
+            转赠单位名称
+            <input id="admin-residual-unit-label" type="text" placeholder="例如 残卷" />
+          </label>
+          <label>
+            每单位到账额度
+            <input id="admin-residual-quota-per-unit" type="number" min="1" step="1" />
+          </label>
+          <label>
             开启赛季会员
             <select id="admin-season-member-enabled">
               <option value="true">开启</option>
@@ -247,6 +270,14 @@
           <label>
             前台提示（每行一条）
             <textarea id="admin-recharge-instructions" rows="4" placeholder="每行一条说明"></textarea>
+          </label>
+          <label>
+            残卷转赠提示（每行一条）
+            <textarea
+              id="admin-residual-instructions"
+              rows="4"
+              placeholder="每行一条说明"
+            ></textarea>
           </label>
           <div class="actions">
             <button id="save-recharge-config-btn" class="primary" type="submit">保存充值配置</button>

@@ -35,6 +35,11 @@ const adminRechargeEnabled = document.getElementById("admin-recharge-enabled");
 const adminRechargeExchangeYuanInput = document.getElementById("admin-recharge-exchange-yuan");
 const adminRechargeExchangeQuotaInput = document.getElementById("admin-recharge-exchange-quota");
 const adminRechargeMinYuanInput = document.getElementById("admin-recharge-min-yuan");
+const adminResidualTransferEnabledInput = document.getElementById("admin-residual-transfer-enabled");
+const adminResidualAdminRoleIdInput = document.getElementById("admin-residual-admin-role-id");
+const adminResidualAdminRoleNameInput = document.getElementById("admin-residual-admin-role-name");
+const adminResidualUnitLabelInput = document.getElementById("admin-residual-unit-label");
+const adminResidualQuotaPerUnitInput = document.getElementById("admin-residual-quota-per-unit");
 const adminSeasonMemberEnabledInput = document.getElementById("admin-season-member-enabled");
 const adminSeasonMemberLabelInput = document.getElementById("admin-season-member-label");
 const adminSeasonMemberExpiresAtInput = document.getElementById("admin-season-member-expires-at");
@@ -46,6 +51,7 @@ const adminRechargePayeeNameInput = document.getElementById("admin-recharge-paye
 const adminRechargePayeeHintInput = document.getElementById("admin-recharge-payee-hint");
 const adminRechargeQrImageUrlInput = document.getElementById("admin-recharge-qr-image-url");
 const adminRechargeInstructionsInput = document.getElementById("admin-recharge-instructions");
+const adminResidualInstructionsInput = document.getElementById("admin-residual-instructions");
 const adminRechargeQrPreview = document.getElementById("admin-recharge-qr-preview");
 const adminOrderKeywordInput = document.getElementById("admin-order-keyword-input");
 const adminOrderStatusFilter = document.getElementById("admin-order-status-filter");
@@ -425,6 +431,21 @@ function renderRechargeConfig(config) {
   if (adminRechargeExchangeYuanInput) adminRechargeExchangeYuanInput.value = Number(config.exchange_yuan || 1);
   if (adminRechargeExchangeQuotaInput) adminRechargeExchangeQuotaInput.value = Number(config.exchange_quota || 0);
   if (adminRechargeMinYuanInput) adminRechargeMinYuanInput.value = Number(config.min_amount_yuan || 1);
+  if (adminResidualTransferEnabledInput) {
+    adminResidualTransferEnabledInput.value = String(Boolean(config.residual_transfer_enabled));
+  }
+  if (adminResidualAdminRoleIdInput) {
+    adminResidualAdminRoleIdInput.value = config.residual_admin_role_id || "";
+  }
+  if (adminResidualAdminRoleNameInput) {
+    adminResidualAdminRoleNameInput.value = config.residual_admin_role_name || "";
+  }
+  if (adminResidualUnitLabelInput) {
+    adminResidualUnitLabelInput.value = config.residual_unit_label || "";
+  }
+  if (adminResidualQuotaPerUnitInput) {
+    adminResidualQuotaPerUnitInput.value = Number(config.residual_quota_per_unit || 1);
+  }
   if (adminSeasonMemberEnabledInput) adminSeasonMemberEnabledInput.value = String(Boolean(config.season_member_enabled));
   if (adminSeasonMemberLabelInput) adminSeasonMemberLabelInput.value = config.season_member_season_label || "";
   if (adminSeasonMemberExpiresAtInput) adminSeasonMemberExpiresAtInput.value = config.season_member_expires_at || "";
@@ -442,6 +463,11 @@ function renderRechargeConfig(config) {
   if (adminRechargeInstructionsInput) {
     adminRechargeInstructionsInput.value = Array.isArray(config.instructions)
       ? config.instructions.join("\n")
+      : "";
+  }
+  if (adminResidualInstructionsInput) {
+    adminResidualInstructionsInput.value = Array.isArray(config.residual_instructions)
+      ? config.residual_instructions.join("\n")
       : "";
   }
   if (adminRechargeQrPreview) {
@@ -853,6 +879,17 @@ function formatRechargeReviewStatusLabel(status) {
   }
 }
 
+function isResidualRechargeOrder(order) {
+  return String(order?.order_type || "").trim() === "residual_transfer";
+}
+
+function formatRechargeOrderTitle(order) {
+  if (order?.order_title) return order.order_title;
+  if (isResidualRechargeOrder(order)) return "残卷转赠";
+  if (order?.order_type === "season_member") return "赛季会员";
+  return "普通充值";
+}
+
 function renderRechargeOrders(orders) {
   currentRechargeOrderList = orders;
   renderOverview();
@@ -865,20 +902,25 @@ function renderRechargeOrders(orders) {
 
   adminRechargeOrdersRoot.innerHTML = orders
     .map((order) => {
+      const amountLine = isResidualRechargeOrder(order)
+        ? `转赠数量：${Number(order.transfer_amount || order.amount_yuan || 0)} ${escapeHtml(order.transfer_unit || "残卷")} / 预计额度：${Number(order.quota_amount || 0)}`
+        : `充值金额：${Number(order.amount_yuan || 0)} 元 / 预计额度：${Number(order.quota_amount || 0)}`;
+      const referenceLabel = isResidualRechargeOrder(order) ? "转赠凭据" : "付款备注";
       const statusHint =
         order.status === "pending_review"
-          ? '<div class="muted">审核通过后会自动给用户增加额度，请先核对付款备注和金额。</div>'
+          ? `<div class="muted">${isResidualRechargeOrder(order) ? "审核通过后会自动给用户增加额度，请先核对游戏内转赠记录和凭据。" : "审核通过后会自动给用户增加额度，请先核对付款备注和金额。"}</div>`
           : "";
       return `
         <div class="admin-card" data-recharge-order-id="${order.id}">
           <div class="admin-card-head">
-            <div class="product-name">充值单 #${order.id}</div>
+            <div class="product-name">${escapeHtml(formatRechargeOrderTitle(order))} #${order.id}</div>
             <span class="chip">${escapeHtml(formatRechargeReviewStatusLabel(order.status))}</span>
           </div>
           <div class="product-meta">
             <div>用户：${escapeHtml(order.game_role_name || "-")} / ${escapeHtml(order.game_server || "-")} / ${escapeHtml(order.game_role_id || "-")}</div>
-            <div>充值金额：${Number(order.amount_yuan || 0)} 元 / 预计额度：${Number(order.quota_amount || 0)}</div>
-            <div>付款备注：${escapeHtml(order.payment_reference || "-")}</div>
+            <div>${amountLine}</div>
+            <div>${referenceLabel}：${escapeHtml(order.payment_reference || "-")}</div>
+            ${isResidualRechargeOrder(order) ? `<div>转赠目标：${escapeHtml(order.transfer_target_role_name || "admin残卷")} / ${escapeHtml(order.transfer_target_role_id || "-")}</div>` : ""}
             <div>提交时间：${formatDate(order.created_at)}</div>
           </div>
           ${order.payer_note ? `<div class="muted">用户备注：${escapeHtml(order.payer_note)}</div>` : ""}
@@ -989,6 +1031,8 @@ function formatQuotaLogType(type) {
       return "订单退款";
     case "recharge_credit":
       return "充值到账";
+    case "residual_transfer_credit":
+      return "残卷到账";
     default:
       return type || "-";
   }
@@ -1596,6 +1640,10 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
+  const residualInstructions = String(adminResidualInstructionsInput?.value || "")
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
   try {
     const nextConfig = await apiFetch("/admin/recharge-config", {
@@ -1605,6 +1653,11 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
         exchange_yuan: Number(adminRechargeExchangeYuanInput.value),
         exchange_quota: Number(adminRechargeExchangeQuotaInput.value),
         min_amount_yuan: Number(adminRechargeMinYuanInput.value),
+        residual_transfer_enabled: adminResidualTransferEnabledInput?.value === "true",
+        residual_admin_role_id: adminResidualAdminRoleIdInput?.value.trim(),
+        residual_admin_role_name: adminResidualAdminRoleNameInput?.value.trim(),
+        residual_unit_label: adminResidualUnitLabelInput?.value.trim(),
+        residual_quota_per_unit: Number(adminResidualQuotaPerUnitInput?.value),
         season_member_enabled: adminSeasonMemberEnabledInput.value === "true",
         season_member_season_label: adminSeasonMemberLabelInput.value.trim(),
         season_member_expires_at: adminSeasonMemberExpiresAtInput.value.trim(),
@@ -1616,6 +1669,7 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
         payee_name: adminRechargePayeeNameInput.value.trim(),
         payee_hint: adminRechargePayeeHintInput.value.trim(),
         instructions,
+        residual_instructions: residualInstructions,
       }),
     });
     renderRechargeConfig(nextConfig);

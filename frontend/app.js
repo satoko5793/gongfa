@@ -867,8 +867,42 @@ function findPendingSeasonMemberOrder(rechargeOrders, rechargeConfig) {
   ) || null;
 }
 
+function isResidualTransferOrder(order) {
+  return String(order?.order_type || "").trim() === "residual_transfer";
+}
+
+function formatRechargeOrderTitle(order) {
+  if (order?.order_title) return order.order_title;
+  if (isResidualTransferOrder(order)) return "残卷转赠";
+  if (order?.order_type === "season_member") return "赛季会员";
+  return "普通充值";
+}
+
+function formatRechargeOrderAmountLine(order) {
+  const quotaLine =
+    Number(order?.bonus_quota_amount || 0) > 0
+      ? `到账：${Number(order?.base_quota_amount || 0)} 基础 + ${Number(order?.bonus_quota_amount || 0)} 加成 = ${Number(order?.quota_amount || 0)} 额度`
+      : `到账：${Number(order?.quota_amount || 0)} 额度`;
+
+  if (isResidualTransferOrder(order)) {
+    return `转赠：${Number(order?.transfer_amount || order?.amount_yuan || 0)} ${escapeHtml(order?.transfer_unit || "残卷")} / ${quotaLine}`;
+  }
+
+  return `金额：${Number(order?.amount_yuan || 0)} 元 / ${quotaLine}`;
+}
+
+function formatRechargeReferenceLine(order) {
+  const label = isResidualTransferOrder(order) ? "转赠凭据" : "付款凭据";
+  return `${label}：${escapeHtml(order?.payment_reference || "-")}`;
+}
+
 function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType = "normal") {
-  const normalizedType = orderType === "season_member" ? "season_member" : "normal";
+  const normalizedType =
+    orderType === "season_member"
+      ? "season_member"
+      : orderType === "residual_transfer"
+        ? "residual_transfer"
+        : "normal";
   const seasonLabel = rechargeConfig?.season_member_season_label || "当前赛季";
   const seasonExpiresText = rechargeConfig?.season_member_expires_at
     ? formatDate(rechargeConfig.season_member_expires_at)
@@ -888,6 +922,36 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
       detailLabel: `会员截止 ${seasonExpiresText}，后续每次获得额度额外 +${bonusPercent}%`,
       submitLabel: "已付款，申请开通会员",
       lockedAmount: true,
+      amountInputLabel: "充值金额（元）",
+      amountInputMin: memberAmount,
+      amountInputStep: 1,
+      referenceLabel: "支付宝付款备注或订单号",
+      referencePlaceholder: "建议填写付款备注、尾号或支付宝订单号",
+      notePlaceholder: "例如：已用本人支付宝转账，备注写了游戏 ID",
+    };
+  }
+
+  if (normalizedType === "residual_transfer") {
+    const normalizedAmount = Math.max(Number(amountYuan) || 0, 0);
+    const quotaPerUnit = Math.max(Number(rechargeConfig?.residual_quota_per_unit || 1), 1);
+    const unitLabel = rechargeConfig?.residual_unit_label || "残卷";
+    const targetRoleId = rechargeConfig?.residual_admin_role_id || "584967604";
+    return {
+      orderType: normalizedType,
+      amountYuan: normalizedAmount,
+      baseQuota: normalizedAmount * quotaPerUnit,
+      bonusQuota: 0,
+      totalQuota: normalizedAmount * quotaPerUnit,
+      amountLabel: `1 ${unitLabel} = ${quotaPerUnit} 额度`,
+      detailLabel: `游戏内直接转给管理员 ${targetRoleId}，管理员审核后到账。`,
+      submitLabel: "已转赠，提交审核",
+      lockedAmount: false,
+      amountInputLabel: `${unitLabel}数量`,
+      amountInputMin: 1,
+      amountInputStep: 1,
+      referenceLabel: "转赠凭据",
+      referencePlaceholder: "建议填写转赠时间、截图说明或游戏内邮件记录",
+      notePlaceholder: "例如：19:42 转给 584967604 共 300 残卷，角色名 XXX",
     };
   }
 
@@ -914,6 +978,12 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
     detailLabel,
     submitLabel: "已付款，提交审核",
     lockedAmount: false,
+    amountInputLabel: "充值金额（元）",
+    amountInputMin: Number(rechargeConfig?.min_amount_yuan || 1),
+    amountInputStep: 1,
+    referenceLabel: "支付宝付款备注或订单号",
+    referencePlaceholder: "建议填写付款备注、尾号或支付宝订单号",
+    notePlaceholder: "例如：已用本人支付宝转账，备注写了游戏 ID",
   };
 }
 
@@ -938,7 +1008,11 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
   if (!Number.isInteger(selectedRechargeAmount) || selectedRechargeAmount <= 0) {
     selectedRechargeAmount = Number(presets[0]);
   }
-  if (!["normal", "season_member"].includes(selectedRechargeOrderType)) {
+  const availableRechargeTypes = ["normal", "season_member"];
+  if (rechargeConfig?.residual_transfer_enabled) {
+    availableRechargeTypes.push("residual_transfer");
+  }
+  if (!availableRechargeTypes.includes(selectedRechargeOrderType)) {
     selectedRechargeOrderType = "normal";
   }
 
@@ -955,6 +1029,31 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
       ? `你的 ${escapeHtml(rechargeConfig.season_member_season_label || "当前赛季")} 会员申请正在审核中。`
       : `${escapeHtml(rechargeConfig.season_member_season_label || "当前赛季")} 会员：${Number(rechargeConfig.season_member_price_yuan || 0)} 元得 ${Number(rechargeConfig.season_member_quota || 0)} 额度，后续获得额度额外 +${Number(rechargeConfig.season_member_bonus_percent || 0)}%。`;
   const seasonMemberDisabled = Boolean(profile.season_member_active || pendingSeasonOrder);
+  const isResidualTransfer = selectedRechargeOrderType === "residual_transfer";
+  const transferTargetRoleId = rechargeConfig?.residual_admin_role_id || "584967604";
+  const transferTargetRoleName = rechargeConfig?.residual_admin_role_name || "admin残卷";
+  const transferUnitLabel = rechargeConfig?.residual_unit_label || "残卷";
+  const sideCardHtml = isResidualTransfer
+    ? `
+        <div class="recharge-qr-card">
+          <div><strong>${escapeHtml(transferTargetRoleName)}</strong></div>
+          <div class="muted">游戏 ID：${escapeHtml(transferTargetRoleId)}</div>
+          <div class="muted">兑换比例：1 ${escapeHtml(transferUnitLabel)} = ${Number(rechargeConfig?.residual_quota_per_unit || 1)} 额度</div>
+          <div class="stack-list">
+            ${(rechargeConfig.residual_instructions || []).map((line) => `<div class="stack-item">${escapeHtml(line)}</div>`).join("")}
+          </div>
+        </div>
+      `
+    : `
+        <div class="recharge-qr-card">
+          <img class="recharge-qr-image" src="${escapeHtml(rechargeConfig.qr_image_url)}" alt="支付宝收款码" />
+          <div><strong>${escapeHtml(rechargeConfig.payee_name || "支付宝收款码")}</strong></div>
+          <div class="muted">${escapeHtml(rechargeConfig.payee_hint || "扫码转账后再提交审核")}</div>
+          <div class="stack-list">
+            ${(rechargeConfig.instructions || []).map((line) => `<div class="stack-item">${escapeHtml(line)}</div>`).join("")}
+          </div>
+        </div>
+      `;
 
   rechargeBody.innerHTML = `
     <div class="recharge-layout">
@@ -964,25 +1063,19 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
         <span class="muted">本赛季截止 ${escapeHtml(formatDate(rechargeConfig.season_member_expires_at || ""))}</span>
       </div>
       <div class="recharge-layout-split">
-        <div class="recharge-qr-card">
-          <img class="recharge-qr-image" src="${escapeHtml(rechargeConfig.qr_image_url)}" alt="支付宝收款码" />
-          <div><strong>${escapeHtml(rechargeConfig.payee_name || "支付宝收款码")}</strong></div>
-          <div class="muted">${escapeHtml(rechargeConfig.payee_hint || "扫码转账后再提交审核")}</div>
-          <div class="stack-list">
-            ${(rechargeConfig.instructions || []).map((line) => `<div class="stack-item">${escapeHtml(line)}</div>`).join("")}
-          </div>
-        </div>
+        ${sideCardHtml}
         <form id="recharge-form" class="form-grid">
           <div class="preset-list">
             <button class="preset-chip ${selectedRechargeOrderType === "normal" ? "active" : ""}" type="button" data-recharge-order-type="normal">普通充值</button>
             <button class="preset-chip ${selectedRechargeOrderType === "season_member" ? "active" : ""}" type="button" data-recharge-order-type="season_member">赛季会员</button>
+            ${rechargeConfig?.residual_transfer_enabled ? `<button class="preset-chip ${selectedRechargeOrderType === "residual_transfer" ? "active" : ""}" type="button" data-recharge-order-type="residual_transfer">残卷转赠</button>` : ""}
           </div>
           <div class="recharge-rate-banner">
             <strong>${escapeHtml(quoteSummary.amountLabel)}</strong>
             <span class="muted">${escapeHtml(quoteSummary.detailLabel)}</span>
           </div>
-          <label>充值金额（元）
-            <input id="recharge-amount-input" type="number" min="${Number(rechargeConfig.min_amount_yuan || 1)}" step="1" value="${quoteSummary.amountYuan}" ${quoteSummary.lockedAmount ? "readonly" : ""} />
+          <label>${escapeHtml(quoteSummary.amountInputLabel)}
+            <input id="recharge-amount-input" type="number" min="${Number(quoteSummary.amountInputMin || 1)}" step="${Number(quoteSummary.amountInputStep || 1)}" value="${quoteSummary.amountYuan}" ${quoteSummary.lockedAmount ? "readonly" : ""} />
           </label>
           ${selectedRechargeOrderType === "normal" ? `
             <div class="preset-list">
@@ -996,11 +1089,11 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
             <strong id="recharge-quote-value">${quoteSummary.totalQuota} 额度</strong>
             <span id="recharge-quote-detail" class="muted">${quoteSummary.baseQuota} 基础额度${quoteSummary.bonusQuota > 0 ? ` + ${quoteSummary.bonusQuota} 会员加成` : ""}</span>
           </div>
-          <label>支付宝付款备注或订单号
-            <input id="recharge-payment-reference" type="text" maxlength="100" placeholder="建议填写付款备注、尾号或支付宝订单号" required />
+          <label>${escapeHtml(quoteSummary.referenceLabel)}
+            <input id="recharge-payment-reference" type="text" maxlength="100" placeholder="${escapeHtml(quoteSummary.referencePlaceholder)}" required />
           </label>
           <label>补充说明（可选）
-            <textarea id="recharge-note" rows="3" placeholder="例如：已用本人支付宝转账，备注写了游戏 ID"></textarea>
+            <textarea id="recharge-note" rows="3" placeholder="${escapeHtml(quoteSummary.notePlaceholder)}"></textarea>
           </label>
           <div class="actions">
             <button id="recharge-submit-btn" class="primary" type="submit" ${seasonMemberDisabled && selectedRechargeOrderType === "season_member" ? "disabled" : ""}>${seasonMemberDisabled && selectedRechargeOrderType === "season_member" ? (profile.season_member_active ? "本赛季已开通" : "会员申请审核中") : quoteSummary.submitLabel}</button>
@@ -1019,15 +1112,13 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
     .map((order) => {
       const adminRemark = order.admin_remark ? `<div class="muted">审核备注：${escapeHtml(order.admin_remark)}</div>` : "";
       const payerNote = order.payer_note ? `<div class="muted">补充说明：${escapeHtml(order.payer_note)}</div>` : "";
-      const quotaLine = order.bonus_quota_amount > 0
-        ? `到账：${Number(order.base_quota_amount || 0)} 基础 + ${Number(order.bonus_quota_amount || 0)} 加成 = ${Number(order.quota_amount || 0)} 额度`
-        : `到账：${Number(order.quota_amount || 0)} 额度`;
       return `
         <div class="stack-item">
-          <div>${escapeHtml(order.order_title || (order.order_type === "season_member" ? "赛季会员" : "普通充值"))} #${order.id} / ${escapeHtml(formatRechargeStatus(order.status))}</div>
-          <div class="muted">金额：${Number(order.amount_yuan || 0)} 元 / ${quotaLine}</div>
-          <div class="muted">付款凭据：${escapeHtml(order.payment_reference || "-")}</div>
+          <div>${escapeHtml(formatRechargeOrderTitle(order))} #${order.id} / ${escapeHtml(formatRechargeStatus(order.status))}</div>
+          <div class="muted">${formatRechargeOrderAmountLine(order)}</div>
+          <div class="muted">${formatRechargeReferenceLine(order)}</div>
           <div class="muted">提交时间：${formatDate(order.created_at)}</div>
+          ${isResidualTransferOrder(order) ? `<div class="muted">转赠目标：${escapeHtml(order.transfer_target_role_name || "admin残卷")} / ${escapeHtml(order.transfer_target_role_id || "-")}</div>` : ""}
           ${order.season_label ? `<div class="muted">赛季：${escapeHtml(order.season_label)}</div>` : ""}
           ${payerNote}
           ${adminRemark}
@@ -1167,7 +1258,12 @@ async function submitRechargeOrder(event) {
   const amountInput = document.getElementById("recharge-amount-input");
   const referenceInput = document.getElementById("recharge-payment-reference");
   const noteInput = document.getElementById("recharge-note");
-  const orderType = selectedRechargeOrderType === "season_member" ? "season_member" : "normal";
+  const orderType =
+    selectedRechargeOrderType === "season_member"
+      ? "season_member"
+      : selectedRechargeOrderType === "residual_transfer"
+        ? "residual_transfer"
+        : "normal";
   const amountYuan =
     orderType === "season_member"
       ? Number(currentRechargeConfig?.season_member_price_yuan || 0)
@@ -1180,6 +1276,11 @@ async function submitRechargeOrder(event) {
   if (orderType === "normal") {
     if (!Number.isInteger(amountYuan) || amountYuan < Number(currentRechargeConfig?.min_amount_yuan || 1)) {
       setAccountMessage(`充值金额不能低于 ${Number(currentRechargeConfig?.min_amount_yuan || 1)} 元。`, "error");
+      return;
+    }
+  } else if (orderType === "residual_transfer") {
+    if (!Number.isInteger(amountYuan) || amountYuan <= 0) {
+      setAccountMessage(`转赠${currentRechargeConfig?.residual_unit_label || "残卷"}数量必须是大于 0 的整数。`, "error");
       return;
     }
   } else {
@@ -1212,6 +1313,8 @@ async function submitRechargeOrder(event) {
     setAccountMessage(
       orderType === "season_member"
         ? `赛季会员申请已提交，订单 #${result.id} 等待管理员审核。`
+        : orderType === "residual_transfer"
+          ? `残卷转赠申请已提交，订单 #${result.id} 等待管理员审核。`
         : `充值申请已提交，订单 #${result.id} 等待管理员审核。`,
       "success"
     );
@@ -1225,6 +1328,8 @@ async function submitRechargeOrder(event) {
           ? "你的赛季会员申请正在审核中，请勿重复提交。"
           : code === "season_member_disabled"
             ? "当前暂未开放赛季会员。"
+            : code === "residual_transfer_disabled"
+              ? "当前暂未开放残卷转赠。"
             : pickErrorMessage(error, "提交失败");
     setAccountMessage(`充值申请提交失败：${customMessage}`, "error");
   }

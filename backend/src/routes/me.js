@@ -9,6 +9,7 @@ const {
   getRechargeConfig,
   buildRechargeQuote,
   buildSeasonMemberQuote,
+  buildResidualTransferQuote,
 } = require("../config/recharge-config");
 const {
   validateProfileUpdateInput,
@@ -82,10 +83,15 @@ meRouter.post("/recharge-orders", async (req, res, next) => {
     const rechargeConfig = useFileStore()
       ? getRechargeConfig(devStore.getRechargeConfig())
       : getRechargeConfig();
+    if (orderType === "residual_transfer" && !rechargeConfig.residual_transfer_enabled) {
+      return res.status(400).json({ error: "residual_transfer_disabled" });
+    }
     const quote =
       orderType === "season_member"
         ? buildSeasonMemberQuote(rechargeConfig)
-        : buildRechargeQuote(body.amount_yuan, rechargeConfig);
+        : orderType === "residual_transfer"
+          ? buildResidualTransferQuote(body.amount_yuan, rechargeConfig)
+          : buildRechargeQuote(body.amount_yuan, rechargeConfig);
     if (!quote) {
       return res.status(400).json({ error: "amount_yuan_invalid" });
     }
@@ -95,6 +101,10 @@ meRouter.post("/recharge-orders", async (req, res, next) => {
         devStore.createRechargeOrder(req.user.id, {
           amountYuan: quote.amount_yuan,
           quotaAmount: quote.quota_amount,
+          transferAmount: quote.transfer_amount || null,
+          transferUnit: quote.transfer_unit || null,
+          transferTargetRoleId: quote.target_role_id || null,
+          transferTargetRoleName: quote.target_role_name || null,
           paymentReference: body.payment_reference,
           payerNote: body.payer_note || null,
           orderType,

@@ -606,12 +606,18 @@ function updateRechargeConfig(patch, actorUserId = null) {
         exchange_quota: nextConfig.exchange_quota,
         min_amount_yuan: nextConfig.min_amount_yuan,
         enabled: nextConfig.enabled,
+        residual_transfer_enabled: nextConfig.residual_transfer_enabled,
+        residual_admin_role_id: nextConfig.residual_admin_role_id,
+        residual_admin_role_name: nextConfig.residual_admin_role_name,
+        residual_unit_label: nextConfig.residual_unit_label,
+        residual_quota_per_unit: nextConfig.residual_quota_per_unit,
         season_member_enabled: nextConfig.season_member_enabled,
         season_member_season_label: nextConfig.season_member_season_label,
         season_member_expires_at: nextConfig.season_member_expires_at,
         season_member_price_yuan: nextConfig.season_member_price_yuan,
         season_member_quota: nextConfig.season_member_quota,
         season_member_bonus_rate: nextConfig.season_member_bonus_rate,
+        residual_instructions: nextConfig.residual_instructions,
       },
     });
   }
@@ -733,9 +739,15 @@ function hydrateRechargeOrders(data, rechargeOrders) {
   return rechargeOrders.map((order) => {
     const user = data.users.find((item) => item.id === order.user_id);
     const reviewer = data.users.find((item) => item.id === order.reviewed_by);
+    const orderTitle =
+      order.order_type === "season_member"
+        ? "赛季会员"
+        : order.order_type === "residual_transfer"
+          ? "残卷转赠"
+          : "普通充值";
     return {
       ...clone(order),
-      order_title: order.order_type === "season_member" ? "????" : "????",
+      order_title: orderTitle,
       game_role_id: user?.game_role_id || null,
       game_server: user?.game_server || null,
       game_role_name: user?.game_role_name || null,
@@ -1184,7 +1196,17 @@ function changeUserQuota(userId, changeAmount, remark, actorUserId) {
 
 function createRechargeOrder(
   userId,
-  { amountYuan, quotaAmount, paymentReference, payerNote, orderType = "normal" }
+  {
+    amountYuan,
+    quotaAmount,
+    transferAmount = null,
+    transferUnit = null,
+    transferTargetRoleId = null,
+    transferTargetRoleName = null,
+    paymentReference,
+    payerNote,
+    orderType = "normal",
+  }
 ) {
   const data = readData();
   const user = data.users.find((item) => item.id === Number(userId));
@@ -1201,6 +1223,11 @@ function createRechargeOrder(
   const config = normalizeRechargeConfig(data.rechargeConfig || {});
   const normalizedOrderType = String(orderType || "normal").trim() || "normal";
   const memberState = getSeasonMemberState(user, config);
+  if (normalizedOrderType === "residual_transfer" && !config.residual_transfer_enabled) {
+    const err = new Error("residual_transfer_disabled");
+    err.statusCode = 400;
+    throw err;
+  }
   if (normalizedOrderType === "season_member") {
     if (!config.season_member_enabled) {
       const err = new Error("season_member_disabled");
@@ -1235,9 +1262,21 @@ function createRechargeOrder(
   const rechargeOrder = {
     id: nextId(data.rechargeOrders || []),
     user_id: Number(userId),
-    channel: "alipay_qr",
+    channel: normalizedOrderType === "residual_transfer" ? "game_residual_transfer" : "alipay_qr",
     order_type: normalizedOrderType,
     amount_yuan: Number(amountYuan),
+    transfer_amount:
+      normalizedOrderType === "residual_transfer" ? Number(transferAmount || amountYuan || 0) : null,
+    transfer_unit:
+      normalizedOrderType === "residual_transfer" ? String(transferUnit || config.residual_unit_label || "残卷") : null,
+    transfer_target_role_id:
+      normalizedOrderType === "residual_transfer"
+        ? String(transferTargetRoleId || config.residual_admin_role_id || "584967604")
+        : null,
+    transfer_target_role_name:
+      normalizedOrderType === "residual_transfer"
+        ? String(transferTargetRoleName || config.residual_admin_role_name || "admin残卷")
+        : null,
     base_quota_amount: baseQuotaAmount,
     bonus_quota_amount: bonusQuotaAmount,
     quota_amount: baseQuotaAmount + bonusQuotaAmount,
@@ -1261,6 +1300,8 @@ function createRechargeOrder(
     action: "recharge_order_create",
     detail: {
       amount_yuan: rechargeOrder.amount_yuan,
+      transfer_amount: rechargeOrder.transfer_amount,
+      transfer_unit: rechargeOrder.transfer_unit,
       quota_amount: rechargeOrder.quota_amount,
       order_type: rechargeOrder.order_type,
       channel: rechargeOrder.channel,
@@ -1309,7 +1350,10 @@ function reviewRechargeOrder(rechargeOrderId, { status, adminRemark = null }, ac
       applyQuotaChange(data, {
         userId: rechargeOrder.user_id,
         changeAmount: Number(rechargeOrder.base_quota_amount || rechargeOrder.quota_amount || 0),
-        type: "recharge_credit",
+        type:
+          rechargeOrder.order_type === "residual_transfer"
+            ? "residual_transfer_credit"
+            : "recharge_credit",
         remark: rechargeOrder.admin_remark || `recharge_order#${rechargeOrder.id}`,
         bonusAmount: Number(rechargeOrder.bonus_quota_amount || 0),
       });
@@ -1327,6 +1371,8 @@ function reviewRechargeOrder(rechargeOrderId, { status, adminRemark = null }, ac
       base_quota_amount: rechargeOrder.base_quota_amount,
       bonus_quota_amount: rechargeOrder.bonus_quota_amount,
       amount_yuan: rechargeOrder.amount_yuan,
+      transfer_amount: rechargeOrder.transfer_amount,
+      transfer_unit: rechargeOrder.transfer_unit,
       order_type: rechargeOrder.order_type,
       admin_remark: rechargeOrder.admin_remark,
     },

@@ -73,7 +73,7 @@ function validateRechargeOrderCreate(body) {
   const errors = [];
   if (
     body.order_type !== undefined &&
-    !["normal", "season_member"].includes(String(body.order_type || "").trim())
+    !["normal", "season_member", "residual_transfer"].includes(String(body.order_type || "").trim())
   ) {
     errors.push("order_type_invalid");
   }
@@ -114,6 +114,12 @@ function validateRechargeConfigUpdateInput(body) {
   ) {
     errors.push("season_member_enabled_invalid");
   }
+  if (
+    body.residual_transfer_enabled !== undefined &&
+    typeof body.residual_transfer_enabled !== "boolean"
+  ) {
+    errors.push("residual_transfer_enabled_invalid");
+  }
   for (const field of ["exchange_yuan", "exchange_quota", "min_amount_yuan"]) {
     if (
       body[field] !== undefined &&
@@ -121,6 +127,12 @@ function validateRechargeConfigUpdateInput(body) {
     ) {
       errors.push(`${field}_invalid`);
     }
+  }
+  if (
+    body.residual_quota_per_unit !== undefined &&
+    (!Number.isInteger(body.residual_quota_per_unit) || Number(body.residual_quota_per_unit) <= 0)
+  ) {
+    errors.push("residual_quota_per_unit_invalid");
   }
   for (const field of ["season_member_price_yuan", "season_member_quota"]) {
     if (
@@ -153,6 +165,9 @@ function validateRechargeConfigUpdateInput(body) {
     "qr_image_url",
     "payee_name",
     "payee_hint",
+    "residual_admin_role_id",
+    "residual_admin_role_name",
+    "residual_unit_label",
     "season_member_season_label",
     "season_member_expires_at",
   ]) {
@@ -165,6 +180,13 @@ function validateRechargeConfigUpdateInput(body) {
       errors.push("instructions_invalid");
     } else if (body.instructions.some((item) => !requiredString(item))) {
       errors.push("instructions_invalid");
+    }
+  }
+  if (body.residual_instructions !== undefined) {
+    if (!Array.isArray(body.residual_instructions)) {
+      errors.push("residual_instructions_invalid");
+    } else if (body.residual_instructions.some((item) => !requiredString(item))) {
+      errors.push("residual_instructions_invalid");
     }
   }
   return [...new Set(errors)];

@@ -61,6 +61,10 @@ function buildDefaultRechargeConfig() {
     parsePositiveInteger(process.env.RECHARGE_MIN_YUAN, exchangeYuan),
     exchangeYuan
   );
+  const residualQuotaPerUnit = parsePositiveInteger(
+    process.env.RESIDUAL_QUOTA_PER_UNIT,
+    1
+  );
 
   return {
     enabled: true,
@@ -68,6 +72,20 @@ function buildDefaultRechargeConfig() {
     exchange_yuan: exchangeYuan,
     exchange_quota: exchangeQuota,
     min_amount_yuan: minAmountYuan,
+    residual_transfer_enabled: true,
+    residual_admin_role_id: parseText(
+      process.env.RESIDUAL_ADMIN_ROLE_ID,
+      "584967604"
+    ),
+    residual_admin_role_name: parseText(
+      process.env.RESIDUAL_ADMIN_ROLE_NAME,
+      "admin残卷"
+    ),
+    residual_unit_label: parseText(
+      process.env.RESIDUAL_UNIT_LABEL,
+      "残卷"
+    ),
+    residual_quota_per_unit: residualQuotaPerUnit,
     season_member_enabled: true,
     season_member_season_label: seasonMemberSeasonLabel,
     season_member_expires_at: seasonMemberExpiresAt,
@@ -88,6 +106,11 @@ function buildDefaultRechargeConfig() {
       "1. 先扫码完成支付宝转账，再回到页面提交充值申请。",
       "2. 付款备注建议填写游戏 ID 或支付宝订单号，方便管理员快速核对。",
       "3. 审核通过后自动增加额度，驳回不会扣减任何现有额度。",
+    ],
+    residual_instructions: [
+      "1. 在游戏内把残卷直接转给管理员账号，再回来提交审核。",
+      "2. 管理员游戏 ID：584967604，1 残卷 = 1 额度。",
+      "3. 提交时请填写转赠时间、截图说明或能帮助核对的备注。",
     ],
   };
 }
@@ -112,6 +135,10 @@ function normalizeRechargeConfig(rawConfig = {}) {
     parsePositiveInteger(rawConfig.min_amount_yuan, defaults.min_amount_yuan),
     1
   );
+  const residualQuotaPerUnit = parsePositiveInteger(
+    rawConfig.residual_quota_per_unit,
+    defaults.residual_quota_per_unit
+  );
 
   const normalized = {
     enabled: rawConfig.enabled === undefined ? defaults.enabled : Boolean(rawConfig.enabled),
@@ -120,6 +147,23 @@ function normalizeRechargeConfig(rawConfig = {}) {
     exchange_quota: exchangeQuota,
     quota_per_yuan: Number((exchangeQuota / exchangeYuan).toFixed(4)),
     min_amount_yuan: minAmountYuan,
+    residual_transfer_enabled:
+      rawConfig.residual_transfer_enabled === undefined
+        ? defaults.residual_transfer_enabled
+        : Boolean(rawConfig.residual_transfer_enabled),
+    residual_admin_role_id: parseText(
+      rawConfig.residual_admin_role_id,
+      defaults.residual_admin_role_id
+    ),
+    residual_admin_role_name: parseText(
+      rawConfig.residual_admin_role_name,
+      defaults.residual_admin_role_name
+    ),
+    residual_unit_label: parseText(
+      rawConfig.residual_unit_label,
+      defaults.residual_unit_label
+    ),
+    residual_quota_per_unit: residualQuotaPerUnit,
     season_member_enabled:
       rawConfig.season_member_enabled === undefined
         ? defaults.season_member_enabled
@@ -149,6 +193,10 @@ function normalizeRechargeConfig(rawConfig = {}) {
     instructions: Array.isArray(rawConfig.instructions) && rawConfig.instructions.length > 0
       ? rawConfig.instructions.map((item) => String(item || "").trim()).filter(Boolean)
       : defaults.instructions,
+    residual_instructions:
+      Array.isArray(rawConfig.residual_instructions) && rawConfig.residual_instructions.length > 0
+        ? rawConfig.residual_instructions.map((item) => String(item || "").trim()).filter(Boolean)
+        : defaults.residual_instructions,
   };
 
   return normalized;
@@ -186,10 +234,30 @@ function buildSeasonMemberQuote(rechargeConfig) {
   };
 }
 
+function buildResidualTransferQuote(amount, rechargeConfig) {
+  const config = normalizeRechargeConfig(rechargeConfig || {});
+  if (!config.residual_transfer_enabled) return null;
+
+  const normalizedAmount = Number(amount);
+  if (!Number.isInteger(normalizedAmount) || normalizedAmount <= 0) {
+    return null;
+  }
+
+  return {
+    amount_yuan: normalizedAmount,
+    transfer_amount: normalizedAmount,
+    transfer_unit: config.residual_unit_label,
+    quota_amount: normalizedAmount * Number(config.residual_quota_per_unit || 1),
+    target_role_id: config.residual_admin_role_id,
+    target_role_name: config.residual_admin_role_name,
+  };
+}
+
 module.exports = {
   buildDefaultRechargeConfig,
   normalizeRechargeConfig,
   getRechargeConfig,
   buildRechargeQuote,
   buildSeasonMemberQuote,
+  buildResidualTransferQuote,
 };
