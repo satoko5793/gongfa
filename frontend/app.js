@@ -43,6 +43,7 @@ const rechargeOrderList = document.getElementById("recharge-order-list");
 const beginnerGuideSummary = document.getElementById("beginner-guide-summary");
 const beginnerGuideReward = document.getElementById("beginner-guide-reward");
 const beginnerGuideSteps = document.getElementById("beginner-guide-steps");
+const beginnerFlowSection = document.querySelector(".beginner-flow");
 const authTabButtons = Array.from(document.querySelectorAll("[data-auth-tab]"));
 const authTabPanels = Array.from(document.querySelectorAll("[data-auth-panel]"));
 const accountTabButtons = Array.from(document.querySelectorAll("[data-account-tab]"));
@@ -75,6 +76,7 @@ let activeItemId = null;
 let activeItemKind = "card";
 let activeCategory = "all";
 let currentRechargeConfig = null;
+let publicRechargeConfig = null;
 let currentRechargeOrders = [];
 let selectedRechargeAmount = null;
 let selectedRechargeOrderType = "normal";
@@ -634,6 +636,44 @@ function formatCompactNumber(value) {
   return String(numeric);
 }
 
+function getEffectiveRechargeConfig() {
+  return currentRechargeConfig || publicRechargeConfig || null;
+}
+
+function getQuotaCashAmount(quotaAmount, rechargeConfig = getEffectiveRechargeConfig()) {
+  const quota = Number(quotaAmount || 0);
+  const exchangeQuota = Number(rechargeConfig?.exchange_quota || 0);
+  const exchangeYuan = Number(rechargeConfig?.exchange_yuan || 0);
+  if (!Number.isFinite(quota) || quota <= 0 || exchangeQuota <= 0 || exchangeYuan <= 0) {
+    return null;
+  }
+  return (quota * exchangeYuan) / exchangeQuota;
+}
+
+function formatCashAmount(amount) {
+  const numeric = Number(amount);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+  if (Math.abs(numeric - Math.round(numeric)) < 0.001) {
+    return `¥${Math.round(numeric)}`;
+  }
+  return `¥${numeric.toFixed(2)}`;
+}
+
+function getProductCashPriceText(product, rechargeConfig = getEffectiveRechargeConfig()) {
+  const amount = getQuotaCashAmount(product?.price_quota, rechargeConfig);
+  if (amount === null) return "";
+  return `约${formatCashAmount(amount)}`;
+}
+
+function getDirectPurchaseAmountYuan(product, rechargeConfig = getEffectiveRechargeConfig()) {
+  const cashAmount = getQuotaCashAmount(product?.price_quota, rechargeConfig);
+  if (cashAmount === null) return null;
+  return Math.max(
+    Number(rechargeConfig?.min_amount_yuan || 1),
+    Math.ceil(cashAmount)
+  );
+}
+
 function formatFullStatValue(value, isFull = false) {
   const compact = formatCompactNumber(value);
   return isFull ? `${compact}（满）` : compact;
@@ -741,6 +781,7 @@ function renderProducts(products) {
     .map((product) => {
       const termBadges = parseTermBadges(product.ext_attrs, product);
       const stockLabel = product.stock === null || product.stock === undefined ? "不限量" : `库存 ${Number(product.stock || 0)}`;
+      const cashPriceText = getProductCashPriceText(product);
       const subtitle = isBundle(product)
         ? `${getTierLabel(product)} / ${escapeHtml(product.uid || "")}`
         : `${getTierLabel(product)} / ID ${product.legacy_id} / ${escapeHtml(getSeasonDisplayText(product))}`;
@@ -768,10 +809,12 @@ function renderProducts(products) {
           </div>
           <div class="chip-row">
             <span class="chip">价 ${formatCompactNumber(product.price_quota || 0)}</span>
+            ${cashPriceText ? `<span class="chip accent">${escapeHtml(cashPriceText)}</span>` : ""}
             <span class="chip">${escapeHtml(product.stock_label || stockLabel)}</span>
           </div>
           <div class="actions">
             <button class="ghost detail-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">详情</button>
+            <button class="ghost direct-buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">转账购买</button>
             <button class="primary buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">购买</button>
           </div>
         </article>
@@ -841,6 +884,14 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
     ["pending", "cancel_requested"].includes(String(order.status || ""))
   );
   const rewardEarned = Boolean(profile?.beginner_guide_reward_earned);
+
+  if (beginnerFlowSection) {
+    beginnerFlowSection.classList.toggle("hidden", rewardEarned);
+  }
+  if (rewardEarned) {
+    beginnerGuideSteps.innerHTML = "";
+    return;
+  }
 
   const steps = [
     {
@@ -1304,6 +1355,7 @@ function openProductModal(itemId, itemKind) {
   const stockLabel = product.stock === null || product.stock === undefined ? "不限量" : `${Number(product.stock)} 件`;
   const attackIsFull = isAttackFull(product);
   const hpIsFull = isHpFull(product);
+  const cashPriceText = getProductCashPriceText(product);
   const detailRows = isBundle(product)
     ? `
         <div class="detail-row"><strong>类型</strong><span>套餐 SKU</span></div>
@@ -1328,12 +1380,13 @@ function openProductModal(itemId, itemKind) {
         ${isBundle(product) ? `<div class="product-meta">${escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>` : ""}
         <div class="term-row">${termBadges.length > 0 ? termBadges.map((badge) => renderTermBadge(badge)).join("") : '<span class="term-empty">无额外词条</span>'}</div>
         <div class="detail-list">
-          <div class="detail-row"><strong>价格</strong><span>${Number(product.price_quota || 0)} 额度</span></div>
+          <div class="detail-row"><strong>价格</strong><span>${Number(product.price_quota || 0)} 额度${cashPriceText ? ` / ${escapeHtml(cashPriceText)}` : ""}</span></div>
           ${detailRows}
           <div class="detail-row"><strong>购买账号</strong><span>${escapeHtml(session?.profile?.game_role_name || "未登录")}</span></div>
         </div>
         <div class="actions">
           <button class="ghost" type="button" id="modal-close-btn">返回</button>
+          <button class="ghost" type="button" id="direct-buy-btn">转账购买</button>
           <button class="primary" type="button" id="confirm-buy-btn">确认购买</button>
         </div>
       </div>
@@ -1344,6 +1397,9 @@ function openProductModal(itemId, itemKind) {
   productDetailModal.setAttribute("aria-hidden", "false");
   bindImageFallbacks(productDetailBody);
   document.getElementById("modal-close-btn").addEventListener("click", closeProductModal);
+  document
+    .getElementById("direct-buy-btn")
+    .addEventListener("click", () => startDirectPurchase(product.item_id, product.item_kind || "card"));
   document.getElementById("confirm-buy-btn").addEventListener("click", confirmPurchase);
 }
 
@@ -1356,10 +1412,51 @@ function closeProductModal() {
   setProductDetailMessage("");
 }
 
+function startDirectPurchase(itemId, itemKind = "card") {
+  const product = findProduct(itemId, itemKind);
+  if (!product) return;
+
+  const session = loadSession();
+  if (!session?.token) {
+    closeProductModal();
+    setNotice("请先登录账号，再用转账购买功能。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+
+  const rechargeConfig = getEffectiveRechargeConfig();
+  const amountYuan = getDirectPurchaseAmountYuan(product, rechargeConfig);
+  if (!rechargeConfig || amountYuan === null) {
+    setNotice("当前还没拿到充值比例，请稍后再试。", "error");
+    return;
+  }
+
+  selectedRechargeOrderType = "normal";
+  selectedRechargeAmount = amountYuan;
+  closeProductModal();
+  window.location.hash = "recharge-panel";
+  activateAccountTab("recharge", { scroll: true });
+  if (currentRechargeConfig) {
+    renderRechargeSection(session.profile || null, currentRechargeConfig, currentRechargeOrders);
+  } else {
+    loadAccount().catch((error) => setNotice(`账户信息加载失败：${error.message}`, "error"));
+  }
+  setAccountMessage(
+    `已按 ${product.name} 预填转账金额 ${amountYuan} 元，预计覆盖 ${Number(product.price_quota || 0)} 额度。到账后可直接回来购买。`,
+    "success"
+  );
+}
+
 async function loadProducts() {
   const query = new URLSearchParams();
   if (keywordInput.value.trim()) query.set("keyword", keywordInput.value.trim());
   const suffix = query.toString();
+  try {
+    const meta = await apiFetch("/products/meta");
+    publicRechargeConfig = meta?.recharge_config || publicRechargeConfig;
+  } catch (error) {
+    // Keep product list usable even if the public pricing meta is temporarily unavailable.
+  }
   const products = await apiFetch(`/products${suffix ? `?${suffix}` : ""}`);
   allProducts = products;
   applyProductView({ resetPage: true });
@@ -1387,6 +1484,7 @@ async function loadAccount() {
     ]);
     saveSession({ ...session, profile });
     currentRechargeConfig = rechargeConfig;
+    publicRechargeConfig = rechargeConfig;
     currentRechargeOrders = rechargeOrders || [];
     renderSessionSummary(profile);
     renderProfile(profile, quota, orders || []);
@@ -1824,6 +1922,15 @@ productCategoryTabs.addEventListener("click", (event) => {
   applyProductView({ resetPage: true });
 });
 productGrid.addEventListener("click", (event) => {
+  const directBuyButton = event.target.closest(".direct-buy-btn");
+  if (directBuyButton) {
+    startDirectPurchase(
+      directBuyButton.getAttribute("data-item-id"),
+      directBuyButton.getAttribute("data-item-kind")
+    );
+    return;
+  }
+
   const button = event.target.closest(".detail-btn, .buy-btn");
   if (!button) return;
   openProductModal(button.getAttribute("data-item-id"), button.getAttribute("data-item-kind"));

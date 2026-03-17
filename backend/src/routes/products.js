@@ -3,8 +3,29 @@ const { pool } = require("../db/pool");
 const { useFileStore } = require("../services/runtime");
 const { ensureBundleSeeds } = require("../services/bundle-catalog");
 const devStore = require("../services/dev-store");
+const { getRechargeConfig } = require("../config/recharge-config");
 
 const productsRouter = express.Router();
+
+productsRouter.get("/meta", async (req, res, next) => {
+  try {
+    const rechargeConfig = useFileStore()
+      ? getRechargeConfig(devStore.getRechargeConfig())
+      : getRechargeConfig();
+
+    return res.json({
+      recharge_config: {
+        enabled: Boolean(rechargeConfig.enabled),
+        exchange_yuan: Number(rechargeConfig.exchange_yuan || 0),
+        exchange_quota: Number(rechargeConfig.exchange_quota || 0),
+        quota_per_yuan: Number(rechargeConfig.quota_per_yuan || 0),
+        min_amount_yuan: Number(rechargeConfig.min_amount_yuan || 0),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 productsRouter.get("/", async (req, res, next) => {
   try {
