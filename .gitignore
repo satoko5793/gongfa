@@ -20,8 +20,5 @@ mp-app/project.private.config.json
 
 message-history-*.json
 
-xyzw_web_helper/*
-!xyzw_web_helper/public/
-xyzw_web_helper/public/*
-!xyzw_web_helper/public/.gitkeep
+xyzw_web_helper/
 素材/
