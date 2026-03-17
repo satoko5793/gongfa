@@ -936,14 +936,20 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
     const quotaPerUnit = Math.max(Number(rechargeConfig?.residual_quota_per_unit || 1), 1);
     const unitLabel = rechargeConfig?.residual_unit_label || "残卷";
     const targetRoleId = rechargeConfig?.residual_admin_role_id || "584967604";
+    const baseQuota = normalizedAmount * quotaPerUnit;
+    const bonusQuota = profile?.season_member_active
+      ? Math.floor(baseQuota * Number(rechargeConfig?.season_member_bonus_rate || 0))
+      : 0;
     return {
       orderType: normalizedType,
       amountYuan: normalizedAmount,
-      baseQuota: normalizedAmount * quotaPerUnit,
-      bonusQuota: 0,
-      totalQuota: normalizedAmount * quotaPerUnit,
+      baseQuota,
+      bonusQuota,
+      totalQuota: baseQuota + bonusQuota,
       amountLabel: `1 ${unitLabel} = ${quotaPerUnit} 额度`,
-      detailLabel: `游戏内直接转给管理员 ${targetRoleId}，管理员审核后到账。`,
+      detailLabel: profile?.season_member_active
+        ? `游戏内直接转给管理员 ${targetRoleId}，会员加成已生效，本次额外赠送 ${bonusQuota} 额度。`
+        : `游戏内直接转给管理员 ${targetRoleId}，管理员审核后到账。`,
       submitLabel: "已转赠，提交审核",
       lockedAmount: false,
       amountInputLabel: `${unitLabel}数量`,

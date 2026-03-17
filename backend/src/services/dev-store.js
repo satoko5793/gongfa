@@ -1256,7 +1256,8 @@ function createRechargeOrder(
 
   const baseQuotaAmount = Number(quotaAmount);
   const bonusQuotaAmount =
-    normalizedOrderType === "normal" && memberState.active
+    (normalizedOrderType === "normal" || normalizedOrderType === "residual_transfer") &&
+    memberState.active
       ? Math.floor(baseQuotaAmount * Number(config.season_member_bonus_rate || 0))
       : 0;
 
