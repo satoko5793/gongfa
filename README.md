@@ -32,6 +32,13 @@
 - 后台：`http://101.34.247.186/admin.html`
 - 测试服：通过 SSH 隧道访问本机 `http://127.0.0.1:8081/`
 
+当前服务器上的环境划分：
+
+- 正式服目录：`/opt/gongfa`
+- 测试服目录：`/opt/gongfa-staging`
+- 正式 compose 项目：`gongfa-prod`
+- 测试 compose 项目：`gongfa-staging`
+
 ## 项目目录
 
 - `backend/src/server.js`：服务入口
@@ -106,15 +113,16 @@ node src/server.js
 
 ```bash
 cd /opt/gongfa
-docker compose -f infra/docker-compose.app.yml ps
-docker compose -f infra/docker-compose.app.yml logs -f
-docker compose -f infra/docker-compose.app.yml up -d --build
-docker compose -f infra/docker-compose.app.yml restart
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml ps
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml logs -f
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml up -d --build
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml restart
 
 # staging
-docker compose -f infra/docker-compose.staging.yml ps
-docker compose -f infra/docker-compose.staging.yml logs -f
-docker compose -f infra/docker-compose.staging.yml up -d --build
+cd /opt/gongfa-staging
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml ps
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml logs -f
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml up -d --build
 ```
 
 两套 compose 文件已经写死不同项目名，避免测试服和正式服互相重建。

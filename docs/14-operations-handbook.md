@@ -15,6 +15,7 @@
 项目部署目录：
 
 - `/opt/gongfa`
+- `/opt/gongfa-staging`
 
 ## 服务结构
 
@@ -36,20 +37,20 @@
 
 ```bash
 cd /opt/gongfa
-docker compose -f infra/docker-compose.app.yml ps
-docker compose -f infra/docker-compose.app.yml logs -f
-docker compose -f infra/docker-compose.app.yml up -d --build
-docker compose -f infra/docker-compose.app.yml restart
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml ps
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml logs -f
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml up -d --build
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml restart
 ```
 
 测试服命令：
 
 ```bash
 cd /opt/gongfa-staging
-docker compose -f infra/docker-compose.staging.yml ps
-docker compose -f infra/docker-compose.staging.yml logs -f
-docker compose -f infra/docker-compose.staging.yml up -d --build
-docker compose -f infra/docker-compose.staging.yml restart
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml ps
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml logs -f
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml up -d --build
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml restart
 ```
 
 注意：
@@ -57,6 +58,8 @@ docker compose -f infra/docker-compose.staging.yml restart
 - `infra/docker-compose.app.yml` 固定项目名为 `gongfa-prod`
 - `infra/docker-compose.staging.yml` 固定项目名为 `gongfa-staging`
 - 不要再手动把两套环境塞进同一个 compose project
+- 当前正式容器：`gongfa-web`
+- 当前测试容器：`gongfa-web-staging`
 
 ## 常用检查命令
 
@@ -73,13 +76,20 @@ curl http://127.0.0.1:8081/health
 ```bash
 docker ps
 docker inspect gongfa-web
+docker inspect gongfa-web-staging
+docker compose ls
 ```
 
 查看最近日志：
 
 ```bash
 cd /opt/gongfa
-docker compose -f infra/docker-compose.app.yml logs --tail=200
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml logs --tail=200
+```
+
+```bash
+cd /opt/gongfa-staging
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml logs --tail=200
 ```
 
 ## 当前数据模式
@@ -138,7 +148,7 @@ docker compose -f infra/docker-compose.app.yml logs --tail=200
 
 ```bash
 cd /opt/gongfa-staging
-docker compose -f infra/docker-compose.staging.yml up -d --build
+docker compose -p gongfa-staging -f infra/docker-compose.staging.yml up -d --build
 ```
 
 3. 检查：
@@ -159,7 +169,7 @@ ssh -L 8081:127.0.0.1:8081 root@101.34.247.186
 
 ```bash
 cd /opt/gongfa
-docker compose -f infra/docker-compose.app.yml up -d --build
+docker compose -p gongfa-prod -f infra/docker-compose.app.yml up -d --build
 ```
 
 6. 检查：
@@ -175,6 +185,16 @@ docker compose -f infra/docker-compose.app.yml up -d --build
 - 使用独立文件数据：`/opt/gongfa-staging/backend/dev-data.staging.json`
 - 端口：`127.0.0.1:8081 -> 8090`
 - 容器名：`gongfa-web-staging`
+- compose 项目名：`gongfa-staging`
+
+## 当前正式服约定
+
+- 使用目录：`/opt/gongfa`
+- 使用环境变量：`/opt/gongfa/.env.production`
+- 使用文件数据：`/opt/gongfa/backend/dev-data.json`
+- 端口：`0.0.0.0:80 -> 8090`
+- 容器名：`gongfa-web`
+- compose 项目名：`gongfa-prod`
 
 不要让测试服和正式服共用数据文件，否则测试操作会污染正式数据。
 
