@@ -1669,7 +1669,9 @@ productPagination?.addEventListener("click", (event) => {
 rechargeBody?.addEventListener("click", (event) => {
   const typeButton = event.target.closest("[data-recharge-order-type]");
   if (typeButton) {
-    selectedRechargeOrderType = typeButton.getAttribute("data-recharge-order-type") === "season_member" ? "season_member" : "normal";
+    const nextType = String(typeButton.getAttribute("data-recharge-order-type") || "").trim();
+    selectedRechargeOrderType =
+      nextType === "season_member" || nextType === "residual_transfer" ? nextType : "normal";
     const session = loadSession();
     renderRechargeSection(session?.profile || null, currentRechargeConfig, currentRechargeOrders);
     return;
