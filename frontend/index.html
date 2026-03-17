@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260317m" />
+    <link rel="stylesheet" href="styles.css?v=20260317l" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -262,28 +262,19 @@
         <div id="account-message" class="notice"></div>
 
         <div class="section-panel" data-account-panel="overview">
-          <div class="overview-grid account-overview-grid">
-            <div class="overview-card">
+          <div class="account-grid">
+            <div class="panel">
               <div class="panel-title">账户信息</div>
-              <div id="account-profile" class="stack-list compact"></div>
-              <div class="actions overview-actions">
+              <div id="account-profile" class="stack-list"></div>
+              <div class="actions" style="margin-top: 12px;">
                 <button id="account-logout-btn" type="button" class="ghost">退出登录</button>
                 <a id="account-switch-link" class="ghost-link" href="#bind">切换账号</a>
               </div>
             </div>
-            <div class="overview-card">
+            <div class="panel">
               <div class="panel-title">额度余额</div>
               <div id="quota-balance" class="quota-balance">-</div>
-              <div id="account-balance-summary" class="stack-list compact"></div>
               <div class="muted">充值审核通过后会自动到账，订单扣减和退款也会同步更新。</div>
-            </div>
-            <div class="overview-card">
-              <div class="panel-title">鏂版墜杩涘害</div>
-              <div id="account-guide-summary" class="stack-list compact"></div>
-            </div>
-            <div class="overview-card">
-              <div class="panel-title">鏈€杩戝姩鎬?/div>
-              <div id="account-activity-summary" class="stack-list compact"></div>
             </div>
           </div>
         </div>
@@ -383,27 +374,6 @@
     </div>
 
     <footer class="footer">当前先把网页商城主流程跑通，支付与更多自动化能力后续再补。</footer>
-    <div id="recharge-confirm-modal" class="modal-backdrop hidden" aria-hidden="true">
-      <div
-        class="modal-card recharge-confirm-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="recharge-confirm-title"
-      >
-        <div class="modal-head">
-          <div>
-            <div class="card-title" id="recharge-confirm-title">鍐嶇‘璁や竴娆?/div>
-            <div class="card-sub">纭鏂瑰紡銆佹暟閲忓拰棰勮鍒拌处鍚庯紝鍐嶆彁浜ょ粰绠＄悊鍛樺鏍搞€?/div>
-          </div>
-          <button id="close-recharge-confirm-btn" class="ghost" type="button">杩斿洖淇敼</button>
-        </div>
-        <div id="recharge-confirm-body" class="modal-body"></div>
-        <div id="recharge-confirm-message" class="notice"></div>
-        <div class="actions modal-actions">
-          <button id="recharge-confirm-submit-btn" class="primary" type="button">纭鎻愪氦</button>
-        </div>
-      </div>
-    </div>
-    <script type="module" src="./app.js?v=20260317m"></script>
+    <script type="module" src="./app.js?v=20260317l"></script>
   </body>
 </html>

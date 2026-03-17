@@ -25,9 +25,6 @@ const bindSection = document.getElementById("bind");
 const accountSection = document.getElementById("account");
 const accountProfile = document.getElementById("account-profile");
 const quotaBalance = document.getElementById("quota-balance");
-const accountBalanceSummary = document.getElementById("account-balance-summary");
-const accountGuideSummary = document.getElementById("account-guide-summary");
-const accountActivitySummary = document.getElementById("account-activity-summary");
 const orderList = document.getElementById("order-list");
 const accountMessage = document.getElementById("account-message");
 const accountLogoutBtn = document.getElementById("account-logout-btn");
@@ -71,10 +68,6 @@ const bindNicknameInput = document.getElementById("bind-nickname");
 const productDetailModal = document.getElementById("product-detail-modal");
 const productDetailBody = document.getElementById("product-detail-body");
 const productDetailMessage = document.getElementById("product-detail-message");
-const rechargeConfirmModal = document.getElementById("recharge-confirm-modal");
-const rechargeConfirmBody = document.getElementById("recharge-confirm-body");
-const rechargeConfirmMessage = document.getElementById("recharge-confirm-message");
-const rechargeConfirmSubmitBtn = document.getElementById("recharge-confirm-submit-btn");
 
 let allProducts = [];
 let currentProducts = [];
@@ -85,8 +78,6 @@ let currentRechargeConfig = null;
 let currentRechargeOrders = [];
 let selectedRechargeAmount = null;
 let selectedRechargeOrderType = "normal";
-let pendingRechargeSubmission = null;
-let isSubmittingRecharge = false;
 let productSearchTimer = null;
 let activeAuthTab = "register";
 let activeAccountTab = "overview";
@@ -838,7 +829,9 @@ function renderGuideGlyph(type) {
   `;
 }
 
-function getBeginnerGuideState(profile, orders = [], rechargeOrders = []) {
+function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
+  if (!beginnerGuideSteps || !beginnerGuideSummary || !beginnerGuideReward) return;
+
   const rewardQuota = Number(profile?.beginner_guide_reward_quota || BEGINNER_GUIDE_REWARD_QUOTA);
   const hasAccount = Boolean(profile);
   const hasApprovedRecharge = rechargeOrders.some((order) => order.status === "approved");
@@ -848,40 +841,6 @@ function getBeginnerGuideState(profile, orders = [], rechargeOrders = []) {
     ["pending", "cancel_requested"].includes(String(order.status || ""))
   );
   const rewardEarned = Boolean(profile?.beginner_guide_reward_earned);
-
-  return {
-    rewardQuota,
-    hasAccount,
-    hasApprovedRecharge,
-    hasPendingRecharge,
-    hasConfirmedOrder,
-    hasPendingOrder,
-    rewardEarned,
-  };
-}
-
-function renderStackItems(target, items, emptyText) {
-  if (!target) return;
-  const normalizedItems = (items || []).filter(Boolean);
-  if (normalizedItems.length === 0) {
-    target.innerHTML = `<div class="stack-item">${emptyText}</div>`;
-    return;
-  }
-  target.innerHTML = normalizedItems.map((item) => `<div class="stack-item">${item}</div>`).join("");
-}
-
-function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
-  if (!beginnerGuideSteps || !beginnerGuideSummary || !beginnerGuideReward) return;
-
-  const {
-    rewardQuota,
-    hasAccount,
-    hasApprovedRecharge,
-    hasPendingRecharge,
-    hasConfirmedOrder,
-    hasPendingOrder,
-    rewardEarned,
-  } = getBeginnerGuideState(profile, orders, rechargeOrders);
 
   const steps = [
     {
@@ -962,79 +921,7 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
     .join("");
 }
 
-function renderAccountOverviewSummary(profile, quota, orders = [], rechargeOrders = []) {
-  if (!profile) {
-    quotaBalance.textContent = "-";
-    renderStackItems(accountBalanceSummary, [], "鐧诲綍鍚庡彲鏌ョ湅棰濆害鍜屼細鍛樻潈鐩娿€?");
-    renderStackItems(accountGuideSummary, [], "鐧诲綍鍚庡彲鏌ョ湅鏂版墜鏁欏杩涘害銆€");
-    renderStackItems(accountActivitySummary, [], "鐧诲綍鍚庡彲鏌ョ湅鏈€杩戝姩鎬併€?");
-    return;
-  }
-
-  const memberStatus = profile.season_member_active
-    ? `鏈禌瀛ｄ細鍛橈紝鏉冪泭鎴 ${escapeHtml(formatDate(profile.season_member_expires_at || ""))}`
-    : "褰撳墠鏈紑閫?;
-  const memberBenefit = profile.season_member_active
-    ? `鍚庣画鑾峰緱棰濆害棰濆 +${Number(profile.season_member_bonus_percent || 0)}%`
-    : `寮€閫氬悗鑾峰緱棰濆害棰濆 +${Number(profile.season_member_bonus_percent || 0)}%`;
-  const beginnerRewardStatus = profile.beginner_guide_reward_earned
-    ? `宸查鍙?${Number(profile.beginner_guide_reward_quota || BEGINNER_GUIDE_REWARD_QUOTA)} 棰濆害`
-    : `瀹屾垚鏁欏涓夋鍚庡彲棰嗗彇 ${Number(profile.beginner_guide_reward_quota || BEGINNER_GUIDE_REWARD_QUOTA)} 棰濆害`;
-  const {
-    rewardQuota,
-    hasApprovedRecharge,
-    hasPendingRecharge,
-    hasConfirmedOrder,
-    hasPendingOrder,
-    rewardEarned,
-  } = getBeginnerGuideState(profile, orders, rechargeOrders);
-  const balanceValue = Number(quota?.balance ?? profile.quota_balance ?? 0);
-  const pendingRechargeCount = rechargeOrders.filter((order) => order.status === "pending_review").length;
-  const approvedRechargeCount = rechargeOrders.filter((order) => order.status === "approved").length;
-  const pendingOrderCount = orders.filter((order) =>
-    ["pending", "cancel_requested"].includes(String(order.status || ""))
-  ).length;
-  const confirmedOrderCount = orders.filter((order) => order.status === "confirmed").length;
-  const latestOrder = orders[0] || null;
-  const latestRechargeOrder = rechargeOrders[0] || null;
-
-  quotaBalance.textContent = formatCompactNumber(balanceValue);
-  renderStackItems(
-    accountBalanceSummary,
-    [
-      `褰撳墠浣欓锛?${balanceValue} 棰濆害`,
-      `浼氬憳鐘舵€侊細${memberStatus}`,
-      `浼氬憳鏉冪泭锛?${memberBenefit}`,
-    ],
-    "鏆傛棤棰濆害淇℃伅"
-  );
-  renderStackItems(
-    accountGuideSummary,
-    [
-      "绗?1 姝ワ細宸插畬鎴愭敞鍐岀櫥褰?",
-      `绗?2 姝ワ細${hasApprovedRecharge ? "宸插畬鎴愬厖鍊?" : hasPendingRecharge ? "鍏呭€煎緟瀹℃牳" : "鏈彁浜ゅ厖鍊?"}`,
-      `绗?3 姝ワ細${hasConfirmedOrder ? "宸插畬鎴愰鍗?" : hasPendingOrder ? "棣栧崟寰呯‘璁?" : "鏈畬鎴愰鍗?"}`,
-      `鏂版墜濂栧姳锛?${rewardEarned ? `宸插彂鏀?${rewardQuota} 棰濆害` : beginnerRewardStatus}`,
-    ],
-    "鏆傛棤鏁欏杩涘害"
-  );
-  renderStackItems(
-    accountActivitySummary,
-    [
-      `鍏呭€艰褰曪細寰呭鏍?${pendingRechargeCount} / 宸查€氳繃 ${approvedRechargeCount}`,
-      `璁㈠崟杩涘害锛氬緟澶勭悊 ${pendingOrderCount} / 宸插畬鎴?${confirmedOrderCount}`,
-      latestRechargeOrder
-        ? `鏈€杩戝厖鍊硷細${escapeHtml(formatRechargeOrderTitle(latestRechargeOrder))} / ${escapeHtml(formatRechargeStatus(latestRechargeOrder.status))}`
-        : "鏈€杩戝厖鍊硷細鏆傛棤璁板綍",
-      latestOrder
-        ? `鏈€杩戣鍗曪細#${latestOrder.id} / ${escapeHtml(formatOrderStatus(latestOrder.status))}`
-        : "鏈€杩戣鍗曪細鏆傛棤璁板綍",
-    ],
-    "鏆傛棤鍔ㄦ€佽褰?"
-  );
-}
-
-function renderProfile(profile, quota, orders, rechargeOrders = []) {
+function renderProfile(profile, quota, orders) {
   if (!profile) {
     accountProfile.innerHTML = '<div class="stack-item">请先登录后查看账号信息。</div>';
     quotaBalance.textContent = "-";
@@ -1400,151 +1287,6 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
     .join("");
 }
 
-function setRechargeConfirmMessage(text, type = "") {
-  if (!rechargeConfirmMessage) return;
-  rechargeConfirmMessage.textContent = text || "";
-  rechargeConfirmMessage.className = type ? `notice ${type}` : "notice";
-}
-
-function buildRechargeSuccessMessage(orderType, orderId) {
-  if (orderType === "season_member") {
-    return `璧涘浼氬憳鐢宠宸叉彁浜わ紝璁㈠崟 #${orderId} 绛夊緟绠＄悊鍛樺鏍搞€俙;
-  }
-  if (orderType === "residual_transfer") {
-    return `娈嬪嵎杞禒鐢宠宸叉彁浜わ紝璁㈠崟 #${orderId} 绛夊緟绠＄悊鍛樺鏍搞€俙;
-  }
-  return `鍏呭€肩敵璇峰凡鎻愪氦锛岃鍗?#${orderId} 绛夊緟绠＄悊鍛樺鏍搞€俙;
-}
-
-function openRechargeConfirmModal(draft) {
-  if (!rechargeConfirmModal || !rechargeConfirmBody) return;
-  pendingRechargeSubmission = draft;
-  const noteLine = draft.payerNote
-    ? `<div class="detail-row"><strong>琛ュ厖璇存槑</strong><span>${escapeHtml(draft.payerNote)}</span></div>`
-    : "";
-
-  rechargeConfirmBody.innerHTML = `
-    <div class="recharge-confirm-layout">
-      <div class="recharge-confirm-card">
-        <div class="panel-title">鏈鎻愪氦</div>
-        <div class="detail-list">
-          <div class="detail-row"><strong>鏂瑰紡</strong><span>${escapeHtml(draft.title)}</span></div>
-          <div class="detail-row"><strong>${escapeHtml(draft.amountLabel)}</strong><span>${escapeHtml(draft.amountDisplay)}</span></div>
-          <div class="detail-row"><strong>${escapeHtml(draft.referenceLabel)}</strong><span>${escapeHtml(draft.paymentReference)}</span></div>
-          ${noteLine}
-        </div>
-      </div>
-      <div class="recharge-confirm-card emphasis">
-        <div class="panel-title">鍒拌处璇︽儏</div>
-        <div class="detail-list">
-          <div class="detail-row"><strong>鍩虹鍒拌处</strong><span>${draft.quoteSummary.baseQuota} 棰濆害</span></div>
-          <div class="detail-row"><strong>浼氬憳鍔犳垚</strong><span>${draft.quoteSummary.bonusQuota} 棰濆害</span></div>
-          <div class="detail-row"><strong>鏈€缁堝埌璐?/strong><span>${draft.quoteSummary.totalQuota} 棰濆害</span></div>
-        </div>
-        <div class="muted recharge-confirm-tip">鎻愪氦鍚庝細杩涘叆绠＄悊鍛樺鏍搞€傚鏋滃～閿欎簡锛屽厛杩斿洖淇敼鍐嶆彁浜ゃ€?/div>
-      </div>
-    </div>
-  `;
-  setRechargeConfirmMessage("");
-  rechargeConfirmSubmitBtn.disabled = false;
-  rechargeConfirmSubmitBtn.textContent = "纭鎻愪氦";
-  rechargeConfirmModal.classList.remove("hidden");
-  rechargeConfirmModal.setAttribute("aria-hidden", "false");
-}
-
-function closeRechargeConfirmModal() {
-  pendingRechargeSubmission = null;
-  isSubmittingRecharge = false;
-  if (!rechargeConfirmModal || !rechargeConfirmBody) return;
-  rechargeConfirmModal.classList.add("hidden");
-  rechargeConfirmModal.setAttribute("aria-hidden", "true");
-  rechargeConfirmBody.innerHTML = "";
-  setRechargeConfirmMessage("");
-  if (rechargeConfirmSubmitBtn) {
-    rechargeConfirmSubmitBtn.disabled = false;
-    rechargeConfirmSubmitBtn.textContent = "纭鎻愪氦";
-  }
-}
-
-async function submitConfirmedRechargeOrder() {
-  if (!pendingRechargeSubmission || isSubmittingRecharge) return;
-  isSubmittingRecharge = true;
-  setRechargeConfirmMessage("");
-  rechargeConfirmSubmitBtn.disabled = true;
-  rechargeConfirmSubmitBtn.textContent = "姝ｅ湪鎻愪氦...";
-
-  const quoteSummary = getRechargeQuoteSummary(
-    sessionProfile,
-    currentRechargeConfig,
-    amountYuan,
-    orderType
-  );
-  const title =
-    orderType === "season_member"
-      ? "璧涘浼氬憳"
-      : orderType === "residual_transfer"
-        ? "娈嬪嵎杞禒"
-        : "鏅€氬厖鍊?";
-  const amountLabel =
-    orderType === "residual_transfer"
-      ? `${currentRechargeConfig?.residual_unit_label || "娈嬪嵎"}鏁伴噺`
-      : "鍏呭€兼暟閲?";
-  const amountDisplay =
-    orderType === "residual_transfer"
-      ? `${amountYuan} ${currentRechargeConfig?.residual_unit_label || "娈嬪嵎"}`
-      : `${amountYuan} 鍏?;
-
-  setAccountMessage("");
-  openRechargeConfirmModal({
-    orderType,
-    title,
-    amountYuan,
-    amountLabel,
-    amountDisplay,
-    paymentReference,
-    payerNote,
-    referenceLabel: quoteSummary.referenceLabel,
-    quoteSummary,
-  });
-  return;
-
-  try {
-    const result = await apiFetch("/me/recharge-orders", {
-      method: "POST",
-      body: JSON.stringify({
-        order_type: pendingRechargeSubmission.orderType,
-        amount_yuan: pendingRechargeSubmission.amountYuan,
-        payment_reference: pendingRechargeSubmission.paymentReference,
-        payer_note: pendingRechargeSubmission.payerNote,
-      }),
-    });
-    selectedRechargeAmount = pendingRechargeSubmission.amountYuan;
-    selectedRechargeOrderType = "normal";
-    closeRechargeConfirmModal();
-    setAccountMessage(buildRechargeSuccessMessage(pendingRechargeSubmission.orderType, result.id), "success");
-    await loadAccount();
-  } catch (error) {
-    const code = error?.payload?.error || error?.message;
-    const customMessage =
-      code === "season_member_already_active"
-        ? "浣犳湰璧涘宸茬粡鏄細鍛樹簡锛屾棤闇€閲嶅寮€閫氥€?"
-        : code === "season_member_pending_review"
-          ? "浣犵殑璧涘浼氬憳鐢宠姝ｅ湪瀹℃牳涓紝璇峰嬁閲嶅鎻愪氦銆?"
-          : code === "season_member_disabled"
-            ? "褰撳墠鏆傛湭寮€鏀捐禌瀛ｄ細鍛樸€?"
-            : code === "residual_transfer_disabled"
-              ? "褰撳墠鏆傛湭寮€鏀炬畫鍗疯浆璧犮€?"
-              : pickErrorMessage(error, "鎻愪氦澶辫触");
-    setRechargeConfirmMessage(`鎻愪氦澶辫触锛?${customMessage}`, "error");
-  } finally {
-    isSubmittingRecharge = false;
-    if (rechargeConfirmSubmitBtn) {
-      rechargeConfirmSubmitBtn.disabled = false;
-      rechargeConfirmSubmitBtn.textContent = "纭鎻愪氦";
-    }
-  }
-}
-
 function findProduct(itemId, itemKind) {
   return currentProducts.find((item) => Number(item.item_id) === Number(itemId) && String(item.item_kind) === String(itemKind)) || null;
 }
@@ -1630,7 +1372,6 @@ async function loadAccount() {
     currentRechargeOrders = [];
     renderSessionSummary(null);
     renderProfile(null, null, []);
-    renderAccountOverviewSummary(null, null, [], []);
     renderBeginnerGuide(null, [], []);
     renderRechargeSection(null, null, []);
     return;
@@ -1648,8 +1389,7 @@ async function loadAccount() {
     currentRechargeConfig = rechargeConfig;
     currentRechargeOrders = rechargeOrders || [];
     renderSessionSummary(profile);
-    renderProfile(profile, quota, orders || [], rechargeOrders || []);
-    renderAccountOverviewSummary(profile, quota, orders || [], rechargeOrders || []);
+    renderProfile(profile, quota, orders || []);
     renderBeginnerGuide(profile, orders || [], rechargeOrders || []);
     renderRechargeSection(profile, rechargeConfig, rechargeOrders || []);
     setNotice("");
@@ -1660,7 +1400,6 @@ async function loadAccount() {
       currentRechargeOrders = [];
       renderSessionSummary(null);
       renderProfile(null, null, []);
-      renderAccountOverviewSummary(null, null, [], []);
       renderBeginnerGuide(null, [], []);
       renderRechargeSection(null, null, []);
       setNotice("登录状态已失效，请重新登录。", "error");
@@ -2141,383 +1880,10 @@ productDetailModal.addEventListener("click", (event) => {
   if (event.target === productDetailModal) closeProductModal();
 });
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && rechargeConfirmModal && !rechargeConfirmModal.classList.contains("hidden")) {
-    if (!isSubmittingRecharge) closeRechargeConfirmModal();
-    return;
-  }
   if (event.key === "Escape" && !productDetailModal.classList.contains("hidden")) {
     closeProductModal();
   }
 });
-function submitRechargeOrder(event) {
-  event.preventDefault();
-  const session = loadSession();
-  if (!session?.token) {
-    setAccountMessage("璇峰厛鐧诲綍鍚庡啀鎻愪氦鍏呭€肩敵璇枫€?", "error");
-    return;
-  }
-
-  const amountInput = document.getElementById("recharge-amount-input");
-  const referenceInput = document.getElementById("recharge-payment-reference");
-  const noteInput = document.getElementById("recharge-note");
-  const orderType =
-    selectedRechargeOrderType === "season_member"
-      ? "season_member"
-      : selectedRechargeOrderType === "residual_transfer"
-        ? "residual_transfer"
-        : "normal";
-  const amountYuan =
-    orderType === "season_member"
-      ? Number(currentRechargeConfig?.season_member_price_yuan || 0)
-      : Number(amountInput?.value);
-  const paymentReference = referenceInput?.value?.trim() || "";
-  const payerNote = noteInput?.value?.trim() || "";
-  const sessionProfile = session.profile || null;
-  const pendingSeasonOrder = findPendingSeasonMemberOrder(currentRechargeOrders, currentRechargeConfig);
-
-  if (orderType === "normal") {
-    if (!Number.isInteger(amountYuan) || amountYuan < Number(currentRechargeConfig?.min_amount_yuan || 1)) {
-      setAccountMessage(`鍏呭€奸噾棰濅笉鑳戒綆浜?${Number(currentRechargeConfig?.min_amount_yuan || 1)} 鍏冦€?`, "error");
-      return;
-    }
-  } else if (orderType === "residual_transfer") {
-    if (!Number.isInteger(amountYuan) || amountYuan <= 0) {
-      setAccountMessage(`杞禒${currentRechargeConfig?.residual_unit_label || "娈嬪嵎"}鏁伴噺蹇呴』鏄ぇ浜?0 鐨勬暣鏁般€?`, "error");
-      return;
-    }
-  } else {
-    if (sessionProfile?.season_member_active) {
-      setAccountMessage("浣犳湰璧涘宸茬粡鏄細鍛樹簡锛屾棤闇€閲嶅寮€閫氥€?", "error");
-      return;
-    }
-    if (pendingSeasonOrder) {
-      setAccountMessage("浣犵殑璧涘浼氬憳鐢宠姝ｅ湪瀹℃牳涓紝璇峰嬁閲嶅鎻愪氦銆?", "error");
-      return;
-    }
-  }
-
-  if (!paymentReference) {
-    setAccountMessage("璇峰～鍐欎粯娆炬椂闂存垨杞禒鏃堕棿銆?", "error");
-    return;
-  }
-
-  const quoteSummary = getRechargeQuoteSummary(sessionProfile, currentRechargeConfig, amountYuan, orderType);
-  const title =
-    orderType === "season_member"
-      ? "璧涘浼氬憳"
-      : orderType === "residual_transfer"
-        ? "娈嬪嵎杞禒"
-        : "鏅€氬厖鍊?";
-  const amountLabel =
-    orderType === "residual_transfer"
-      ? `${currentRechargeConfig?.residual_unit_label || "娈嬪嵎"}鏁伴噺`
-      : "鍏呭€奸噾棰?";
-  const amountDisplay =
-    orderType === "residual_transfer"
-      ? `${amountYuan} ${currentRechargeConfig?.residual_unit_label || "娈嬪嵎"}`
-      : `${amountYuan} 鍏?;
-
-  setAccountMessage("");
-  openRechargeConfirmModal({
-    orderType,
-    title,
-    amountYuan,
-    amountLabel,
-    amountDisplay,
-    paymentReference,
-    payerNote,
-    referenceLabel: quoteSummary.referenceLabel,
-    quoteSummary,
-  });
-}
-
-async function submitConfirmedRechargeOrder() {
-  if (!pendingRechargeSubmission || isSubmittingRecharge) return;
-  isSubmittingRecharge = true;
-  setRechargeConfirmMessage("");
-  if (rechargeConfirmSubmitBtn) {
-    rechargeConfirmSubmitBtn.disabled = true;
-    rechargeConfirmSubmitBtn.textContent = "姝ｅ湪鎻愪氦...";
-  }
-
-  try {
-    const result = await apiFetch("/me/recharge-orders", {
-      method: "POST",
-      body: JSON.stringify({
-        order_type: pendingRechargeSubmission.orderType,
-        amount_yuan: pendingRechargeSubmission.amountYuan,
-        payment_reference: pendingRechargeSubmission.paymentReference,
-        payer_note: pendingRechargeSubmission.payerNote,
-      }),
-    });
-    selectedRechargeAmount = pendingRechargeSubmission.amountYuan;
-    selectedRechargeOrderType = "normal";
-    closeRechargeConfirmModal();
-    setAccountMessage(buildRechargeSuccessMessage(pendingRechargeSubmission.orderType, result.id), "success");
-    await loadAccount();
-  } catch (error) {
-    const code = error?.payload?.error || error?.message;
-    const customMessage =
-      code === "season_member_already_active"
-        ? "浣犳湰璧涘宸茬粡鏄細鍛樹簡锛屾棤闇€閲嶅寮€閫氥€?"
-        : code === "season_member_pending_review"
-          ? "浣犵殑璧涘浼氬憳鐢宠姝ｅ湪瀹℃牳涓紝璇峰嬁閲嶅鎻愪氦銆?"
-          : code === "season_member_disabled"
-            ? "褰撳墠鏆傛湭寮€鏀捐禌瀛ｄ細鍛樸€?"
-            : code === "residual_transfer_disabled"
-              ? "褰撳墠鏆傛湭寮€鏀炬畫鍗疯浆璧犮€?"
-              : pickErrorMessage(error, "鎻愪氦澶辫触");
-    setRechargeConfirmMessage(`鎻愪氦澶辫触锛?${customMessage}`, "error");
-  } finally {
-    isSubmittingRecharge = false;
-    if (rechargeConfirmSubmitBtn) {
-      rechargeConfirmSubmitBtn.disabled = false;
-      rechargeConfirmSubmitBtn.textContent = "纭鎻愪氦";
-    }
-  }
-}
-
-document.getElementById("close-recharge-confirm-btn")?.addEventListener("click", closeRechargeConfirmModal);
-rechargeConfirmSubmitBtn?.addEventListener("click", submitConfirmedRechargeOrder);
-rechargeConfirmModal?.addEventListener("click", (event) => {
-  if (event.target === rechargeConfirmModal && !isSubmittingRecharge) {
-    closeRechargeConfirmModal();
-  }
-});
-
-accountGuideSummary?.previousElementSibling && (accountGuideSummary.previousElementSibling.textContent = "\u65b0\u624b\u8fdb\u5ea6");
-accountActivitySummary?.previousElementSibling && (accountActivitySummary.previousElementSibling.textContent = "\u6700\u8fd1\u52a8\u6001");
-document.getElementById("recharge-confirm-title")?.replaceChildren("\u786e\u8ba4\u4e00\u6b21");
-document.getElementById("close-recharge-confirm-btn")?.replaceChildren("\u8fd4\u56de\u4fee\u6539");
-rechargeConfirmSubmitBtn?.replaceChildren("\u786e\u8ba4\u63d0\u4ea4");
-document
-  .querySelector("#recharge-confirm-title + .card-sub")
-  ?.replaceChildren("\u786e\u8ba4\u4fe1\u606f\u540e\u518d\u63d0\u4ea4\u5ba1\u6838");
-
-function renderAccountOverviewSummary(profile, quota, orders = [], rechargeOrders = []) {
-  if (!profile) {
-    quotaBalance.textContent = "-";
-    renderStackItems(accountBalanceSummary, ["Log in to see quota and membership status."], "No data");
-    renderStackItems(accountGuideSummary, ["Log in to view beginner guide progress."], "No data");
-    renderStackItems(accountActivitySummary, ["Log in to view recent account activity."], "No data");
-    return;
-  }
-
-  const balanceValue = Number(quota?.balance ?? profile.quota_balance ?? 0);
-  const guide = getBeginnerGuideState(profile, orders, rechargeOrders);
-  const pendingRechargeCount = rechargeOrders.filter((order) => order.status === "pending_review").length;
-  const approvedRechargeCount = rechargeOrders.filter((order) => order.status === "approved").length;
-  const pendingOrderCount = orders.filter((order) =>
-    ["pending", "cancel_requested"].includes(String(order.status || ""))
-  ).length;
-  const confirmedOrderCount = orders.filter((order) => order.status === "confirmed").length;
-  const latestOrder = orders[0] || null;
-  const latestRechargeOrder = rechargeOrders[0] || null;
-  const memberStatus = profile.season_member_active
-    ? `Season member until ${formatDate(profile.season_member_expires_at || "")}`
-    : "Season member not active";
-
-  quotaBalance.textContent = formatCompactNumber(balanceValue);
-  renderStackItems(accountBalanceSummary, [
-    `Balance: ${balanceValue} quota`,
-    memberStatus,
-    `Bonus rate: +${Number(profile.season_member_bonus_percent || 0)}%`,
-  ], "No balance data");
-  renderStackItems(accountGuideSummary, [
-    "Step 1: Registered and logged in",
-    `Step 2: ${guide.hasApprovedRecharge ? "Recharge completed" : guide.hasPendingRecharge ? "Recharge pending review" : "Recharge not submitted"}`,
-    `Step 3: ${guide.hasConfirmedOrder ? "First order completed" : guide.hasPendingOrder ? "First order pending confirmation" : "First order not completed"}`,
-    guide.rewardEarned
-      ? `Reward claimed: ${guide.rewardQuota} quota`
-      : `Reward available after all 3 steps: ${guide.rewardQuota} quota`,
-  ], "No guide data");
-  renderStackItems(accountActivitySummary, [
-    `Recharge: ${pendingRechargeCount} pending / ${approvedRechargeCount} approved`,
-    `Orders: ${pendingOrderCount} pending / ${confirmedOrderCount} confirmed`,
-    latestRechargeOrder
-      ? `Latest recharge: ${formatRechargeOrderTitle(latestRechargeOrder)} / ${formatRechargeStatus(latestRechargeOrder.status)}`
-      : "Latest recharge: none",
-    latestOrder
-      ? `Latest order: #${latestOrder.id} / ${formatOrderStatus(latestOrder.status)}`
-      : "Latest order: none",
-  ], "No recent activity");
-}
-
-function buildRechargeSuccessMessage(orderType, orderId) {
-  if (orderType === "season_member") {
-    return `Season member request submitted. Order #${orderId} is waiting for review.`;
-  }
-  if (orderType === "residual_transfer") {
-    return `Residual transfer request submitted. Order #${orderId} is waiting for review.`;
-  }
-  return `Recharge request submitted. Order #${orderId} is waiting for review.`;
-}
-
-function openRechargeConfirmModal(draft) {
-  if (!rechargeConfirmModal || !rechargeConfirmBody) return;
-  pendingRechargeSubmission = draft;
-  const noteLine = draft.payerNote
-    ? `<div class="detail-row"><strong>Note</strong><span>${escapeHtml(draft.payerNote)}</span></div>`
-    : "";
-
-  rechargeConfirmBody.innerHTML = `
-    <div class="recharge-confirm-layout">
-      <div class="recharge-confirm-card">
-        <div class="panel-title">Submission</div>
-        <div class="detail-list">
-          <div class="detail-row"><strong>Type</strong><span>${escapeHtml(draft.title)}</span></div>
-          <div class="detail-row"><strong>${escapeHtml(draft.amountLabel)}</strong><span>${escapeHtml(draft.amountDisplay)}</span></div>
-          <div class="detail-row"><strong>${escapeHtml(draft.referenceLabel)}</strong><span>${escapeHtml(draft.paymentReference)}</span></div>
-          ${noteLine}
-        </div>
-      </div>
-      <div class="recharge-confirm-card emphasis">
-        <div class="panel-title">Quota Preview</div>
-        <div class="detail-list">
-          <div class="detail-row"><strong>Base</strong><span>${draft.quoteSummary.baseQuota} quota</span></div>
-          <div class="detail-row"><strong>Member Bonus</strong><span>${draft.quoteSummary.bonusQuota} quota</span></div>
-          <div class="detail-row"><strong>Total</strong><span>${draft.quoteSummary.totalQuota} quota</span></div>
-        </div>
-        <div class="muted recharge-confirm-tip">Submit only after checking the method, amount, and arrival estimate.</div>
-      </div>
-    </div>
-  `;
-  setRechargeConfirmMessage("");
-  rechargeConfirmSubmitBtn.disabled = false;
-  rechargeConfirmSubmitBtn.textContent = "Confirm Submit";
-  rechargeConfirmModal.classList.remove("hidden");
-  rechargeConfirmModal.setAttribute("aria-hidden", "false");
-}
-
-function submitRechargeOrder(event) {
-  event.preventDefault();
-  const session = loadSession();
-  if (!session?.token) {
-    setAccountMessage("Please log in before submitting a recharge request.", "error");
-    return;
-  }
-
-  const amountInput = document.getElementById("recharge-amount-input");
-  const referenceInput = document.getElementById("recharge-payment-reference");
-  const noteInput = document.getElementById("recharge-note");
-  const orderType =
-    selectedRechargeOrderType === "season_member"
-      ? "season_member"
-      : selectedRechargeOrderType === "residual_transfer"
-        ? "residual_transfer"
-        : "normal";
-  const amountYuan =
-    orderType === "season_member"
-      ? Number(currentRechargeConfig?.season_member_price_yuan || 0)
-      : Number(amountInput?.value);
-  const paymentReference = referenceInput?.value?.trim() || "";
-  const payerNote = noteInput?.value?.trim() || "";
-  const sessionProfile = session.profile || null;
-  const pendingSeasonOrder = findPendingSeasonMemberOrder(currentRechargeOrders, currentRechargeConfig);
-
-  if (orderType === "normal" && (!Number.isInteger(amountYuan) || amountYuan < Number(currentRechargeConfig?.min_amount_yuan || 1))) {
-    setAccountMessage(`Amount must be at least ${Number(currentRechargeConfig?.min_amount_yuan || 1)} yuan.`, "error");
-    return;
-  }
-  if (orderType === "residual_transfer" && (!Number.isInteger(amountYuan) || amountYuan <= 0)) {
-    setAccountMessage(`${currentRechargeConfig?.residual_unit_label || "Transfer"} amount must be a positive integer.`, "error");
-    return;
-  }
-  if (orderType === "season_member" && sessionProfile?.season_member_active) {
-    setAccountMessage("Season member is already active for this account.", "error");
-    return;
-  }
-  if (orderType === "season_member" && pendingSeasonOrder) {
-    setAccountMessage("A season member request is already pending review.", "error");
-    return;
-  }
-  if (!paymentReference) {
-    setAccountMessage("Please fill in the payment or transfer time.", "error");
-    return;
-  }
-
-  const quoteSummary = getRechargeQuoteSummary(sessionProfile, currentRechargeConfig, amountYuan, orderType);
-  openRechargeConfirmModal({
-    orderType,
-    title:
-      orderType === "season_member"
-        ? "Season Member"
-        : orderType === "residual_transfer"
-          ? "Residual Transfer"
-          : "Standard Recharge",
-    amountYuan,
-    amountLabel:
-      orderType === "residual_transfer"
-        ? `${currentRechargeConfig?.residual_unit_label || "Transfer"} Amount`
-        : "Recharge Amount",
-    amountDisplay:
-      orderType === "residual_transfer"
-        ? `${amountYuan} ${currentRechargeConfig?.residual_unit_label || "Transfer"}`
-        : `${amountYuan} yuan`,
-    paymentReference,
-    payerNote,
-    referenceLabel: quoteSummary.referenceLabel,
-    quoteSummary,
-  });
-  setAccountMessage("");
-}
-
-async function submitConfirmedRechargeOrderFixed() {
-  if (!pendingRechargeSubmission || isSubmittingRecharge) return;
-  isSubmittingRecharge = true;
-  setRechargeConfirmMessage("");
-  if (rechargeConfirmSubmitBtn) {
-    rechargeConfirmSubmitBtn.disabled = true;
-    rechargeConfirmSubmitBtn.textContent = "Submitting...";
-  }
-
-  try {
-    const result = await apiFetch("/me/recharge-orders", {
-      method: "POST",
-      body: JSON.stringify({
-        order_type: pendingRechargeSubmission.orderType,
-        amount_yuan: pendingRechargeSubmission.amountYuan,
-        payment_reference: pendingRechargeSubmission.paymentReference,
-        payer_note: pendingRechargeSubmission.payerNote,
-      }),
-    });
-    selectedRechargeAmount = pendingRechargeSubmission.amountYuan;
-    selectedRechargeOrderType = "normal";
-    closeRechargeConfirmModal();
-    setAccountMessage(buildRechargeSuccessMessage(pendingRechargeSubmission.orderType, result.id), "success");
-    await loadAccount();
-  } catch (error) {
-    const code = error?.payload?.error || error?.message;
-    const customMessage =
-      code === "season_member_already_active"
-        ? "Season member is already active for this account."
-        : code === "season_member_pending_review"
-          ? "A season member request is already pending review."
-          : code === "season_member_disabled"
-            ? "Season member is currently unavailable."
-            : code === "residual_transfer_disabled"
-              ? "Residual transfer is currently unavailable."
-              : pickErrorMessage(error, "Submit failed");
-    setRechargeConfirmMessage(`Submit failed: ${customMessage}`, "error");
-  } finally {
-    isSubmittingRecharge = false;
-    if (rechargeConfirmSubmitBtn) {
-      rechargeConfirmSubmitBtn.disabled = false;
-      rechargeConfirmSubmitBtn.textContent = "Confirm Submit";
-    }
-  }
-}
-
-rechargeConfirmSubmitBtn?.addEventListener(
-  "click",
-  (event) => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    submitConfirmedRechargeOrderFixed();
-  },
-  true
-);
-
 window.addEventListener("message", (event) => applyIncomingPayload(event.data));
 window.addEventListener("storage", (event) => {
   if (event.key === "gongfa_session_v1") loadAccount();
