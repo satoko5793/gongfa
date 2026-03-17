@@ -10,6 +10,12 @@ function isInteger(value) {
   return Number.isInteger(value);
 }
 
+function isPositiveMoneyAmount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return false;
+  return Math.abs(numeric * 100 - Math.round(numeric * 100)) < 0.000001;
+}
+
 function validateBindInput(body) {
   const errors = [];
   if (!requiredString(body.game_role_id)) errors.push("game_role_id_required");
@@ -71,13 +77,18 @@ function validatePasswordChangeInput(body) {
 
 function validateRechargeOrderCreate(body) {
   const errors = [];
+  const orderType = String(body.order_type || "normal").trim() || "normal";
   if (
     body.order_type !== undefined &&
-    !["normal", "season_member", "residual_transfer"].includes(String(body.order_type || "").trim())
+    !["normal", "season_member", "residual_transfer"].includes(orderType)
   ) {
     errors.push("order_type_invalid");
   }
-  if (!Number.isInteger(body.amount_yuan) || body.amount_yuan <= 0) {
+  if (
+    (orderType === "residual_transfer" && !Number.isInteger(body.amount_yuan)) ||
+    (orderType !== "residual_transfer" && !isPositiveMoneyAmount(body.amount_yuan)) ||
+    Number(body.amount_yuan) <= 0
+  ) {
     errors.push("amount_yuan_invalid");
   }
   if (!requiredString(body.payment_reference)) {

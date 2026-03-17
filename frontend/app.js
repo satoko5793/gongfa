@@ -662,16 +662,19 @@ function formatCashAmount(amount) {
 function getProductCashPriceText(product, rechargeConfig = getEffectiveRechargeConfig()) {
   const amount = getQuotaCashAmount(product?.price_quota, rechargeConfig);
   if (amount === null) return "";
-  return `约${formatCashAmount(amount)}`;
+  return formatCashAmount(amount);
 }
 
 function getDirectPurchaseAmountYuan(product, rechargeConfig = getEffectiveRechargeConfig()) {
   const cashAmount = getQuotaCashAmount(product?.price_quota, rechargeConfig);
   if (cashAmount === null) return null;
-  return Math.max(
-    Number(rechargeConfig?.min_amount_yuan || 1),
-    Math.ceil(cashAmount)
-  );
+  return Number(cashAmount.toFixed(2));
+}
+
+function isPositiveMoneyAmount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return false;
+  return Math.abs(numeric * 100 - Math.round(numeric * 100)) < 0.000001;
 }
 
 function formatFullStatValue(value, isFull = false) {
@@ -1066,7 +1069,7 @@ function formatRechargeOrderAmountLine(order) {
     return `转赠：${Number(order?.transfer_amount || order?.amount_yuan || 0)} ${escapeHtml(order?.transfer_unit || "残卷")} / ${quotaLine}`;
   }
 
-  return `金额：${Number(order?.amount_yuan || 0)} 元 / ${quotaLine}`;
+  return `金额：${formatCashAmount(order?.amount_yuan || 0)} / ${quotaLine}`;
 }
 
 function formatRechargeReferenceLine(order) {
@@ -1150,7 +1153,7 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
   const totalQuota = baseQuota + bonusQuota;
   const detailLabel = profile?.season_member_active
     ? `会员加成已生效，本次额外赠送 ${bonusQuota} 额度。`
-    : `最低充值 ${Number(rechargeConfig?.min_amount_yuan || 1)} 元，非整组金额也会按当前比例折算到账。`;
+    : "支持任意金额转账，系统会按当前比例实时折算到账。";
 
   return {
     orderType: normalizedType,
@@ -1163,8 +1166,8 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
     submitLabel: "已付款，提交审核",
     lockedAmount: false,
     amountInputLabel: "充值金额（元）",
-    amountInputMin: Number(rechargeConfig?.min_amount_yuan || 1),
-    amountInputStep: 1,
+    amountInputMin: 0.01,
+    amountInputStep: 0.01,
     referenceLabel: "付款时间",
     referencePlaceholder: "建议填写付款时间，例如 19:42",
     notePlaceholder: "例如：已付款，如需补充可写角色名或付款方式",
@@ -1212,8 +1215,8 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
 
   const presets = Array.isArray(rechargeConfig.preset_amounts) && rechargeConfig.preset_amounts.length
     ? rechargeConfig.preset_amounts
-    : [rechargeConfig.min_amount_yuan || 10];
-  if (!Number.isInteger(selectedRechargeAmount) || selectedRechargeAmount <= 0) {
+    : [rechargeConfig.min_amount_yuan || rechargeConfig.exchange_yuan || 10];
+  if (!isPositiveMoneyAmount(selectedRechargeAmount)) {
     selectedRechargeAmount = Number(presets[0]);
   }
   const availableRechargeTypes = ["normal", "season_member"];
@@ -1442,7 +1445,7 @@ function startDirectPurchase(itemId, itemKind = "card") {
     loadAccount().catch((error) => setNotice(`账户信息加载失败：${error.message}`, "error"));
   }
   setAccountMessage(
-    `已按 ${product.name} 预填转账金额 ${amountYuan} 元，预计覆盖 ${Number(product.price_quota || 0)} 额度。到账后可直接回来购买。`,
+    `已按 ${product.name} 预填精确转账金额 ${formatCashAmount(amountYuan)}，预计覆盖 ${Number(product.price_quota || 0)} 额度。到账后可直接回来购买。`,
     "success"
   );
 }
@@ -1534,8 +1537,8 @@ async function submitRechargeOrder(event) {
   const pendingSeasonOrder = findPendingSeasonMemberOrder(currentRechargeOrders, currentRechargeConfig);
 
   if (orderType === "normal") {
-    if (!Number.isInteger(amountYuan) || amountYuan < Number(currentRechargeConfig?.min_amount_yuan || 1)) {
-      setAccountMessage(`充值金额不能低于 ${Number(currentRechargeConfig?.min_amount_yuan || 1)} 元。`, "error");
+    if (!isPositiveMoneyAmount(amountYuan)) {
+      setAccountMessage("充值金额必须大于 0，且最多保留两位小数。", "error");
       return;
     }
   } else if (orderType === "residual_transfer") {
@@ -1959,7 +1962,7 @@ rechargeBody?.addEventListener("click", (event) => {
   if (!amountButton) return;
   selectedRechargeAmount = Number(amountButton.getAttribute("data-recharge-amount") || 0);
   const amountInput = document.getElementById("recharge-amount-input");
-  if (amountInput && Number.isInteger(selectedRechargeAmount) && selectedRechargeAmount > 0) {
+  if (amountInput && isPositiveMoneyAmount(selectedRechargeAmount)) {
     amountInput.value = String(selectedRechargeAmount);
   }
   const session = loadSession();

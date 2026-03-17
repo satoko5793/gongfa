@@ -5,6 +5,17 @@ function parsePositiveInteger(value, fallback) {
   return normalized > 0 ? normalized : fallback;
 }
 
+function parseMoneyAmount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const normalized = Number(numeric.toFixed(2));
+  if (normalized <= 0) return null;
+  if (Math.abs(normalized * 100 - Math.round(normalized * 100)) > 0.000001) {
+    return null;
+  }
+  return normalized;
+}
+
 function parseRate(value, fallback) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -216,8 +227,8 @@ function getRechargeConfig(rawConfig = null) {
 
 function buildRechargeQuote(amountYuan, rechargeConfig) {
   const config = normalizeRechargeConfig(rechargeConfig || {});
-  const normalizedAmount = Number(amountYuan);
-  if (!Number.isInteger(normalizedAmount) || normalizedAmount < config.min_amount_yuan) {
+  const normalizedAmount = parseMoneyAmount(amountYuan);
+  if (normalizedAmount === null) {
     return null;
   }
 
