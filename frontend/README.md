@@ -84,3 +84,5 @@
 
 - 支付宝收款码：
   [frontend/payment/alipay-qr.jpg](/c:/Users/Administrator/Desktop/内包/gongfa/frontend/payment/alipay-qr.jpg)
+- 残卷转赠：
+  游戏内直接转给管理员 `584967604`，`1 残卷 = 1 额度`，由后台审核到账
