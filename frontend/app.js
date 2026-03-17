@@ -892,7 +892,7 @@ function formatRechargeOrderAmountLine(order) {
 }
 
 function formatRechargeReferenceLine(order) {
-  const label = isResidualTransferOrder(order) ? "转赠凭据" : "付款凭据";
+  const label = isResidualTransferOrder(order) ? "转赠时间" : "付款时间";
   return `${label}：${escapeHtml(order?.payment_reference || "-")}`;
 }
 
@@ -925,9 +925,9 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
       amountInputLabel: "充值金额（元）",
       amountInputMin: memberAmount,
       amountInputStep: 1,
-      referenceLabel: "支付宝付款备注或订单号",
-      referencePlaceholder: "建议填写付款备注、尾号或支付宝订单号",
-      notePlaceholder: "例如：已用本人支付宝转账，备注写了游戏 ID",
+      referenceLabel: "付款时间",
+      referencePlaceholder: "建议填写付款时间，例如 19:42",
+      notePlaceholder: "例如：已付款，如需补充可写角色名或付款方式",
     };
   }
 
@@ -949,9 +949,9 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
       amountInputLabel: `${unitLabel}数量`,
       amountInputMin: 1,
       amountInputStep: 1,
-      referenceLabel: "转赠凭据",
-      referencePlaceholder: "建议填写转赠时间、截图说明或游戏内邮件记录",
-      notePlaceholder: "例如：19:42 转给 584967604 共 300 残卷，角色名 XXX",
+      referenceLabel: "转赠时间",
+      referencePlaceholder: "建议填写转赠时间，例如 19:42",
+      notePlaceholder: "例如：19:42 转给 584967604 共 300 残卷",
     };
   }
 
@@ -981,9 +981,9 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
     amountInputLabel: "充值金额（元）",
     amountInputMin: Number(rechargeConfig?.min_amount_yuan || 1),
     amountInputStep: 1,
-    referenceLabel: "支付宝付款备注或订单号",
-    referencePlaceholder: "建议填写付款备注、尾号或支付宝订单号",
-    notePlaceholder: "例如：已用本人支付宝转账，备注写了游戏 ID",
+    referenceLabel: "付款时间",
+    referencePlaceholder: "建议填写付款时间，例如 19:42",
+    notePlaceholder: "例如：已付款，如需补充可写角色名或付款方式",
   };
 }
 

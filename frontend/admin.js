@@ -909,7 +909,7 @@ function renderRechargeOrders(orders) {
       const amountLine = isResidualRechargeOrder(order)
         ? `转赠数量：${Number(order.transfer_amount || order.amount_yuan || 0)} ${escapeHtml(order.transfer_unit || "残卷")} / 预计额度：${Number(order.quota_amount || 0)}`
         : `充值金额：${Number(order.amount_yuan || 0)} 元 / 预计额度：${Number(order.quota_amount || 0)}`;
-      const referenceLabel = isResidualRechargeOrder(order) ? "转赠凭据" : "付款备注";
+      const referenceLabel = isResidualRechargeOrder(order) ? "转赠时间" : "付款时间";
       const statusHint =
         order.status === "pending_review"
           ? `<div class="muted">${isResidualRechargeOrder(order) ? "审核通过后会自动给用户增加额度，请先核对游戏内转赠记录和凭据。" : "审核通过后会自动给用户增加额度，请先核对付款备注和金额。"}</div>`
