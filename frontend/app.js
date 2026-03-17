@@ -80,6 +80,7 @@ let publicRechargeConfig = null;
 let currentRechargeOrders = [];
 let selectedRechargeAmount = null;
 let selectedRechargeOrderType = "normal";
+let pendingDirectPurchaseContext = null;
 let productSearchTimer = null;
 let activeAuthTab = "register";
 let activeAccountTab = "overview";
@@ -671,6 +672,18 @@ function getDirectPurchaseAmountYuan(product, rechargeConfig = getEffectiveRecha
   return Number(cashAmount.toFixed(2));
 }
 
+function buildDirectPurchaseContext(product, rechargeConfig = getEffectiveRechargeConfig()) {
+  const amountYuan = getDirectPurchaseAmountYuan(product, rechargeConfig);
+  if (!product || amountYuan === null) return null;
+  return {
+    itemId: Number(product.item_id || 0),
+    itemKind: String(product.item_kind || "card"),
+    productName: String(product.name || "商品"),
+    quotaAmount: Number(product.price_quota || 0),
+    amountYuan,
+  };
+}
+
 function isPositiveMoneyAmount(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return false;
@@ -1228,6 +1241,13 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
   }
 
   const pendingSeasonOrder = findPendingSeasonMemberOrder(rechargeOrders, rechargeConfig);
+  const directPurchaseContext =
+    selectedRechargeOrderType === "normal" && pendingDirectPurchaseContext
+      ? pendingDirectPurchaseContext
+      : null;
+  if (directPurchaseContext && Number(selectedRechargeAmount) !== Number(directPurchaseContext.amountYuan)) {
+    selectedRechargeAmount = Number(directPurchaseContext.amountYuan);
+  }
   const quoteSummary = getRechargeQuoteSummary(
     profile,
     rechargeConfig,
@@ -1245,6 +1265,19 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
   const transferTargetRoleName = rechargeConfig?.residual_admin_role_name || "admin残卷";
   const transferTargetGameName = rechargeConfig?.residual_admin_game_name || "繁星✨秋";
   const transferUnitLabel = rechargeConfig?.residual_unit_label || "残卷";
+  const submitLabel = directPurchaseContext ? "已转账，提交购买审核" : quoteSummary.submitLabel;
+  const directPurchaseBannerHtml = directPurchaseContext
+    ? `
+        <div class="recharge-direct-banner">
+          <div>
+            <strong>当前是转账购买</strong>
+            <div class="muted">${escapeHtml(directPurchaseContext.productName)} / ${directPurchaseContext.quotaAmount} 额度 / ${escapeHtml(formatCashAmount(directPurchaseContext.amountYuan))}</div>
+            <div class="muted">这笔金额按商品精确价格预填，和普通充值分开显示。</div>
+          </div>
+          <button class="ghost" type="button" data-direct-purchase-clear="1">切回普通充值</button>
+        </div>
+      `
+    : "";
   const sideCardHtml = isResidualTransfer
     ? `
         <div class="recharge-qr-card">
@@ -1278,6 +1311,7 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
       <div class="recharge-layout-split">
         ${sideCardHtml}
         <form id="recharge-form" class="form-grid">
+          ${directPurchaseBannerHtml}
           <div class="preset-list">
             <button class="preset-chip ${selectedRechargeOrderType === "normal" ? "active" : ""}" type="button" data-recharge-order-type="normal">普通充值</button>
             <button class="preset-chip ${selectedRechargeOrderType === "season_member" ? "active" : ""}" type="button" data-recharge-order-type="season_member">赛季会员</button>
@@ -1288,9 +1322,9 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
             <span class="muted">${escapeHtml(quoteSummary.detailLabel)}</span>
           </div>
           <label>${escapeHtml(quoteSummary.amountInputLabel)}
-            <input id="recharge-amount-input" type="number" min="${Number(quoteSummary.amountInputMin || 1)}" step="${Number(quoteSummary.amountInputStep || 1)}" value="${quoteSummary.amountYuan}" ${quoteSummary.lockedAmount ? "readonly" : ""} />
+            <input id="recharge-amount-input" type="number" min="${Number(quoteSummary.amountInputMin || 1)}" step="${Number(quoteSummary.amountInputStep || 1)}" value="${quoteSummary.amountYuan}" ${(quoteSummary.lockedAmount || directPurchaseContext) ? "readonly" : ""} />
           </label>
-          ${selectedRechargeOrderType === "normal" ? `
+          ${selectedRechargeOrderType === "normal" && !directPurchaseContext ? `
             <div class="preset-list">
               ${presets
                 .map((amount) => `<button class="preset-chip ${Number(amount) === Number(selectedRechargeAmount) ? "active" : ""}" type="button" data-recharge-amount="${amount}">${amount} 元</button>`)
@@ -1309,7 +1343,7 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
             <textarea id="recharge-note" rows="3" placeholder="${escapeHtml(quoteSummary.notePlaceholder)}"></textarea>
           </label>
           <div class="actions">
-            <button id="recharge-submit-btn" class="primary" type="submit" ${seasonMemberDisabled && selectedRechargeOrderType === "season_member" ? "disabled" : ""}>${seasonMemberDisabled && selectedRechargeOrderType === "season_member" ? (profile.season_member_active ? "本赛季已开通" : "会员申请审核中") : quoteSummary.submitLabel}</button>
+            <button id="recharge-submit-btn" class="primary" type="submit" ${seasonMemberDisabled && selectedRechargeOrderType === "season_member" ? "disabled" : ""}>${seasonMemberDisabled && selectedRechargeOrderType === "season_member" ? (profile.season_member_active ? "本赛季已开通" : "会员申请审核中") : submitLabel}</button>
           </div>
         </form>
       </div>
@@ -1428,14 +1462,15 @@ function startDirectPurchase(itemId, itemKind = "card") {
   }
 
   const rechargeConfig = getEffectiveRechargeConfig();
-  const amountYuan = getDirectPurchaseAmountYuan(product, rechargeConfig);
-  if (!rechargeConfig || amountYuan === null) {
+  const directPurchaseContext = buildDirectPurchaseContext(product, rechargeConfig);
+  if (!rechargeConfig || !directPurchaseContext) {
     setNotice("当前还没拿到充值比例，请稍后再试。", "error");
     return;
   }
 
+  pendingDirectPurchaseContext = directPurchaseContext;
   selectedRechargeOrderType = "normal";
-  selectedRechargeAmount = amountYuan;
+  selectedRechargeAmount = directPurchaseContext.amountYuan;
   closeProductModal();
   window.location.hash = "recharge-panel";
   activateAccountTab("recharge", { scroll: true });
@@ -1445,7 +1480,7 @@ function startDirectPurchase(itemId, itemKind = "card") {
     loadAccount().catch((error) => setNotice(`账户信息加载失败：${error.message}`, "error"));
   }
   setAccountMessage(
-    `已按 ${product.name} 预填精确转账金额 ${formatCashAmount(amountYuan)}，预计覆盖 ${Number(product.price_quota || 0)} 额度。到账后可直接回来购买。`,
+    `已切到转账购买，${product.name} 会按精确金额 ${formatCashAmount(directPurchaseContext.amountYuan)} 处理。到账后可直接回来购买。`,
     "success"
   );
 }
@@ -1470,6 +1505,7 @@ async function loadAccount() {
   if (!session?.token) {
     currentRechargeConfig = null;
     currentRechargeOrders = [];
+    pendingDirectPurchaseContext = null;
     renderSessionSummary(null);
     renderProfile(null, null, []);
     renderBeginnerGuide(null, [], []);
@@ -1499,6 +1535,7 @@ async function loadAccount() {
       clearSession();
       currentRechargeConfig = null;
       currentRechargeOrders = [];
+      pendingDirectPurchaseContext = null;
       renderSessionSummary(null);
       renderProfile(null, null, []);
       renderBeginnerGuide(null, [], []);
@@ -1573,6 +1610,7 @@ async function submitRechargeOrder(event) {
     });
     selectedRechargeAmount = amountYuan;
     selectedRechargeOrderType = "normal";
+    pendingDirectPurchaseContext = null;
     setAccountMessage(
       orderType === "season_member"
         ? `赛季会员申请已提交，订单 #${result.id} 等待管理员审核。`
@@ -1780,6 +1818,7 @@ function logoutCurrentSession(options = {}) {
   clearSession();
   currentRechargeConfig = null;
   currentRechargeOrders = [];
+  pendingDirectPurchaseContext = null;
   activateAccountTab("overview");
   renderSessionSummary(null);
   renderProfile(null, null, []);
@@ -1948,11 +1987,23 @@ productPagination?.addEventListener("click", (event) => {
   scrollProductsIntoView();
 });
 rechargeBody?.addEventListener("click", (event) => {
+  const clearDirectPurchaseButton = event.target.closest("[data-direct-purchase-clear]");
+  if (clearDirectPurchaseButton) {
+    pendingDirectPurchaseContext = null;
+    const session = loadSession();
+    renderRechargeSection(session?.profile || null, currentRechargeConfig, currentRechargeOrders);
+    setAccountMessage("已切回普通充值。", "success");
+    return;
+  }
+
   const typeButton = event.target.closest("[data-recharge-order-type]");
   if (typeButton) {
     const nextType = String(typeButton.getAttribute("data-recharge-order-type") || "").trim();
     selectedRechargeOrderType =
       nextType === "season_member" || nextType === "residual_transfer" ? nextType : "normal";
+    if (selectedRechargeOrderType !== "normal") {
+      pendingDirectPurchaseContext = null;
+    }
     const session = loadSession();
     renderRechargeSection(session?.profile || null, currentRechargeConfig, currentRechargeOrders);
     return;

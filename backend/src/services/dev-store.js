@@ -6,7 +6,9 @@ const { hashPassword, verifyPassword } = require("./password-auth");
 const { buildDefaultRechargeConfig, normalizeRechargeConfig } = require("../config/recharge-config");
 const { getSignupSeedQuota } = require("../config/signup-seed-quota");
 
-const dataPath = path.resolve(__dirname, "..", "..", "dev-data.json");
+const dataPath = process.env.DEV_STORE_DATA_PATH
+  ? path.resolve(process.cwd(), process.env.DEV_STORE_DATA_PATH)
+  : path.resolve(__dirname, "..", "..", "dev-data.json");
 const FIXED_ADMIN_ACCOUNT = {
   game_role_id: "584967604",
   game_role_name: "繁星✨秋",

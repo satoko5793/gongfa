@@ -1228,6 +1228,21 @@ button {
   font-size: 18px;
 }
 
+.recharge-direct-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(35, 78, 82, 0.14);
+  background: linear-gradient(135deg, rgba(35, 78, 82, 0.1), rgba(255, 255, 255, 0.9));
+}
+
+.recharge-direct-banner strong {
+  font-size: 17px;
+}
+
 .recharge-qr-card {
   display: grid;
   gap: 12px;
@@ -1646,6 +1661,11 @@ button {
 
   .recharge-layout-split {
     grid-template-columns: 1fr;
+  }
+
+  .recharge-direct-banner {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
