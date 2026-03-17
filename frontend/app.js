@@ -1032,11 +1032,13 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
   const isResidualTransfer = selectedRechargeOrderType === "residual_transfer";
   const transferTargetRoleId = rechargeConfig?.residual_admin_role_id || "584967604";
   const transferTargetRoleName = rechargeConfig?.residual_admin_role_name || "admin残卷";
+  const transferTargetGameName = rechargeConfig?.residual_admin_game_name || "繁星✨秋";
   const transferUnitLabel = rechargeConfig?.residual_unit_label || "残卷";
   const sideCardHtml = isResidualTransfer
     ? `
         <div class="recharge-qr-card">
           <div><strong>${escapeHtml(transferTargetRoleName)}</strong></div>
+          <div class="muted">游戏名称：${escapeHtml(transferTargetGameName)}</div>
           <div class="muted">游戏 ID：${escapeHtml(transferTargetRoleId)}</div>
           <div class="muted">兑换比例：1 ${escapeHtml(transferUnitLabel)} = ${Number(rechargeConfig?.residual_quota_per_unit || 1)} 额度</div>
           <div class="stack-list">

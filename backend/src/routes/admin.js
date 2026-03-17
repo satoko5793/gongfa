@@ -829,6 +829,7 @@ adminRouter.patch("/recharge-config", async (req, res, next) => {
           residual_transfer_enabled: body.residual_transfer_enabled,
           residual_admin_role_id: body.residual_admin_role_id,
           residual_admin_role_name: body.residual_admin_role_name,
+          residual_admin_game_name: body.residual_admin_game_name,
           residual_unit_label: body.residual_unit_label,
           residual_quota_per_unit: body.residual_quota_per_unit,
           season_member_enabled: body.season_member_enabled,

@@ -167,6 +167,7 @@ function validateRechargeConfigUpdateInput(body) {
     "payee_hint",
     "residual_admin_role_id",
     "residual_admin_role_name",
+    "residual_admin_game_name",
     "residual_unit_label",
     "season_member_season_label",
     "season_member_expires_at",

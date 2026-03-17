@@ -38,6 +38,7 @@ const adminRechargeMinYuanInput = document.getElementById("admin-recharge-min-yu
 const adminResidualTransferEnabledInput = document.getElementById("admin-residual-transfer-enabled");
 const adminResidualAdminRoleIdInput = document.getElementById("admin-residual-admin-role-id");
 const adminResidualAdminRoleNameInput = document.getElementById("admin-residual-admin-role-name");
+const adminResidualAdminGameNameInput = document.getElementById("admin-residual-admin-game-name");
 const adminResidualUnitLabelInput = document.getElementById("admin-residual-unit-label");
 const adminResidualQuotaPerUnitInput = document.getElementById("admin-residual-quota-per-unit");
 const adminSeasonMemberEnabledInput = document.getElementById("admin-season-member-enabled");
@@ -439,6 +440,9 @@ function renderRechargeConfig(config) {
   }
   if (adminResidualAdminRoleNameInput) {
     adminResidualAdminRoleNameInput.value = config.residual_admin_role_name || "";
+  }
+  if (adminResidualAdminGameNameInput) {
+    adminResidualAdminGameNameInput.value = config.residual_admin_game_name || "";
   }
   if (adminResidualUnitLabelInput) {
     adminResidualUnitLabelInput.value = config.residual_unit_label || "";
@@ -1656,6 +1660,7 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
         residual_transfer_enabled: adminResidualTransferEnabledInput?.value === "true",
         residual_admin_role_id: adminResidualAdminRoleIdInput?.value.trim(),
         residual_admin_role_name: adminResidualAdminRoleNameInput?.value.trim(),
+        residual_admin_game_name: adminResidualAdminGameNameInput?.value.trim(),
         residual_unit_label: adminResidualUnitLabelInput?.value.trim(),
         residual_quota_per_unit: Number(adminResidualQuotaPerUnitInput?.value),
         season_member_enabled: adminSeasonMemberEnabledInput.value === "true",

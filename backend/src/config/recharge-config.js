@@ -81,6 +81,10 @@ function buildDefaultRechargeConfig() {
       process.env.RESIDUAL_ADMIN_ROLE_NAME,
       "admin残卷"
     ),
+    residual_admin_game_name: parseText(
+      process.env.RESIDUAL_ADMIN_GAME_NAME,
+      "繁星✨秋"
+    ),
     residual_unit_label: parseText(
       process.env.RESIDUAL_UNIT_LABEL,
       "残卷"
@@ -158,6 +162,10 @@ function normalizeRechargeConfig(rawConfig = {}) {
     residual_admin_role_name: parseText(
       rawConfig.residual_admin_role_name,
       defaults.residual_admin_role_name
+    ),
+    residual_admin_game_name: parseText(
+      rawConfig.residual_admin_game_name,
+      defaults.residual_admin_game_name
     ),
     residual_unit_label: parseText(
       rawConfig.residual_unit_label,

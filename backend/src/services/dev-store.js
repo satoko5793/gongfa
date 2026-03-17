@@ -609,6 +609,7 @@ function updateRechargeConfig(patch, actorUserId = null) {
         residual_transfer_enabled: nextConfig.residual_transfer_enabled,
         residual_admin_role_id: nextConfig.residual_admin_role_id,
         residual_admin_role_name: nextConfig.residual_admin_role_name,
+        residual_admin_game_name: nextConfig.residual_admin_game_name,
         residual_unit_label: nextConfig.residual_unit_label,
         residual_quota_per_unit: nextConfig.residual_quota_per_unit,
         season_member_enabled: nextConfig.season_member_enabled,
