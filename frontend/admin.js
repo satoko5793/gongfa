@@ -3,6 +3,10 @@
 const adminSession = document.getElementById("admin-session");
 const adminMessage = document.getElementById("admin-message");
 const adminOverview = document.getElementById("admin-overview");
+const adminAlerts = document.getElementById("admin-alerts");
+const adminAlertSummary = document.getElementById("admin-alert-summary");
+const adminAlertActions = document.getElementById("admin-alert-actions");
+const adminAlertTimestamp = document.getElementById("admin-alert-timestamp");
 const adminProductModal = document.getElementById("admin-product-modal");
 const adminProductModalBody = document.getElementById("admin-product-modal-body");
 const closeAdminProductModalBtn = document.getElementById("close-admin-product-modal-btn");
@@ -78,10 +82,12 @@ let activeAdminPage = "imports";
 let currentOrderList = [];
 let currentRechargeOrderList = [];
 let overviewCounts = {
+  pendingOrderCount: 0,
   cancelReviewCount: 0,
   rechargeReviewCount: 0,
 };
 const loadedAdminPages = new Set();
+let alertPollTimer = null;
 const paginationState = {
   products: { page: 1, pageSize: 12, total: 0, totalPages: 0 },
   bundles: { page: 1, pageSize: 8, total: 0, totalPages: 0 },
@@ -294,6 +300,7 @@ function renderSession(profile) {
 
 function renderOverview() {
   const onSaleCount = allProducts.filter((product) => product.status === "on_sale").length;
+  const pendingOrderCount = Number(overviewCounts.pendingOrderCount || 0);
   const cancelReviewCount = Number(overviewCounts.cancelReviewCount || 0);
   const rechargeReviewCount = Number(overviewCounts.rechargeReviewCount || 0);
   const activeUsers = allUsers.filter((user) => user.status === "active").length;
@@ -303,6 +310,7 @@ function renderOverview() {
     { label: "商品总数", value: allProducts.length, hint: `上架中 ${onSaleCount}` },
     { label: "套餐总数", value: allBundles.length, hint: "独立 SKU" },
     { label: "用户总数", value: allUsers.length, hint: `活跃 ${activeUsers}` },
+    { label: "待处理订单", value: pendingOrderCount, hint: "交易处理" },
     { label: "待审取消", value: cancelReviewCount, hint: "商品订单" },
     { label: "待审充值", value: rechargeReviewCount, hint: "充值申请" },
     { label: "用户总额度", value: totalQuota, hint: "当前可用额度汇总" },
@@ -319,6 +327,81 @@ function renderOverview() {
       `
     )
     .join("");
+}
+
+function renderAdminAlerts() {
+  if (!adminAlerts || !adminAlertSummary || !adminAlertActions) return;
+
+  adminAlerts.classList.remove("hidden");
+
+  const pendingOrderCount = Number(overviewCounts.pendingOrderCount || 0);
+  const cancelReviewCount = Number(overviewCounts.cancelReviewCount || 0);
+  const rechargeReviewCount = Number(overviewCounts.rechargeReviewCount || 0);
+  const totalPending = pendingOrderCount + cancelReviewCount + rechargeReviewCount;
+  const lastUpdated = formatDate(new Date().toISOString());
+
+  if (adminAlertTimestamp) {
+    adminAlertTimestamp.textContent = `上次刷新：${lastUpdated}`;
+  }
+
+  adminAlertSummary.innerHTML = `
+    <div class="admin-alert-lead ${totalPending > 0 ? "hot" : ""}">
+      ${
+        totalPending > 0
+          ? `当前有 ${totalPending} 条待处理事项，优先看订单和充值审核。`
+          : "当前没有待处理的充值或交易。"
+      }
+    </div>
+    <div class="admin-alert-grid">
+      <div class="admin-alert-item ${pendingOrderCount > 0 ? "hot" : ""}">
+        <div class="admin-alert-label">待处理订单</div>
+        <div class="admin-alert-value ${pendingOrderCount > 0 ? "hot" : ""}">${pendingOrderCount}</div>
+      </div>
+      <div class="admin-alert-item ${cancelReviewCount > 0 ? "hot" : ""}">
+        <div class="admin-alert-label">待审取消</div>
+        <div class="admin-alert-value ${cancelReviewCount > 0 ? "hot" : ""}">${cancelReviewCount}</div>
+      </div>
+      <div class="admin-alert-item ${rechargeReviewCount > 0 ? "hot" : ""}">
+        <div class="admin-alert-label">待审充值</div>
+        <div class="admin-alert-value ${rechargeReviewCount > 0 ? "hot" : ""}">${rechargeReviewCount}</div>
+      </div>
+    </div>
+  `;
+
+  adminAlertActions.innerHTML = `
+    <button class="ghost" type="button" data-alert-target="orders" data-alert-status="pending">去看订单</button>
+    <button class="ghost" type="button" data-alert-target="orders" data-alert-status="cancel_requested">去看取消审核</button>
+    <button class="ghost" type="button" data-alert-target="recharge" data-alert-status="pending_review">去看充值审核</button>
+    <button class="ghost" type="button" id="refresh-alert-counts-btn">刷新提醒</button>
+  `;
+}
+
+function clearAdminAlerts() {
+  if (alertPollTimer) {
+    window.clearInterval(alertPollTimer);
+    alertPollTimer = null;
+  }
+  if (adminAlerts) {
+    adminAlerts.classList.add("hidden");
+  }
+  if (adminAlertSummary) {
+    adminAlertSummary.innerHTML = "";
+  }
+  if (adminAlertActions) {
+    adminAlertActions.innerHTML = "";
+  }
+  if (adminAlertTimestamp) {
+    adminAlertTimestamp.textContent = "等待首次刷新";
+  }
+}
+
+function startAlertPolling() {
+  if (alertPollTimer) {
+    window.clearInterval(alertPollTimer);
+  }
+  alertPollTimer = window.setInterval(() => {
+    loadOverviewCounts().catch(() => {});
+  }, 60000);
 }
 
 function renderLinkedOrderUserState() {
@@ -1080,27 +1163,32 @@ async function loadRechargeConfig() {
 
 async function loadOverviewCounts() {
   try {
-    const [cancelOrders, rechargeReviewOrders] = await Promise.all([
+    const [pendingOrders, cancelOrders, rechargeReviewOrders] = await Promise.all([
+      apiFetch("/admin/orders?status=pending&page=1&page_size=1"),
       apiFetch("/admin/orders?status=cancel_requested&page=1&page_size=1"),
       apiFetch("/admin/recharge-orders?status=pending_review&page=1&page_size=1"),
     ]);
     overviewCounts = {
+      pendingOrderCount: Number(pendingOrders?.total || 0),
       cancelReviewCount: Number(cancelOrders?.total || 0),
       rechargeReviewCount: Number(rechargeReviewOrders?.total || 0),
     };
   } catch (error) {
     overviewCounts = {
+      pendingOrderCount: currentOrderList.filter((order) => order.status === "pending").length,
       cancelReviewCount: currentOrderList.filter((order) => order.status === "cancel_requested").length,
       rechargeReviewCount: currentRechargeOrderList.filter((order) => order.status === "pending_review").length,
     };
   }
   renderOverview();
+  renderAdminAlerts();
 }
 
 async function loadBaseAdminData() {
   const profile = await apiFetch("/auth/me");
   const isAdmin = renderSession(profile);
   if (!isAdmin) {
+    clearAdminAlerts();
     setMessage("当前账号不是 admin，后台接口会返回 403。", "error");
     adminOverview.innerHTML = "";
     return false;
@@ -1123,6 +1211,7 @@ async function loadBaseAdminData() {
   renderUsers(getFilteredUsers());
   renderRechargeConfig(rechargeConfig);
   await loadOverviewCounts();
+  startAlertPolling();
   markPageLoaded("imports");
   markPageLoaded("catalog");
   markPageLoaded("users");
@@ -1194,6 +1283,7 @@ async function submitAdminLogin(event) {
 }
 
 function logoutAdmin() {
+  clearAdminAlerts();
   clearSession();
   adminLoginPasswordInput.value = "";
   renderSession(null);
@@ -1764,6 +1854,53 @@ adminAuditActionInput?.addEventListener("keydown", (event) => {
   loadAudits({ page: 1 }).catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
 });
 document.addEventListener("click", (event) => {
+  const alertButton = event.target.closest("[data-alert-target]");
+  if (alertButton) {
+    const target = alertButton.getAttribute("data-alert-target");
+    const status = alertButton.getAttribute("data-alert-status") || "all";
+
+    if (target === "orders") {
+      if (adminOrderStatusFilter) {
+        adminOrderStatusFilter.value = status;
+      }
+      resetPagedState("orders");
+      activateAdminPage("orders", { force: true })
+        .then(() => {
+          document.querySelector('[data-admin-page-panel="orders"]')?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+          setMessage(`已跳转到${status === "cancel_requested" ? "取消审核" : "待处理"}订单。`, "success");
+        })
+        .catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+      return;
+    }
+
+    if (target === "recharge") {
+      if (adminRechargeStatusFilter) {
+        adminRechargeStatusFilter.value = status;
+      }
+      resetPagedState("rechargeOrders");
+      activateAdminPage("recharge", { force: true })
+        .then(() => {
+          document.querySelector('[data-admin-page-panel="recharge"]')?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+          setMessage("已跳转到待审核充值。", "success");
+        })
+        .catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
+      return;
+    }
+  }
+
+  if (event.target.closest("#refresh-alert-counts-btn")) {
+    loadOverviewCounts().catch((error) =>
+      setMessage(`提醒刷新失败：${pickErrorMessage(error, "刷新失败")}`, "error")
+    );
+    return;
+  }
+
   const button = event.target.closest("[data-pagination-target][data-pagination-page]");
   if (!button) return;
 

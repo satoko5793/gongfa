@@ -333,6 +333,64 @@ body {
   font-size: 12px;
 }
 
+.admin-alert-card {
+  border-color: rgba(196, 85, 45, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 248, 241, 0.94), rgba(255, 252, 247, 0.9)),
+    var(--card);
+}
+
+.admin-alert-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-alert-lead {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.admin-alert-lead.hot {
+  color: var(--accent);
+}
+
+.admin-alert-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.admin-alert-item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(118, 93, 67, 0.12);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.admin-alert-item.hot {
+  border-color: rgba(196, 85, 45, 0.22);
+  background: rgba(255, 243, 235, 0.92);
+}
+
+.admin-alert-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-alert-value {
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.admin-alert-value.hot {
+  color: var(--accent);
+}
+
 .form-grid {
   display: grid;
   gap: 14px;
