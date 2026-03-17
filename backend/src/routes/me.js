@@ -105,6 +105,7 @@ meRouter.post("/recharge-orders", async (req, res, next) => {
           transferUnit: quote.transfer_unit || null,
           transferTargetRoleId: quote.target_role_id || null,
           transferTargetRoleName: quote.target_role_name || null,
+          paymentChannel: body.payment_channel || null,
           paymentReference: body.payment_reference,
           payerNote: body.payer_note || null,
           orderType,

@@ -80,6 +80,7 @@ let publicRechargeConfig = null;
 let currentRechargeOrders = [];
 let selectedRechargeAmount = null;
 let selectedRechargeOrderType = "normal";
+let selectedRechargePaymentChannel = "alipay_qr";
 let pendingDirectPurchaseContext = null;
 let productSearchTimer = null;
 let activeAuthTab = "register";
@@ -684,6 +685,47 @@ function buildDirectPurchaseContext(product, rechargeConfig = getEffectiveRechar
   };
 }
 
+function getRechargePaymentMethods(rechargeConfig = getEffectiveRechargeConfig()) {
+  const methods = [];
+  if (String(rechargeConfig?.qr_image_url || "").trim()) {
+    methods.push({
+      key: "alipay_qr",
+      label: "支付宝",
+      imageUrl: rechargeConfig.qr_image_url,
+      name: rechargeConfig.payee_name || "支付宝收款码",
+      hint: rechargeConfig.payee_hint || "扫码转账后再提交审核",
+    });
+  }
+  if (String(rechargeConfig?.wechat_qr_image_url || "").trim()) {
+    methods.push({
+      key: "wechat_qr",
+      label: "微信",
+      imageUrl: rechargeConfig.wechat_qr_image_url,
+      name: rechargeConfig.wechat_payee_name || "微信收款码",
+      hint: rechargeConfig.wechat_payee_hint || "扫码转账后再提交审核",
+    });
+  }
+  return methods;
+}
+
+function ensureRechargePaymentChannel(rechargeConfig = getEffectiveRechargeConfig()) {
+  const methods = getRechargePaymentMethods(rechargeConfig);
+  if (!methods.length) {
+    selectedRechargePaymentChannel = "alipay_qr";
+    return null;
+  }
+  if (!methods.some((item) => item.key === selectedRechargePaymentChannel)) {
+    selectedRechargePaymentChannel = methods[0].key;
+  }
+  return methods.find((item) => item.key === selectedRechargePaymentChannel) || methods[0];
+}
+
+function formatRechargeChannelLabel(channel) {
+  if (String(channel || "").trim() === "wechat_qr") return "微信";
+  if (String(channel || "").trim() === "game_residual_transfer") return "残卷转赠";
+  return "支付宝";
+}
+
 function isPositiveMoneyAmount(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return false;
@@ -1082,7 +1124,7 @@ function formatRechargeOrderAmountLine(order) {
     return `转赠：${Number(order?.transfer_amount || order?.amount_yuan || 0)} ${escapeHtml(order?.transfer_unit || "残卷")} / ${quotaLine}`;
   }
 
-  return `金额：${formatCashAmount(order?.amount_yuan || 0)} / ${quotaLine}`;
+  return `金额：${formatCashAmount(order?.amount_yuan || 0)} / ${quotaLine} / 支付方式：${escapeHtml(formatRechargeChannelLabel(order?.channel))}`;
 }
 
 function formatRechargeReferenceLine(order) {
@@ -1241,6 +1283,8 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
   }
 
   const pendingSeasonOrder = findPendingSeasonMemberOrder(rechargeOrders, rechargeConfig);
+  const paymentMethods = getRechargePaymentMethods(rechargeConfig);
+  const activePaymentMethod = ensureRechargePaymentChannel(rechargeConfig);
   const directPurchaseContext =
     selectedRechargeOrderType === "normal" && pendingDirectPurchaseContext
       ? pendingDirectPurchaseContext
@@ -1265,6 +1309,19 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
   const transferTargetRoleName = rechargeConfig?.residual_admin_role_name || "admin残卷";
   const transferTargetGameName = rechargeConfig?.residual_admin_game_name || "繁星✨秋";
   const transferUnitLabel = rechargeConfig?.residual_unit_label || "残卷";
+  const paymentMethodTabsHtml =
+    !isResidualTransfer && paymentMethods.length > 1
+      ? `
+          <div class="preset-list">
+            ${paymentMethods
+              .map(
+                (method) =>
+                  `<button class="preset-chip ${selectedRechargePaymentChannel === method.key ? "active" : ""}" type="button" data-payment-channel="${method.key}">${escapeHtml(method.label)}</button>`
+              )
+              .join("")}
+          </div>
+        `
+      : "";
   const submitLabel = directPurchaseContext ? "已转账，提交购买审核" : quoteSummary.submitLabel;
   const directPurchaseBannerHtml = directPurchaseContext
     ? `
@@ -1292,9 +1349,10 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
       `
     : `
         <div class="recharge-qr-card">
-          <img class="recharge-qr-image" src="${escapeHtml(rechargeConfig.qr_image_url)}" alt="支付宝收款码" />
-          <div><strong>${escapeHtml(rechargeConfig.payee_name || "支付宝收款码")}</strong></div>
-          <div class="muted">${escapeHtml(rechargeConfig.payee_hint || "扫码转账后再提交审核")}</div>
+          ${paymentMethodTabsHtml}
+          <img class="recharge-qr-image" src="${escapeHtml(activePaymentMethod?.imageUrl || rechargeConfig.qr_image_url)}" alt="${escapeHtml(activePaymentMethod?.name || "收款码")}" />
+          <div><strong>${escapeHtml(activePaymentMethod?.name || rechargeConfig.payee_name || "收款码")}</strong></div>
+          <div class="muted">${escapeHtml(activePaymentMethod?.hint || rechargeConfig.payee_hint || "扫码转账后再提交审核")}</div>
           <div class="stack-list">
             ${(rechargeConfig.instructions || []).map((line) => `<div class="stack-item">${escapeHtml(line)}</div>`).join("")}
           </div>
@@ -1505,6 +1563,7 @@ async function loadAccount() {
   if (!session?.token) {
     currentRechargeConfig = null;
     currentRechargeOrders = [];
+    selectedRechargePaymentChannel = "alipay_qr";
     pendingDirectPurchaseContext = null;
     renderSessionSummary(null);
     renderProfile(null, null, []);
@@ -1535,6 +1594,7 @@ async function loadAccount() {
       clearSession();
       currentRechargeConfig = null;
       currentRechargeOrders = [];
+      selectedRechargePaymentChannel = "alipay_qr";
       pendingDirectPurchaseContext = null;
       renderSessionSummary(null);
       renderProfile(null, null, []);
@@ -1604,6 +1664,7 @@ async function submitRechargeOrder(event) {
       body: JSON.stringify({
         order_type: orderType,
         amount_yuan: amountYuan,
+        payment_channel: orderType === "residual_transfer" ? undefined : selectedRechargePaymentChannel,
         payment_reference: paymentReference,
         payer_note: payerNote,
       }),
@@ -1818,6 +1879,7 @@ function logoutCurrentSession(options = {}) {
   clearSession();
   currentRechargeConfig = null;
   currentRechargeOrders = [];
+  selectedRechargePaymentChannel = "alipay_qr";
   pendingDirectPurchaseContext = null;
   activateAccountTab("overview");
   renderSessionSummary(null);
@@ -1993,6 +2055,14 @@ rechargeBody?.addEventListener("click", (event) => {
     const session = loadSession();
     renderRechargeSection(session?.profile || null, currentRechargeConfig, currentRechargeOrders);
     setAccountMessage("已切回普通充值。", "success");
+    return;
+  }
+
+  const paymentChannelButton = event.target.closest("[data-payment-channel]");
+  if (paymentChannelButton) {
+    selectedRechargePaymentChannel = String(paymentChannelButton.getAttribute("data-payment-channel") || "alipay_qr").trim() || "alipay_qr";
+    const session = loadSession();
+    renderRechargeSection(session?.profile || null, currentRechargeConfig, currentRechargeOrders);
     return;
   }
 

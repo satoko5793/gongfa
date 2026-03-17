@@ -51,9 +51,13 @@ const adminRechargePresetsInput = document.getElementById("admin-recharge-preset
 const adminRechargePayeeNameInput = document.getElementById("admin-recharge-payee-name");
 const adminRechargePayeeHintInput = document.getElementById("admin-recharge-payee-hint");
 const adminRechargeQrImageUrlInput = document.getElementById("admin-recharge-qr-image-url");
+const adminWechatPayeeNameInput = document.getElementById("admin-wechat-payee-name");
+const adminWechatPayeeHintInput = document.getElementById("admin-wechat-payee-hint");
+const adminWechatQrImageUrlInput = document.getElementById("admin-wechat-qr-image-url");
 const adminRechargeInstructionsInput = document.getElementById("admin-recharge-instructions");
 const adminResidualInstructionsInput = document.getElementById("admin-residual-instructions");
 const adminRechargeQrPreview = document.getElementById("admin-recharge-qr-preview");
+const adminWechatQrPreview = document.getElementById("admin-wechat-qr-preview");
 const adminOrderKeywordInput = document.getElementById("admin-order-keyword-input");
 const adminOrderStatusFilter = document.getElementById("admin-order-status-filter");
 const adminQuotaLogKeywordInput = document.getElementById("admin-quota-log-keyword-input");
@@ -464,6 +468,9 @@ function renderRechargeConfig(config) {
   if (adminRechargePayeeNameInput) adminRechargePayeeNameInput.value = config.payee_name || "";
   if (adminRechargePayeeHintInput) adminRechargePayeeHintInput.value = config.payee_hint || "";
   if (adminRechargeQrImageUrlInput) adminRechargeQrImageUrlInput.value = config.qr_image_url || "";
+  if (adminWechatPayeeNameInput) adminWechatPayeeNameInput.value = config.wechat_payee_name || "";
+  if (adminWechatPayeeHintInput) adminWechatPayeeHintInput.value = config.wechat_payee_hint || "";
+  if (adminWechatQrImageUrlInput) adminWechatQrImageUrlInput.value = config.wechat_qr_image_url || "";
   if (adminRechargeInstructionsInput) {
     adminRechargeInstructionsInput.value = Array.isArray(config.instructions)
       ? config.instructions.join("\n")
@@ -476,6 +483,9 @@ function renderRechargeConfig(config) {
   }
   if (adminRechargeQrPreview) {
     adminRechargeQrPreview.src = config.qr_image_url || "/payment/alipay-qr.jpg";
+  }
+  if (adminWechatQrPreview) {
+    adminWechatQrPreview.src = config.wechat_qr_image_url || "/payment/wechat-qr.png";
   }
 }
 
@@ -894,6 +904,12 @@ function formatRechargeOrderTitle(order) {
   return "普通充值";
 }
 
+function formatRechargeChannelLabel(channel) {
+  if (String(channel || "").trim() === "wechat_qr") return "微信";
+  if (String(channel || "").trim() === "game_residual_transfer") return "残卷转赠";
+  return "支付宝";
+}
+
 function renderRechargeOrders(orders) {
   currentRechargeOrderList = orders;
   renderOverview();
@@ -908,7 +924,7 @@ function renderRechargeOrders(orders) {
     .map((order) => {
       const amountLine = isResidualRechargeOrder(order)
         ? `转赠数量：${Number(order.transfer_amount || order.amount_yuan || 0)} ${escapeHtml(order.transfer_unit || "残卷")} / 预计额度：${Number(order.quota_amount || 0)}`
-        : `充值金额：${Number(order.amount_yuan || 0)} 元 / 预计额度：${Number(order.quota_amount || 0)}`;
+        : `充值金额：${Number(order.amount_yuan || 0)} 元 / 预计额度：${Number(order.quota_amount || 0)} / 支付方式：${formatRechargeChannelLabel(order.channel)}`;
       const referenceLabel = isResidualRechargeOrder(order) ? "转赠时间" : "付款时间";
       const statusHint =
         order.status === "pending_review"
@@ -1635,6 +1651,12 @@ adminRechargeQrImageUrlInput?.addEventListener("input", () => {
     adminRechargeQrImageUrlInput.value.trim() || "/payment/alipay-qr.jpg";
 });
 
+adminWechatQrImageUrlInput?.addEventListener("input", () => {
+  if (!adminWechatQrPreview) return;
+  adminWechatQrPreview.src =
+    adminWechatQrImageUrlInput.value.trim() || "/payment/wechat-qr.png";
+});
+
 adminRechargeConfigForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -1675,6 +1697,9 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
         qr_image_url: adminRechargeQrImageUrlInput.value.trim(),
         payee_name: adminRechargePayeeNameInput.value.trim(),
         payee_hint: adminRechargePayeeHintInput.value.trim(),
+        wechat_qr_image_url: adminWechatQrImageUrlInput?.value.trim(),
+        wechat_payee_name: adminWechatPayeeNameInput?.value.trim(),
+        wechat_payee_hint: adminWechatPayeeHintInput?.value.trim(),
         instructions,
         residual_instructions: residualInstructions,
       }),

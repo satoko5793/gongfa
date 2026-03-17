@@ -94,6 +94,12 @@ function validateRechargeOrderCreate(body) {
   if (!requiredString(body.payment_reference)) {
     errors.push("payment_reference_required");
   }
+  if (
+    body.payment_channel !== undefined &&
+    !["alipay_qr", "wechat_qr"].includes(String(body.payment_channel || "").trim())
+  ) {
+    errors.push("payment_channel_invalid");
+  }
   if (body.payment_reference !== undefined && !requiredString(body.payment_reference)) {
     errors.push("payment_reference_invalid");
   }
@@ -176,6 +182,9 @@ function validateRechargeConfigUpdateInput(body) {
     "qr_image_url",
     "payee_name",
     "payee_hint",
+    "wechat_qr_image_url",
+    "wechat_payee_name",
+    "wechat_payee_hint",
     "residual_admin_role_id",
     "residual_admin_role_name",
     "residual_admin_game_name",

@@ -117,6 +117,11 @@ function buildDefaultRechargeConfig() {
     payee_hint:
       process.env.ALIPAY_PAYEE_HINT ||
       "扫码转账后，填写付款时间即可，管理员审核通过后到账。",
+    wechat_qr_image_url: process.env.WECHAT_QR_IMAGE_URL || "/payment/wechat-qr.png",
+    wechat_payee_name: process.env.WECHAT_PAYEE_NAME || "微信收款码",
+    wechat_payee_hint:
+      process.env.WECHAT_PAYEE_HINT ||
+      "支持微信扫码转账，填写付款时间后提交审核即可。",
     instructions: [
       "1. 先扫码完成支付宝转账，再回到页面提交充值申请。",
       "2. 提交时写付款时间即可，方便管理员快速核对。",
@@ -209,6 +214,9 @@ function normalizeRechargeConfig(rawConfig = {}) {
     qr_image_url: String(rawConfig.qr_image_url || defaults.qr_image_url),
     payee_name: String(rawConfig.payee_name || defaults.payee_name),
     payee_hint: String(rawConfig.payee_hint || defaults.payee_hint),
+    wechat_qr_image_url: String(rawConfig.wechat_qr_image_url || defaults.wechat_qr_image_url),
+    wechat_payee_name: String(rawConfig.wechat_payee_name || defaults.wechat_payee_name),
+    wechat_payee_hint: String(rawConfig.wechat_payee_hint || defaults.wechat_payee_hint),
     instructions: Array.isArray(rawConfig.instructions) && rawConfig.instructions.length > 0
       ? rawConfig.instructions.map((item) => String(item || "").trim()).filter(Boolean)
       : defaults.instructions,

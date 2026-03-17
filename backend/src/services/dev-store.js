@@ -1288,6 +1288,7 @@ function createRechargeOrder(
     transferUnit = null,
     transferTargetRoleId = null,
     transferTargetRoleName = null,
+    paymentChannel = null,
     paymentReference,
     payerNote,
     orderType = "normal",
@@ -1344,11 +1345,17 @@ function createRechargeOrder(
     memberState.active
       ? Math.floor(baseQuotaAmount * Number(config.season_member_bonus_rate || 0))
       : 0;
+  const normalizedPaymentChannel =
+    normalizedOrderType === "residual_transfer"
+      ? "game_residual_transfer"
+      : String(paymentChannel || "").trim() === "wechat_qr"
+        ? "wechat_qr"
+        : "alipay_qr";
 
   const rechargeOrder = {
     id: nextId(data.rechargeOrders || []),
     user_id: Number(userId),
-    channel: normalizedOrderType === "residual_transfer" ? "game_residual_transfer" : "alipay_qr",
+    channel: normalizedPaymentChannel,
     order_type: normalizedOrderType,
     amount_yuan: Number(amountYuan),
     transfer_amount:

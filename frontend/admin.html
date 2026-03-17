@@ -272,6 +272,27 @@
             />
           </label>
           <label>
+            微信收款名称
+            <input id="admin-wechat-payee-name" type="text" />
+          </label>
+          <label>
+            微信收款提示
+            <input id="admin-wechat-payee-hint" type="text" />
+          </label>
+          <label>
+            微信收款码地址
+            <input id="admin-wechat-qr-image-url" type="text" />
+          </label>
+          <label>
+            微信收款码预览
+            <img
+              id="admin-wechat-qr-preview"
+              class="recharge-qr-image"
+              src="/payment/wechat-qr.png"
+              alt="微信收款码预览"
+            />
+          </label>
+          <label>
             前台提示（每行一条）
             <textarea id="admin-recharge-instructions" rows="4" placeholder="每行一条说明"></textarea>
           </label>
@@ -384,7 +405,7 @@
 
     <aside id="admin-debug-panel" class="debug-panel">
       <div class="debug-title">后台调试</div>
-      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260317l</div>
+      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260317m</div>
       <div id="admin-debug-action" class="debug-line">action: page_loaded</div>
       <div id="admin-debug-session" class="debug-line">session: unknown</div>
       <div id="admin-debug-error" class="debug-line">error: none</div>
@@ -394,6 +415,6 @@
     <script>
       window.__adminModuleReady = false;
     </script>
-    <script type="module" src="./admin.js?v=20260317l"></script>
+    <script type="module" src="./admin.js?v=20260317m"></script>
   </body>
 </html>
