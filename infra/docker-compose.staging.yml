@@ -1,4 +1,4 @@
-version: "3.9"
+name: gongfa-staging
 
 services:
   web:
@@ -11,7 +11,7 @@ services:
     env_file:
       - ../.env.staging
     ports:
-      - "8081:8090"
+      - "127.0.0.1:8081:8090"
     volumes:
       - ../backend/dev-data.staging.json:/app/backend/dev-data.json
     healthcheck:

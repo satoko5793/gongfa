@@ -30,7 +30,7 @@
 
 - 前台：`http://101.34.247.186/`
 - 后台：`http://101.34.247.186/admin.html`
-- 测试服：`http://101.34.247.186:8081/`
+- 测试服：通过 SSH 隧道访问本机 `http://127.0.0.1:8081/`
 
 ## 项目目录
 
@@ -116,3 +116,6 @@ docker compose -f infra/docker-compose.staging.yml ps
 docker compose -f infra/docker-compose.staging.yml logs -f
 docker compose -f infra/docker-compose.staging.yml up -d --build
 ```
+
+两套 compose 文件已经写死不同项目名，避免测试服和正式服互相重建。
+测试服默认只绑定服务器本机 `127.0.0.1:8081`，建议用 SSH 隧道访问。

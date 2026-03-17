@@ -10,7 +10,7 @@
 - 当前访问：
   - 前台：`http://101.34.247.186/`
   - 后台：`http://101.34.247.186/admin.html`
-  - 测试服：`http://101.34.247.186:8081/`
+  - 测试服：通过 SSH 隧道访问 `http://127.0.0.1:8081/`
 
 项目部署目录：
 
@@ -52,6 +52,12 @@ docker compose -f infra/docker-compose.staging.yml up -d --build
 docker compose -f infra/docker-compose.staging.yml restart
 ```
 
+注意：
+
+- `infra/docker-compose.app.yml` 固定项目名为 `gongfa-prod`
+- `infra/docker-compose.staging.yml` 固定项目名为 `gongfa-staging`
+- 不要再手动把两套环境塞进同一个 compose project
+
 ## 常用检查命令
 
 健康检查：
@@ -59,7 +65,7 @@ docker compose -f infra/docker-compose.staging.yml restart
 ```bash
 curl http://127.0.0.1:8090/health
 curl http://101.34.247.186/health
-curl http://101.34.247.186:8081/health
+curl http://127.0.0.1:8081/health
 ```
 
 查看容器状态：
@@ -137,9 +143,16 @@ docker compose -f infra/docker-compose.staging.yml up -d --build
 
 3. 检查：
 
-- `http://101.34.247.186:8081/`
-- `http://101.34.247.186:8081/admin.html`
-- `http://101.34.247.186:8081/health`
+- 先建立 SSH 隧道：
+
+```bash
+ssh -L 8081:127.0.0.1:8081 root@101.34.247.186
+```
+
+- 再用本机浏览器访问：
+  - `http://127.0.0.1:8081/`
+  - `http://127.0.0.1:8081/admin.html`
+  - `http://127.0.0.1:8081/health`
 
 4. 验证通过后，再把相同版本发布到正式目录 `/opt/gongfa`
 5. 执行：
@@ -160,7 +173,7 @@ docker compose -f infra/docker-compose.app.yml up -d --build
 - 使用独立目录：`/opt/gongfa-staging`
 - 使用独立环境变量：`/opt/gongfa-staging/.env.staging`
 - 使用独立文件数据：`/opt/gongfa-staging/backend/dev-data.staging.json`
-- 端口：`8081 -> 8090`
+- 端口：`127.0.0.1:8081 -> 8090`
 - 容器名：`gongfa-web-staging`
 
 不要让测试服和正式服共用数据文件，否则测试操作会污染正式数据。

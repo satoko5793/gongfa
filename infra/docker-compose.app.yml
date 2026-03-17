@@ -1,4 +1,4 @@
-version: "3.9"
+name: gongfa-prod
 
 services:
   web:
