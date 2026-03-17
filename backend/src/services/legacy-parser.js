@@ -3,40 +3,29 @@ const legacyLocalNameById = {
   2: "折凳要诀",
   101: "退堂鼓",
   102: "杠上开花手",
-  201: "也行刀法",
+  201: "夜行刀法",
   202: "摸牌透视眼",
   301: "杠精罡气",
   302: "摸鱼化劲",
   401: "对穿肠文攻术",
   402: "小强不死身",
   403: "跑路草上飞",
-  501: "运气决",
+  501: "运气诀",
 };
 
-const legacyAttrNameById = {
-  1: "攻击",
-  2: "血量",
-  3: "血量",
-  4: "速度",
-  5: "破甲",
-  6: "破甲抵抗",
-  7: "精准",
-  8: "格挡",
-  9: "减伤",
-  10: "暴击",
-  11: "暴击抵抗",
-  12: "爆伤",
-  13: "爆伤抵抗",
-  14: "技能伤害",
-  15: "免控",
-  16: "眩晕免疫",
-  17: "冰冻免疫",
-  18: "沉默免疫",
-  19: "流血免疫",
-  20: "中毒免疫",
-  21: "灼烧免疫",
-  604: "走火入魔",
-  605: "气定神闲",
+const legacyAssetNameById = {
+  1: "suibianzhang",
+  2: "zhedeng-yaojue",
+  101: "tuitanggu",
+  102: "gangshang-kaihuashou",
+  201: "yexing-daofa",
+  202: "mopai-toushiyan",
+  301: "gangjing-gangqi",
+  302: "moyu-huajin",
+  401: "duichuanchang-wengongshu",
+  402: "xiaoqiang-busishen",
+  403: "paolu-caoshangfei",
+  501: "yunqijue",
 };
 
 const scaledTermAttrIds = new Set([604, 605]);
@@ -79,18 +68,6 @@ function extractAttrPairs(attrs, attrNums) {
   return [];
 }
 
-function formatAttrPairs(attrs, attrNums) {
-  const pairs = extractAttrPairs(attrs, attrNums);
-  if (pairs.length === 0) return "无";
-  return pairs
-    .map((pair) => {
-      const name = legacyAttrNameById[pair.attrId] || `属性${pair.attrId}`;
-      const mapped = getMappedTermValue(pair.attrId, pair.rawValue);
-      return `${name} ${mapped || pair.rawValue}`;
-    })
-    .join(" | ");
-}
-
 function getTermValues(entry) {
   const pairs = [
     ...extractAttrPairs(entry?.attrs, entry?.attrNums),
@@ -98,6 +75,7 @@ function getTermValues(entry) {
   ];
   const fireValues = [];
   const calmValues = [];
+
   for (const pair of pairs) {
     if (pair.attrId === 604) {
       const mapped = getMappedTermValue(pair.attrId, pair.rawValue) || "0";
@@ -108,6 +86,7 @@ function getTermValues(entry) {
       if (mapped !== "0") calmValues.push(mapped);
     }
   }
+
   return { fireValues, calmValues };
 }
 
@@ -145,19 +124,22 @@ function getHpValue(entry) {
   return 0;
 }
 
-function getLocalAssetUrl(name) {
-  if (!name) return null;
-  return `./legacy-assets/${encodeURIComponent(name)}.png`;
+function getLocalAssetUrl(legacyId) {
+  const assetName = legacyAssetNameById[Number(legacyId)];
+  return assetName ? `/gongfa/${assetName}.png` : null;
 }
 
 function normalizeLegacyEntries(source) {
   if (!source || typeof source !== "object") return [];
 
+  const currentScheduleId = Number(source?.roleLegacy?.scheduleId || source?.scheduleId || 0);
   const storage = source?.roleLegacy?.legacyStorage || source?.legacyStorage;
+
   if (storage && typeof storage === "object" && !Array.isArray(storage)) {
     return Object.entries(storage).map(([storageKey, item]) => ({
       ...item,
       __storageKey: storageKey,
+      __currentScheduleId: currentScheduleId,
     }));
   }
 
@@ -181,6 +163,26 @@ function normalizeLegacyEntries(source) {
   return [];
 }
 
+function buildSeasonMeta(entry) {
+  const scheduleId = Number(entry?.scheduleId || 0);
+  const currentScheduleId = Number(entry?.__currentScheduleId || 0);
+  const isCurrentSeason =
+    scheduleId > 0 && currentScheduleId > 0 && scheduleId === currentScheduleId;
+
+  return {
+    schedule_id: scheduleId || null,
+    current_schedule_id: currentScheduleId || null,
+    is_current_season: isCurrentSeason,
+    season_tag: isCurrentSeason ? "current" : "legacy",
+    season_label: scheduleId > 0 ? `S${scheduleId}` : "-",
+    season_display: isCurrentSeason
+      ? `S${scheduleId} 当前赛季`
+      : scheduleId > 0
+        ? `S${scheduleId} 老卡`
+        : "未知赛季",
+  };
+}
+
 function parseLegacyProducts(source) {
   const entries = normalizeLegacyEntries(source);
   const grouped = new Map();
@@ -190,19 +192,19 @@ function parseLegacyProducts(source) {
       const storageId = Number(entry?.__storageKey || 0);
       const legacyId = Number(entry?.legacyId || storageId || 0);
       const uid = String(entry?.uId || entry?.uid || `${legacyId}-${index}`);
-      const name = legacyLocalNameById[legacyId] || `功法 ${legacyId}`;
       const terms = getTermValues(entry);
       return {
         uid,
         legacy_id: legacyId,
-        name,
-        image_url: getLocalAssetUrl(name),
+        name: legacyLocalNameById[legacyId] || `功法 ${legacyId}`,
+        image_url: getLocalAssetUrl(legacyId),
         attack_value: getAttackValue(entry),
         hp_value: getHpValue(entry),
         main_attrs: "",
         ext_attrs: formatTermSummary(terms),
         fire_signature: terms.fireValues.join(","),
         calm_signature: terms.calmValues.join(","),
+        ...buildSeasonMeta(entry),
       };
     })
     .filter((item) => item.legacy_id > 0)
@@ -214,6 +216,8 @@ function parseLegacyProducts(source) {
         item.hp_value,
         item.fire_signature,
         item.calm_signature,
+        item.schedule_id,
+        item.season_tag,
       ].join("|");
       const existing = grouped.get(groupKey);
       if (existing) {

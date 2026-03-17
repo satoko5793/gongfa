@@ -3,6 +3,8 @@ const path = require("path");
 const { PRICE_CONFIG, buildOrderEvents, repriceProducts } = require("./pricing");
 const { BUNDLE_SKU_SEEDS, RETIRED_BUNDLE_CODES } = require("../config/catalog-config");
 const { hashPassword, verifyPassword } = require("./password-auth");
+const { buildDefaultRechargeConfig, normalizeRechargeConfig } = require("../config/recharge-config");
+const { getSignupSeedQuota } = require("../config/signup-seed-quota");
 
 const dataPath = path.resolve(__dirname, "..", "..", "dev-data.json");
 const FIXED_ADMIN_ACCOUNT = {
@@ -29,6 +31,8 @@ function defaultData() {
     quotaLogs: [],
     orders: [],
     orderItems: [],
+    rechargeOrders: [],
+    rechargeConfig: buildDefaultRechargeConfig(),
     auditLogs: [],
   };
 }
@@ -290,6 +294,7 @@ function normalizeData(data) {
     }
     return normalized;
   });
+  next.rechargeConfig = normalizeRechargeConfig(next.rechargeConfig || {});
 
   if (changed) {
     repriceDataProducts(next);
@@ -329,6 +334,30 @@ function sanitizeUser(user) {
   return next;
 }
 
+function getSeasonMemberState(user, config) {
+  const normalizedConfig = normalizeRechargeConfig(config || {});
+  const record = user?.season_member && typeof user.season_member === "object" ? user.season_member : null;
+  const seasonLabel = String(normalizedConfig.season_member_season_label || "").trim();
+  const expiresAt = String(normalizedConfig.season_member_expires_at || "").trim();
+  const expiresAtMillis = Date.parse(expiresAt);
+  const active =
+    Boolean(record) &&
+    Boolean(seasonLabel) &&
+    String(record.season_label || "") === seasonLabel &&
+    Number.isFinite(expiresAtMillis) &&
+    Date.now() < expiresAtMillis;
+
+  return {
+    active,
+    season_label: seasonLabel,
+    expires_at: expiresAt || null,
+    bonus_rate: Number(normalizedConfig.season_member_bonus_rate || 0),
+    bonus_percent: Number(normalizedConfig.season_member_bonus_percent || 0),
+    activated_at: record?.activated_at || null,
+    source_recharge_order_id: record?.source_recharge_order_id || null,
+  };
+}
+
 function ensureQuotaAccount(data, userId) {
   let account = data.quotaAccounts.find((item) => item.user_id === Number(userId));
   if (!account) {
@@ -340,9 +369,16 @@ function ensureQuotaAccount(data, userId) {
 
 function withQuota(user, data) {
   const account = ensureQuotaAccount(data, user.id);
+  const memberState = getSeasonMemberState(user, data.rechargeConfig || {});
   return {
     ...sanitizeUser(user),
     quota_balance: account.balance,
+    season_member_active: memberState.active,
+    season_member_season_label: memberState.season_label,
+    season_member_expires_at: memberState.expires_at,
+    season_member_bonus_rate: memberState.bonus_rate,
+    season_member_bonus_percent: memberState.bonus_percent,
+    season_member_activated_at: memberState.activated_at,
   };
 }
 
@@ -351,6 +387,13 @@ function normalizeCardProduct(product) {
     ...clone(product),
     item_kind: "card",
     item_id: Number(product.id),
+    schedule_id: product?.schedule_id === undefined ? null : Number(product.schedule_id),
+    current_schedule_id:
+      product?.current_schedule_id === undefined ? null : Number(product.current_schedule_id),
+    is_current_season: Boolean(product?.is_current_season),
+    season_tag: product?.season_tag || "legacy",
+    season_label: product?.season_label || "-",
+    season_display: product?.season_display || "老卡",
     stock_label: `库存 ${Number(product.stock || 0)}`,
   };
 }
@@ -429,9 +472,7 @@ async function registerPasswordUser(payload) {
   const gameRoleId = String(payload.game_role_id || "").trim();
   const gameRoleName = String(payload.game_role_name || "").trim();
 
-  const existing = data.users.find(
-    (item) => item.auth_provider === "password" && item.game_role_id === gameRoleId
-  );
+  const existing = data.users.find((item) => String(item.game_role_id || "") === gameRoleId);
   if (existing) {
     const err = new Error("game_role_id_taken");
     err.statusCode = 409;
@@ -455,6 +496,16 @@ async function registerPasswordUser(payload) {
 
   data.users.push(user);
   ensureQuotaAccount(data, user.id);
+  const signupSeedQuota = getSignupSeedQuota(gameRoleId);
+  if (signupSeedQuota > 0) {
+    applyQuotaChange(data, {
+      userId: user.id,
+      changeAmount: signupSeedQuota,
+      type: "signup_seed_credit",
+      remark: "third_season_signup_seed",
+      bonusAmount: 0,
+    });
+  }
   writeData(data);
   return withQuota(user, data);
 }
@@ -530,6 +581,93 @@ function getUserById(userId) {
   return user ? withQuota(user, data) : null;
 }
 
+function getRechargeConfig() {
+  const data = readData();
+  return clone(normalizeRechargeConfig(data.rechargeConfig || {}));
+}
+
+function updateRechargeConfig(patch, actorUserId = null) {
+  const data = readData();
+  const currentConfig = normalizeRechargeConfig(data.rechargeConfig || {});
+  const nextConfig = normalizeRechargeConfig({
+    ...currentConfig,
+    ...patch,
+  });
+  data.rechargeConfig = nextConfig;
+
+  if (actorUserId) {
+    addAuditLog(data, {
+      actorUserId,
+      targetType: "recharge_config",
+      targetId: 1,
+      action: "recharge_config_update",
+      detail: {
+        exchange_yuan: nextConfig.exchange_yuan,
+        exchange_quota: nextConfig.exchange_quota,
+        min_amount_yuan: nextConfig.min_amount_yuan,
+        enabled: nextConfig.enabled,
+        season_member_enabled: nextConfig.season_member_enabled,
+        season_member_season_label: nextConfig.season_member_season_label,
+        season_member_expires_at: nextConfig.season_member_expires_at,
+        season_member_price_yuan: nextConfig.season_member_price_yuan,
+        season_member_quota: nextConfig.season_member_quota,
+        season_member_bonus_rate: nextConfig.season_member_bonus_rate,
+      },
+    });
+  }
+
+  writeData(data);
+  return clone(nextConfig);
+}
+
+function updateSelfProfile(userId, payload) {
+  const data = readData();
+  const user = data.users.find((item) => item.id === Number(userId));
+  if (!user) return null;
+
+  if (payload.game_role_name !== undefined) {
+    user.game_role_name = String(payload.game_role_name).trim();
+  }
+  if (payload.nickname !== undefined) {
+    const nickname = String(payload.nickname || "").trim();
+    user.nickname = nickname || null;
+  }
+  if (payload.game_server !== undefined) {
+    user.game_server = String(payload.game_server).trim();
+  }
+
+  user.updated_at = now();
+  writeData(data);
+  return withQuota(user, data);
+}
+
+async function changeSelfPassword(userId, currentPassword, nextPassword) {
+  const data = readData();
+  const user = data.users.find((item) => item.id === Number(userId));
+  if (!user) {
+    const err = new Error("user_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (user.auth_provider !== "password") {
+    const err = new Error("password_login_only");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const matched = await verifyPassword(currentPassword, user.password_hash);
+  if (!matched) {
+    const err = new Error("invalid_credentials");
+    err.statusCode = 401;
+    throw err;
+  }
+
+  user.password_hash = await hashPassword(nextPassword);
+  user.updated_at = now();
+  writeData(data);
+  return withQuota(user, data);
+}
+
 function listProducts({ keyword = "", sort = "created_desc", publicOnly = false } = {}) {
   const data = readData();
   const cards = data.products.filter((item) => (publicOnly ? item.status === "on_sale" : true));
@@ -591,6 +729,22 @@ function hydrateOrders(data, orders) {
   });
 }
 
+function hydrateRechargeOrders(data, rechargeOrders) {
+  return rechargeOrders.map((order) => {
+    const user = data.users.find((item) => item.id === order.user_id);
+    const reviewer = data.users.find((item) => item.id === order.reviewed_by);
+    return {
+      ...clone(order),
+      order_title: order.order_type === "season_member" ? "????" : "????",
+      game_role_id: user?.game_role_id || null,
+      game_server: user?.game_server || null,
+      game_role_name: user?.game_role_name || null,
+      nickname: user?.nickname || null,
+      reviewer_role_name: reviewer?.game_role_name || null,
+    };
+  });
+}
+
 function listBundleSkus({ publicOnly = false } = {}) {
   const data = readData();
   const bundles = (data.bundleSkus || [])
@@ -635,9 +789,72 @@ function listOrders({ userId = null, orderId = null, status = null, keyword = ""
   return hydrateOrders(data, orders.slice(0, limit));
 }
 
-function applyQuotaChange(data, { userId, changeAmount, type, orderId = null, remark = null }) {
+function listRechargeOrders({
+  userId = null,
+  rechargeOrderId = null,
+  status = null,
+  keyword = "",
+  limit = 100,
+} = {}) {
+  const data = readData();
+  let rechargeOrders = (data.rechargeOrders || []).slice();
+
+  if (rechargeOrderId !== null) {
+    rechargeOrders = rechargeOrders.filter((item) => item.id === Number(rechargeOrderId));
+  }
+  if (userId !== null) {
+    rechargeOrders = rechargeOrders.filter((item) => item.user_id === Number(userId));
+  }
+  if (status !== null && status !== undefined && status !== "" && status !== "all") {
+    rechargeOrders = rechargeOrders.filter((item) => item.status === status);
+  }
+
+  const trimmedKeyword = String(keyword || "").trim().toLowerCase();
+  if (trimmedKeyword) {
+    rechargeOrders = rechargeOrders.filter((order) => {
+      const user = data.users.find((item) => item.id === order.user_id);
+      return [
+        String(order.id),
+        user?.game_role_id,
+        user?.game_server,
+        user?.game_role_name,
+        user?.nickname,
+        order.payment_reference,
+        order.payer_note,
+        order.admin_remark,
+      ]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(trimmedKeyword));
+    });
+  }
+
+  rechargeOrders.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  return hydrateRechargeOrders(data, rechargeOrders.slice(0, limit));
+}
+
+function applyQuotaChange(
+  data,
+  { userId, changeAmount, type, orderId = null, remark = null, bonusAmount = null }
+) {
   const account = ensureQuotaAccount(data, userId);
-  const nextBalance = Number(account.balance) + Number(changeAmount);
+  const user = data.users.find((item) => item.id === Number(userId));
+  let normalizedBonusAmount =
+    bonusAmount === null || bonusAmount === undefined ? null : Number(bonusAmount);
+  if (normalizedBonusAmount !== null && (!Number.isFinite(normalizedBonusAmount) || normalizedBonusAmount < 0)) {
+    normalizedBonusAmount = 0;
+  }
+
+  if (normalizedBonusAmount === null) {
+    const memberState = getSeasonMemberState(user, data.rechargeConfig || {});
+    const eligibleBonusTypes = new Set(["admin_add", "recharge_credit"]);
+    if (Number(changeAmount) > 0 && eligibleBonusTypes.has(String(type || "")) && memberState.active) {
+      normalizedBonusAmount = Math.floor(Number(changeAmount) * Number(memberState.bonus_rate || 0));
+    } else {
+      normalizedBonusAmount = 0;
+    }
+  }
+
+  const nextBalance = Number(account.balance) + Number(changeAmount) + Number(normalizedBonusAmount || 0);
   if (nextBalance < 0) {
     const err = new Error("insufficient_quota");
     err.statusCode = 400;
@@ -654,11 +871,34 @@ function applyQuotaChange(data, { userId, changeAmount, type, orderId = null, re
     remark,
     created_at: now(),
   });
+  if (Number(normalizedBonusAmount || 0) > 0) {
+    data.quotaLogs.push({
+      id: nextId(data.quotaLogs),
+      user_id: Number(userId),
+      change_amount: Number(normalizedBonusAmount),
+      type: "member_bonus",
+      order_id: orderId ? Number(orderId) : null,
+      remark: `season_member_bonus:${type}`,
+      created_at: now(),
+    });
+  }
   return nextBalance;
 }
 
 function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedProducts }) {
   const data = readData();
+  const hasPendingOrders = (data.orders || []).some((order) =>
+    ["pending", "cancel_requested"].includes(String(order?.status || ""))
+  );
+  if (hasPendingOrders) {
+    const err = new Error("catalog_replace_blocked_by_pending_orders");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  data.products = [];
+  data.productImports = [];
+
   const importId = nextId(data.productImports);
   const importedAt = now();
 
@@ -686,6 +926,12 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
         hp_value: product.hp_value || 0,
         main_attrs: product.main_attrs || "",
         ext_attrs: product.ext_attrs || "",
+        schedule_id: product.schedule_id || null,
+        current_schedule_id: product.current_schedule_id || null,
+        is_current_season: Boolean(product.is_current_season),
+        season_tag: product.season_tag || "legacy",
+        season_label: product.season_label || "-",
+        season_display: product.season_display || "老卡",
         price_quota: 0,
         manual_price_quota: null,
         pricing_meta: {},
@@ -704,6 +950,12 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
       existing.hp_value = product.hp_value || 0;
       existing.main_attrs = product.main_attrs || "";
       existing.ext_attrs = product.ext_attrs || "";
+      existing.schedule_id = product.schedule_id || null;
+      existing.current_schedule_id = product.current_schedule_id || null;
+      existing.is_current_season = Boolean(product.is_current_season);
+      existing.season_tag = product.season_tag || "legacy";
+      existing.season_label = product.season_label || "-";
+      existing.season_display = product.season_display || "老卡";
       existing.stock = Number(product.stock) || 1;
       existing.status = "on_sale";
       existing.updated_at = importedAt;
@@ -916,6 +1168,160 @@ function changeUserQuota(userId, changeAmount, remark, actorUserId) {
   });
   writeData(data);
   return { user_id: Number(userId), balance };
+}
+
+function createRechargeOrder(
+  userId,
+  { amountYuan, quotaAmount, paymentReference, payerNote, orderType = "normal" }
+) {
+  const data = readData();
+  const user = data.users.find((item) => item.id === Number(userId));
+  if (!user) {
+    const err = new Error("user_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (user.status !== "active") {
+    const err = new Error("user_disabled");
+    err.statusCode = 403;
+    throw err;
+  }
+  const config = normalizeRechargeConfig(data.rechargeConfig || {});
+  const normalizedOrderType = String(orderType || "normal").trim() || "normal";
+  const memberState = getSeasonMemberState(user, config);
+  if (normalizedOrderType === "season_member") {
+    if (!config.season_member_enabled) {
+      const err = new Error("season_member_disabled");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (memberState.active) {
+      const err = new Error("season_member_already_active");
+      err.statusCode = 400;
+      throw err;
+    }
+    const hasPendingSameSeason = (data.rechargeOrders || []).some(
+      (item) =>
+        Number(item.user_id) === Number(userId) &&
+        item.status === "pending_review" &&
+        item.order_type === "season_member" &&
+        String(item.season_label || "") === String(config.season_member_season_label || "")
+    );
+    if (hasPendingSameSeason) {
+      const err = new Error("season_member_pending_review");
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  const baseQuotaAmount = Number(quotaAmount);
+  const bonusQuotaAmount =
+    normalizedOrderType === "normal" && memberState.active
+      ? Math.floor(baseQuotaAmount * Number(config.season_member_bonus_rate || 0))
+      : 0;
+
+  const rechargeOrder = {
+    id: nextId(data.rechargeOrders || []),
+    user_id: Number(userId),
+    channel: "alipay_qr",
+    order_type: normalizedOrderType,
+    amount_yuan: Number(amountYuan),
+    base_quota_amount: baseQuotaAmount,
+    bonus_quota_amount: bonusQuotaAmount,
+    quota_amount: baseQuotaAmount + bonusQuotaAmount,
+    season_label:
+      normalizedOrderType === "season_member" ? String(config.season_member_season_label || "") : null,
+    payment_reference: String(paymentReference || "").trim(),
+    payer_note: payerNote ? String(payerNote).trim() : null,
+    admin_remark: null,
+    status: "pending_review",
+    reviewed_by: null,
+    reviewed_at: null,
+    created_at: now(),
+    updated_at: now(),
+  };
+
+  data.rechargeOrders.push(rechargeOrder);
+  addAuditLog(data, {
+    actorUserId: Number(userId),
+    targetType: "recharge_order",
+    targetId: rechargeOrder.id,
+    action: "recharge_order_create",
+    detail: {
+      amount_yuan: rechargeOrder.amount_yuan,
+      quota_amount: rechargeOrder.quota_amount,
+      order_type: rechargeOrder.order_type,
+      channel: rechargeOrder.channel,
+    },
+  });
+  writeData(data);
+  return listRechargeOrders({ rechargeOrderId: rechargeOrder.id, userId: Number(userId), limit: 1 })[0];
+}
+
+function reviewRechargeOrder(rechargeOrderId, { status, adminRemark = null }, actorUserId) {
+  const data = readData();
+  const rechargeOrder = (data.rechargeOrders || []).find(
+    (item) => item.id === Number(rechargeOrderId)
+  );
+  if (!rechargeOrder) return null;
+  if (rechargeOrder.status !== "pending_review") {
+    const err = new Error("recharge_order_review_not_allowed");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  rechargeOrder.status = status;
+  rechargeOrder.admin_remark = adminRemark ? String(adminRemark).trim() : null;
+  rechargeOrder.reviewed_by = Number(actorUserId);
+  rechargeOrder.reviewed_at = now();
+  rechargeOrder.updated_at = now();
+
+  if (status === "approved") {
+    const user = data.users.find((item) => item.id === Number(rechargeOrder.user_id));
+    const config = normalizeRechargeConfig(data.rechargeConfig || {});
+    if (rechargeOrder.order_type === "season_member" && user) {
+      user.season_member = {
+        season_label: String(rechargeOrder.season_label || config.season_member_season_label || ""),
+        activated_at: now(),
+        source_recharge_order_id: Number(rechargeOrder.id),
+      };
+      user.updated_at = now();
+      applyQuotaChange(data, {
+        userId: rechargeOrder.user_id,
+        changeAmount: Number(rechargeOrder.base_quota_amount || rechargeOrder.quota_amount || 0),
+        type: "season_member_credit",
+        remark: rechargeOrder.admin_remark || `season_member#${rechargeOrder.id}`,
+        bonusAmount: 0,
+      });
+    } else {
+      applyQuotaChange(data, {
+        userId: rechargeOrder.user_id,
+        changeAmount: Number(rechargeOrder.base_quota_amount || rechargeOrder.quota_amount || 0),
+        type: "recharge_credit",
+        remark: rechargeOrder.admin_remark || `recharge_order#${rechargeOrder.id}`,
+        bonusAmount: Number(rechargeOrder.bonus_quota_amount || 0),
+      });
+    }
+  }
+
+  addAuditLog(data, {
+    actorUserId: Number(actorUserId),
+    targetType: "recharge_order",
+    targetId: rechargeOrder.id,
+    action: "recharge_order_review",
+    detail: {
+      status,
+      quota_amount: rechargeOrder.quota_amount,
+      base_quota_amount: rechargeOrder.base_quota_amount,
+      bonus_quota_amount: rechargeOrder.bonus_quota_amount,
+      amount_yuan: rechargeOrder.amount_yuan,
+      order_type: rechargeOrder.order_type,
+      admin_remark: rechargeOrder.admin_remark,
+    },
+  });
+
+  writeData(data);
+  return listRechargeOrders({ rechargeOrderId: rechargeOrder.id, limit: 1 })[0];
 }
 
 function updateUserStatus(userId, status, actorUserId) {
@@ -1277,6 +1683,8 @@ module.exports = {
   listBundleSkus,
   getQuota,
   listOrders,
+  listRechargeOrders,
+  getRechargeConfig,
   importCards,
   listAdminProducts,
   listAdminBundles,
@@ -1291,10 +1699,15 @@ module.exports = {
   listUsers,
   changeUserQuota,
   updateUserStatus,
+  updateSelfProfile,
+  changeSelfPassword,
   createOrder,
+  createRechargeOrder,
+  updateRechargeConfig,
   requestOrderCancellation,
   updateOrderStatus,
   updateOrderRemark,
+  reviewRechargeOrder,
   listAuditLogs,
   listQuotaLogs,
 };

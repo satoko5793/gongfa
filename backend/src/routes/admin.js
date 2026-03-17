@@ -10,6 +10,8 @@ const {
   validateBundleUpdate,
   validateQuotaChange,
   validateOrderStatus,
+  validateRechargeReviewInput,
+  validateRechargeConfigUpdateInput,
 } = require("../services/validate");
 const { parseLegacyProducts } = require("../services/legacy-parser");
 const { applyQuotaChange, ensureQuotaAccount } = require("../services/quota");
@@ -17,6 +19,7 @@ const { listOrders } = require("../services/order-query");
 const { writeAuditLog } = require("../services/audit");
 const { recalculateDatabasePricing } = require("../services/pricing");
 const { ensureBundleSeeds } = require("../services/bundle-catalog");
+const { getRechargeConfig } = require("../config/recharge-config");
 
 const adminRouter = express.Router();
 adminRouter.use(authRequired, adminOnly);
@@ -105,13 +108,19 @@ adminRouter.post("/imports/cards-json", async (req, res, next) => {
     for (const product of parsedProducts) {
       await client.query(
         `INSERT INTO products
-          (import_id, legacy_id, uid, name, image_url, attack_value, hp_value, main_attrs, ext_attrs, stock, status, manual_price_quota, pricing_meta, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'on_sale', NULL, '{}'::jsonb, NOW(), NOW())
+          (import_id, legacy_id, uid, name, image_url, schedule_id, current_schedule_id, is_current_season, season_tag, season_label, season_display, attack_value, hp_value, main_attrs, ext_attrs, stock, status, manual_price_quota, pricing_meta, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'on_sale', NULL, '{}'::jsonb, NOW(), NOW())
          ON CONFLICT (uid)
          DO UPDATE SET
           import_id=EXCLUDED.import_id,
           legacy_id=EXCLUDED.legacy_id,
           name=EXCLUDED.name,
+          schedule_id=EXCLUDED.schedule_id,
+          current_schedule_id=EXCLUDED.current_schedule_id,
+          is_current_season=EXCLUDED.is_current_season,
+          season_tag=EXCLUDED.season_tag,
+          season_label=EXCLUDED.season_label,
+          season_display=EXCLUDED.season_display,
           attack_value=EXCLUDED.attack_value,
           hp_value=EXCLUDED.hp_value,
           main_attrs=EXCLUDED.main_attrs,
@@ -127,6 +136,12 @@ adminRouter.post("/imports/cards-json", async (req, res, next) => {
           product.uid,
           product.name,
           product.image_url,
+          product.schedule_id,
+          product.current_schedule_id,
+          product.is_current_season,
+          product.season_tag,
+          product.season_label,
+          product.season_display,
           product.attack_value,
           product.hp_value,
           product.main_attrs,
@@ -748,6 +763,100 @@ adminRouter.get("/orders", async (req, res, next) => {
     }
     const orders = await listOrders(pool, { status, keyword, limit });
     return res.json(orders);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/recharge-config", async (req, res, next) => {
+  try {
+    if (useFileStore()) {
+      return res.json(getRechargeConfig(devStore.getRechargeConfig()));
+    }
+    return res.json(getRechargeConfig());
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.patch("/recharge-config", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateRechargeConfigUpdateInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    if (useFileStore()) {
+      const nextConfig = devStore.updateRechargeConfig(
+        {
+          enabled: body.enabled,
+          exchange_yuan: body.exchange_yuan,
+          exchange_quota: body.exchange_quota,
+          min_amount_yuan: body.min_amount_yuan,
+          season_member_enabled: body.season_member_enabled,
+          season_member_season_label: body.season_member_season_label,
+          season_member_expires_at: body.season_member_expires_at,
+          season_member_price_yuan: body.season_member_price_yuan,
+          season_member_quota: body.season_member_quota,
+          season_member_bonus_rate: body.season_member_bonus_rate,
+          preset_amounts: body.preset_amounts,
+          qr_image_url: body.qr_image_url,
+          payee_name: body.payee_name,
+          payee_hint: body.payee_hint,
+          instructions: body.instructions,
+        },
+        req.user.id
+      );
+      return res.json(nextConfig);
+    }
+
+    return res.status(501).json({ error: "recharge_config_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/recharge-orders", async (req, res, next) => {
+  try {
+    const status = String(req.query.status || "").trim();
+    const keyword = String(req.query.keyword || "").trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+
+    if (useFileStore()) {
+      return res.json(devStore.listRechargeOrders({ status, keyword, limit }));
+    }
+
+    return res.status(501).json({ error: "recharge_order_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.patch("/recharge-orders/:id/review", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateRechargeReviewInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    if (useFileStore()) {
+      const updated = devStore.reviewRechargeOrder(
+        req.params.id,
+        {
+          status: body.status,
+          adminRemark: body.admin_remark || null,
+        },
+        req.user.id
+      );
+      if (!updated) {
+        return res.status(404).json({ error: "recharge_order_not_found" });
+      }
+      return res.json(updated);
+    }
+
+    return res.status(501).json({ error: "recharge_order_not_supported_in_db_mode" });
   } catch (error) {
     return next(error);
   }

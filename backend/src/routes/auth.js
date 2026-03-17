@@ -9,8 +9,9 @@ const {
   validatePasswordRegisterInput,
   validatePasswordLoginInput,
 } = require("../services/validate");
-const { ensureQuotaAccount } = require("../services/quota");
+const { ensureQuotaAccount, applyQuotaChange } = require("../services/quota");
 const { hashPassword, verifyPassword } = require("../services/password-auth");
+const { getSignupSeedQuota } = require("../config/signup-seed-quota");
 
 const authRouter = express.Router();
 
@@ -32,6 +33,14 @@ authRouter.post("/register", async (req, res, next) => {
       return res.json({ token, user });
     }
 
+    const existingUser = await pool.query(
+      `SELECT id FROM users WHERE game_role_id=$1 LIMIT 1`,
+      [body.game_role_id.trim()]
+    );
+    if (existingUser.rows.length > 0) {
+      return res.status(409).json({ error: "game_role_id_taken" });
+    }
+
     const passwordHash = await hashPassword(body.password);
     const result = await pool.query(
       `INSERT INTO users
@@ -48,6 +57,15 @@ authRouter.post("/register", async (req, res, next) => {
 
     const user = result.rows[0];
     await ensureQuotaAccount(pool, user.id);
+    const signupSeedQuota = getSignupSeedQuota(user.game_role_id);
+    if (signupSeedQuota > 0) {
+      await applyQuotaChange(pool, {
+        userId: user.id,
+        changeAmount: signupSeedQuota,
+        type: "signup_seed_credit",
+        remark: "third_season_signup_seed",
+      });
+    }
     const token = signUser(user);
     return res.json({ token, user });
   } catch (error) {

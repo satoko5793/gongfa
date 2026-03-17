@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>功法卡片商城 - 后台</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260317d" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -135,6 +135,109 @@
         <div id="admin-bundles" class="admin-list"></div>
       </section>
 
+      <section id="recharge-config" class="card">
+        <div class="card-title">充值配置</div>
+        <div class="card-sub">调整兑换比例、最低充值和收款说明，保存后前台会立刻显示新的比例。</div>
+        <form id="admin-recharge-config-form" class="form-grid">
+          <label>
+            开启充值
+            <select id="admin-recharge-enabled">
+              <option value="true">开启</option>
+              <option value="false">关闭</option>
+            </select>
+          </label>
+          <label>
+            兑换比例：元
+            <input id="admin-recharge-exchange-yuan" type="number" min="1" step="1" />
+          </label>
+          <label>
+            兑换比例：额度
+            <input id="admin-recharge-exchange-quota" type="number" min="1" step="1" />
+          </label>
+          <label>
+            最低充值（元）
+            <input id="admin-recharge-min-yuan" type="number" min="1" step="1" />
+          </label>
+          <label>
+            开启赛季会员
+            <select id="admin-season-member-enabled">
+              <option value="true">开启</option>
+              <option value="false">关闭</option>
+            </select>
+          </label>
+          <label>
+            赛季名称
+            <input id="admin-season-member-label" type="text" placeholder="例如 S3 黄金赛季" />
+          </label>
+          <label>
+            会员截止时间
+            <input id="admin-season-member-expires-at" type="text" placeholder="例如 2026-04-10T00:00:00+08:00" />
+          </label>
+          <label>
+            会员价格（元）
+            <input id="admin-season-member-price" type="number" min="1" step="1" />
+          </label>
+          <label>
+            会员开通额度
+            <input id="admin-season-member-quota" type="number" min="1" step="1" />
+          </label>
+          <label>
+            会员加成比例
+            <input id="admin-season-member-bonus-rate" type="number" min="0" max="1" step="0.01" />
+          </label>
+          <label>
+            快捷金额（英文逗号分隔）
+            <input id="admin-recharge-presets" type="text" placeholder="例如 12,24,60,120,240" />
+          </label>
+          <label>
+            收款名称
+            <input id="admin-recharge-payee-name" type="text" />
+          </label>
+          <label>
+            收款提示
+            <input id="admin-recharge-payee-hint" type="text" />
+          </label>
+          <label>
+            收款码地址
+            <input id="admin-recharge-qr-image-url" type="text" />
+          </label>
+          <label>
+            当前收款码预览
+            <img
+              id="admin-recharge-qr-preview"
+              class="recharge-qr-image"
+              src="/payment/alipay-qr.jpg"
+              alt="支付宝收款码预览"
+            />
+          </label>
+          <label>
+            前台提示（每行一条）
+            <textarea id="admin-recharge-instructions" rows="4" placeholder="每行一条说明"></textarea>
+          </label>
+          <div class="actions">
+            <button id="save-recharge-config-btn" class="primary" type="submit">保存充值配置</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="recharge-orders" class="card">
+        <div class="card-title">充值订单</div>
+        <div class="card-sub">查看用户提交的充值申请，核对付款备注后审核加额度。</div>
+        <div class="toolbar">
+          <input id="admin-recharge-keyword-input" type="text" placeholder="搜索订单号 / 游戏名 / 游戏 ID / 付款备注" />
+          <div class="filters">
+            <select id="admin-recharge-status-filter">
+              <option value="all">全部状态</option>
+              <option value="pending_review">待审核</option>
+              <option value="approved">已通过</option>
+              <option value="rejected">已驳回</option>
+            </select>
+            <button id="reload-recharge-orders-btn" class="ghost" type="button">查询充值单</button>
+          </div>
+        </div>
+        <div id="admin-recharge-orders" class="admin-list"></div>
+      </section>
+
       <section id="orders" class="card">
         <div class="card-title">订单管理</div>
         <div class="card-sub">支持订单查询、备注、确认、取消，以及取消申请审核。</div>
@@ -203,302 +306,16 @@
 
     <aside id="admin-debug-panel" class="debug-panel">
       <div class="debug-title">后台调试</div>
-      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260316a</div>
+      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260317d</div>
       <div id="admin-debug-action" class="debug-line">action: page_loaded</div>
       <div id="admin-debug-session" class="debug-line">session: unknown</div>
       <div id="admin-debug-error" class="debug-line">error: none</div>
     </aside>
 
-    <footer class="footer">后台页面当前为静态页面，数据由后端 API 提供。</footer>
+    <footer class="footer">后台仅供管理员使用，所有操作都通过 API 实时生效。</footer>
     <script>
-      (() => {
-        const SESSION_KEY = "gongfa_session_v1";
-        const fallbackVersion = "fallback-20260316a";
-
-        function setDebugLine(id, prefix, value) {
-          const element = document.getElementById(id);
-          if (!element) return;
-          element.textContent = `${prefix}: ${value}`;
-        }
-
-        function setAction(value) {
-          setDebugLine("admin-debug-action", "action", value);
-        }
-
-        function setSession(value) {
-          setDebugLine("admin-debug-session", "session", value);
-        }
-
-        function setError(value) {
-          setDebugLine("admin-debug-error", "error", value || "none");
-        }
-
-        function setVersion(value) {
-          setDebugLine("admin-debug-version", "version", value);
-        }
-
-        function loadSession() {
-          try {
-            return JSON.parse(window.localStorage.getItem(SESSION_KEY) || "null");
-          } catch {
-            return null;
-          }
-        }
-
-        function saveSession(session) {
-          window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-        }
-
-        function clearSession() {
-          window.localStorage.removeItem(SESSION_KEY);
-        }
-
-        function setMessage(text, type) {
-          const element = document.getElementById("admin-message");
-          if (!element) return;
-          element.textContent = text || "";
-          element.className = "notice";
-          if (type === "error") {
-            element.style.color = "#b42318";
-            setError(text || "error");
-            return;
-          }
-          if (type === "success") {
-            element.style.color = "#166534";
-          } else {
-            element.style.color = "";
-          }
-          setError("none");
-        }
-
-        function renderSession() {
-          const root = document.getElementById("admin-session");
-          if (!root) return;
-          const session = loadSession();
-          const profile = session?.profile || null;
-          if (!session?.token) {
-            root.innerHTML = '<div class="stack-item">未登录</div>';
-            setSession("no_token");
-            return;
-          }
-          root.innerHTML = [
-            `当前账号：${profile?.game_role_name || "-"}`,
-            `游戏 ID：${profile?.game_role_id || "-"}`,
-            `角色：${profile?.role || "-"}`,
-          ]
-            .map((line) => `<div class="stack-item">${line}</div>`)
-            .join("");
-          setSession(`token role=${profile?.role || "-"}`);
-        }
-
-        function renderFallbackProducts(products) {
-          const root = document.getElementById("admin-products");
-          const overview = document.getElementById("admin-overview");
-          if (overview) {
-            overview.innerHTML = `
-              <div class="overview-card">
-                <div class="overview-label">商品总数</div>
-                <div class="overview-value">${products.length}</div>
-                <div class="overview-hint">fallback 模式</div>
-              </div>
-            `;
-          }
-          if (!root) return;
-          if (!Array.isArray(products) || products.length === 0) {
-            root.innerHTML = '<div class="stack-item">当前没有商品</div>';
-            return;
-          }
-          root.innerHTML = products
-            .slice(0, 100)
-            .map((product) => `
-              <div class="stack-item">
-                <strong>${product?.name || "-"}</strong>
-                <div>legacy ${product?.legacy_id || "-"} | 库存 ${Number(product?.stock || 0)} | 价格 ${Number(product?.price_quota || 0)} | 状态 ${product?.status || "-"}</div>
-              </div>
-            `)
-            .join("");
-        }
-
-        async function fallbackLoadProducts() {
-          if (window.__adminModuleReady) return;
-          const session = loadSession();
-          if (!session?.token) return;
-          const products = await apiFetch("/admin/products");
-          renderFallbackProducts(Array.isArray(products) ? products : []);
-        }
-
-        async function apiFetch(path, options = {}) {
-          const session = loadSession();
-          const headers = {
-            "Content-Type": "application/json",
-            ...(options.headers || {}),
-          };
-          if (session?.token) {
-            headers.Authorization = `Bearer ${session.token}`;
-          }
-          const response = await fetch(path, { ...options, headers });
-          const text = await response.text();
-          let data = null;
-          try {
-            data = text ? JSON.parse(text) : null;
-          } catch {
-            data = text;
-          }
-          if (!response.ok) {
-            throw new Error(data?.error || response.statusText || "request_failed");
-          }
-          return data;
-        }
-
-        async function fallbackLogin() {
-          if (window.__adminModuleReady) return;
-          const roleIdInput = document.getElementById("admin-login-role-id");
-          const passwordInput = document.getElementById("admin-login-password");
-          const loginBtn = document.getElementById("admin-login-btn");
-          const game_role_id = roleIdInput?.value?.trim();
-          const password = passwordInput?.value || "";
-          setAction("fallback_login_click");
-          if (!game_role_id || !password) {
-            setMessage("请输入游戏 ID 和密码", "error");
-            return;
-          }
-          try {
-            if (loginBtn) loginBtn.disabled = true;
-            const result = await apiFetch("/auth/login", {
-              method: "POST",
-              body: JSON.stringify({
-                login_type: "password",
-                game_role_id,
-                password,
-              }),
-            });
-            saveSession({
-              token: result?.token,
-              profile: result?.user || result?.profile || null,
-            });
-            renderSession();
-            await fallbackLoadProducts();
-            setMessage("登录成功", "success");
-            setAction("fallback_login_success");
-          } catch (error) {
-            setMessage(error?.message || "登录失败", "error");
-            setAction("fallback_login_error");
-          } finally {
-            if (loginBtn) loginBtn.disabled = false;
-          }
-        }
-
-        async function fallbackImport() {
-          if (window.__adminModuleReady) return;
-          const input = document.getElementById("import-json-input");
-          const fileNameInput = document.getElementById("import-file-name");
-          const button = document.getElementById("import-submit-btn");
-          const rawJson = input?.value?.trim();
-          const sourceFileName = fileNameInput?.value?.trim();
-          setAction("fallback_import_click");
-          if (!loadSession()?.token) {
-            setMessage("请先登录后台", "error");
-            return;
-          }
-          if (!rawJson) {
-            setMessage("请粘贴 JSON", "error");
-            return;
-          }
-          try {
-            JSON.parse(rawJson);
-          } catch {
-            setMessage("JSON 格式不正确", "error");
-            return;
-          }
-          try {
-            if (button) {
-              button.disabled = true;
-              button.textContent = "导入中...";
-            }
-            const result = await apiFetch("/admin/imports/cards-json", {
-              method: "POST",
-              body: JSON.stringify({
-                source_file_name: sourceFileName || "",
-                raw_json: rawJson,
-              }),
-            });
-            const count = Number(result?.parsed_count || result?.imported_count || 0);
-            setMessage(`导入完成：${count} 件商品`, "success");
-            await fallbackLoadProducts();
-            setMessage(`导入完成：解析 ${count} 件商品`, "success");
-            setAction("fallback_import_success");
-          } catch (error) {
-            setMessage(error?.message || "导入失败", "error");
-            setAction("fallback_import_error");
-          } finally {
-            if (button) {
-              button.disabled = false;
-              button.textContent = "导入并生成商品";
-            }
-          }
-        }
-
-        async function fallbackRefresh() {
-          if (window.__adminModuleReady) return;
-          setAction("fallback_refresh");
-          renderSession();
-          try {
-            const session = loadSession();
-            if (!session?.token) return;
-            const result = await apiFetch("/auth/me");
-            saveSession({
-              token: session.token,
-              profile: result?.user || result?.profile || result || null,
-            });
-            renderSession();
-            setMessage("已刷新后台状态", "success");
-          } catch (error) {
-            setMessage(error?.message || "刷新失败", "error");
-          }
-        }
-
-        function fallbackLogout() {
-          if (window.__adminModuleReady) return;
-          clearSession();
-          renderSession();
-          setMessage("已退出登录", "success");
-          setAction("fallback_logout");
-        }
-
-        async function fallbackLoadSample() {
-          if (window.__adminModuleReady) return;
-          setAction("fallback_load_sample");
-          try {
-            const response = await fetch("./legacy-json/legacy_getinfo-2026-03-13T17-54-19.json");
-            if (!response.ok) {
-              throw new Error(`load_sample_failed_${response.status}`);
-            }
-            const text = await response.text();
-            const input = document.getElementById("import-json-input");
-            const fileNameInput = document.getElementById("import-file-name");
-            if (input) input.value = text;
-            if (fileNameInput) {
-              fileNameInput.value = "legacy_getinfo-2026-03-13T17-54-19.json";
-            }
-            setMessage("已载入示例 JSON", "success");
-          } catch (error) {
-            setMessage(error?.message || "载入示例失败", "error");
-          }
-        }
-
-        setVersion(fallbackVersion);
-        renderSession();
-        setError("none");
-        setAction("fallback_boot");
-        fallbackLoadProducts().catch(() => {});
-
-        document.getElementById("admin-login-btn")?.addEventListener("click", fallbackLogin);
-        document.getElementById("admin-logout-btn")?.addEventListener("click", fallbackLogout);
-        document.getElementById("import-submit-btn")?.addEventListener("click", fallbackImport);
-        document.getElementById("reload-admin-btn")?.addEventListener("click", fallbackRefresh);
-        document.getElementById("load-sample-json-btn")?.addEventListener("click", fallbackLoadSample);
-      })();
+      window.__adminModuleReady = false;
     </script>
-    <script type="module" src="./admin.js?v=20260316a"></script>
+    <script type="module" src="./admin.js?v=20260317d"></script>
   </body>
 </html>

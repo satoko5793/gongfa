@@ -38,6 +38,138 @@ function validatePasswordLoginInput(body) {
   return errors;
 }
 
+function validateProfileUpdateInput(body) {
+  const errors = [];
+  if (
+    body.game_role_name === undefined &&
+    body.nickname === undefined &&
+    body.game_server === undefined
+  ) {
+    errors.push("profile_update_empty");
+  }
+  if (body.game_role_name !== undefined && !requiredString(body.game_role_name)) {
+    errors.push("game_role_name_required");
+  }
+  if (body.nickname !== undefined && !optionalString(body.nickname)) {
+    errors.push("nickname_invalid");
+  }
+  if (body.game_server !== undefined && !requiredString(body.game_server)) {
+    errors.push("game_server_required");
+  }
+  return errors;
+}
+
+function validatePasswordChangeInput(body) {
+  const errors = [];
+  if (!requiredString(body.current_password)) errors.push("current_password_required");
+  if (!requiredString(body.new_password)) errors.push("new_password_required");
+  if (requiredString(body.new_password) && body.new_password.trim().length < 6) {
+    errors.push("new_password_too_short");
+  }
+  return errors;
+}
+
+function validateRechargeOrderCreate(body) {
+  const errors = [];
+  if (
+    body.order_type !== undefined &&
+    !["normal", "season_member"].includes(String(body.order_type || "").trim())
+  ) {
+    errors.push("order_type_invalid");
+  }
+  if (!Number.isInteger(body.amount_yuan) || body.amount_yuan <= 0) {
+    errors.push("amount_yuan_invalid");
+  }
+  if (!requiredString(body.payment_reference)) {
+    errors.push("payment_reference_required");
+  }
+  if (body.payment_reference !== undefined && !requiredString(body.payment_reference)) {
+    errors.push("payment_reference_invalid");
+  }
+  if (body.payer_note !== undefined && !optionalString(body.payer_note)) {
+    errors.push("payer_note_invalid");
+  }
+  return [...new Set(errors)];
+}
+
+function validateRechargeReviewInput(body) {
+  const errors = [];
+  if (!["approved", "rejected"].includes(String(body.status || ""))) {
+    errors.push("status_invalid");
+  }
+  if (body.admin_remark !== undefined && !optionalString(body.admin_remark)) {
+    errors.push("admin_remark_invalid");
+  }
+  return errors;
+}
+
+function validateRechargeConfigUpdateInput(body) {
+  const errors = [];
+  if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+    errors.push("enabled_invalid");
+  }
+  if (
+    body.season_member_enabled !== undefined &&
+    typeof body.season_member_enabled !== "boolean"
+  ) {
+    errors.push("season_member_enabled_invalid");
+  }
+  for (const field of ["exchange_yuan", "exchange_quota", "min_amount_yuan"]) {
+    if (
+      body[field] !== undefined &&
+      (!Number.isInteger(body[field]) || Number(body[field]) <= 0)
+    ) {
+      errors.push(`${field}_invalid`);
+    }
+  }
+  for (const field of ["season_member_price_yuan", "season_member_quota"]) {
+    if (
+      body[field] !== undefined &&
+      (!Number.isInteger(body[field]) || Number(body[field]) <= 0)
+    ) {
+      errors.push(`${field}_invalid`);
+    }
+  }
+  if (
+    body.season_member_bonus_rate !== undefined &&
+    (typeof body.season_member_bonus_rate !== "number" ||
+      !Number.isFinite(body.season_member_bonus_rate) ||
+      body.season_member_bonus_rate < 0)
+  ) {
+    errors.push("season_member_bonus_rate_invalid");
+  }
+  if (body.preset_amounts !== undefined) {
+    if (!Array.isArray(body.preset_amounts)) {
+      errors.push("preset_amounts_invalid");
+    } else if (
+      body.preset_amounts.some(
+        (item) => !Number.isInteger(item) || Number(item) <= 0
+      )
+    ) {
+      errors.push("preset_amounts_invalid");
+    }
+  }
+  for (const field of [
+    "qr_image_url",
+    "payee_name",
+    "payee_hint",
+    "season_member_season_label",
+    "season_member_expires_at",
+  ]) {
+    if (body[field] !== undefined && !requiredString(body[field])) {
+      errors.push(`${field}_invalid`);
+    }
+  }
+  if (body.instructions !== undefined) {
+    if (!Array.isArray(body.instructions)) {
+      errors.push("instructions_invalid");
+    } else if (body.instructions.some((item) => !requiredString(item))) {
+      errors.push("instructions_invalid");
+    }
+  }
+  return [...new Set(errors)];
+}
+
 function validateImportInput(body) {
   const errors = [];
   if (!body || body.raw_json === undefined || body.raw_json === null) {
@@ -131,6 +263,11 @@ module.exports = {
   validateBindInput,
   validatePasswordRegisterInput,
   validatePasswordLoginInput,
+  validateProfileUpdateInput,
+  validatePasswordChangeInput,
+  validateRechargeOrderCreate,
+  validateRechargeReviewInput,
+  validateRechargeConfigUpdateInput,
   validateImportInput,
   validateProductStatus,
   validateProductUpdate,

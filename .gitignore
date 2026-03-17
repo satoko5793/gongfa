@@ -2,12 +2,16 @@
 .env.local
 .vscode/
 
+node_modules/
 backend/node_modules/
 backend/run-logs/
 backend/dev-data.json
 backend/server.log
 
 tmp-products.json
+tmp/
+tmp_public_app.js
+/legacy_getinfo-*.json
 miniapp1/
 app/project.private.config.json
 mp-app/project.private.config.json
@@ -15,3 +19,4 @@ mp-app/project.private.config.json
 message-history-*.json
 
 xyzw_web_helper/
+素材/
