@@ -11,6 +11,8 @@ import {
 
 const productGrid = document.getElementById("product-grid");
 const productCategoryTabs = document.getElementById("product-category-tabs");
+const productPagination = document.getElementById("product-pagination");
+const productsSection = document.getElementById("products");
 const keywordInput = document.getElementById("product-keyword-input");
 const sortSelect = document.getElementById("product-sort-select");
 const sessionSummary = document.getElementById("session-summary");
@@ -66,6 +68,13 @@ let currentRechargeConfig = null;
 let currentRechargeOrders = [];
 let selectedRechargeAmount = null;
 let selectedRechargeOrderType = "normal";
+let productSearchTimer = null;
+const productPaginationState = {
+  page: 1,
+  pageSize: 12,
+  total: 0,
+  totalPages: 0,
+};
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -362,6 +371,69 @@ function renderCategoryTabs(products) {
     .join("");
 }
 
+function resetProductPagination() {
+  productPaginationState.page = 1;
+}
+
+function scrollProductsIntoView() {
+  productsSection?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+function getPagedProducts(products) {
+  const total = Array.isArray(products) ? products.length : 0;
+  const pageSize = Number(productPaginationState.pageSize || 12);
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
+  const page = Math.min(
+    Math.max(Number(productPaginationState.page || 1), 1),
+    Math.max(totalPages, 1)
+  );
+
+  productPaginationState.page = page;
+  productPaginationState.total = total;
+  productPaginationState.totalPages = totalPages;
+
+  if (total === 0) {
+    return [];
+  }
+
+  const start = (page - 1) * pageSize;
+  return products.slice(start, start + pageSize);
+}
+
+function renderProductPagination() {
+  if (!productPagination) return;
+
+  const total = Number(productPaginationState.total || 0);
+  const page = Math.max(Number(productPaginationState.page || 1), 1);
+  const totalPages = Math.max(Number(productPaginationState.totalPages || 0), 0);
+
+  if (total === 0) {
+    productPagination.innerHTML = '<div class="pagination-meta">当前共 0 件商品。</div>';
+    return;
+  }
+
+  productPagination.innerHTML = `
+    <div class="pagination-meta">第 ${page} / ${Math.max(totalPages, 1)} 页，共 ${total} 件商品</div>
+    <div class="pagination-actions">
+      <button
+        class="ghost"
+        type="button"
+        data-product-page="${Math.max(page - 1, 1)}"
+        ${page <= 1 ? "disabled" : ""}
+      >上一页</button>
+      <button
+        class="ghost"
+        type="button"
+        data-product-page="${Math.min(page + 1, Math.max(totalPages, 1))}"
+        ${totalPages === 0 || page >= totalPages ? "disabled" : ""}
+      >下一页</button>
+    </div>
+  `;
+}
+
 function filterProductsByCategory(products, category) {
   if (!category || category === "all") return products || [];
   return (products || []).filter((product) => getProductCategory(product) === category);
@@ -576,7 +648,11 @@ function renderProductVisual(product, variant = "grid") {
   `;
 }
 
-function applyProductView() {
+function applyProductView(options = {}) {
+  const { resetPage = false } = options;
+  if (resetPage) {
+    resetProductPagination();
+  }
   const filtered = filterProductsByCategory(allProducts, activeCategory);
   currentProducts = sortProducts(filtered, sortSelect.value);
   renderCategoryTabs(allProducts);
@@ -584,12 +660,15 @@ function applyProductView() {
 }
 
 function renderProducts(products) {
+  const pagedProducts = getPagedProducts(products);
+
   if (!products || products.length === 0) {
     productGrid.innerHTML = '<div class="stack-item">当前分类下没有已上架商品。</div>';
+    renderProductPagination();
     return;
   }
 
-  productGrid.innerHTML = products
+  productGrid.innerHTML = pagedProducts
     .map((product) => {
       const termBadges = parseTermBadges(product.ext_attrs, product);
       const stockLabel = product.stock === null || product.stock === undefined ? "不限量" : `库存 ${Number(product.stock || 0)}`;
@@ -632,6 +711,7 @@ function renderProducts(products) {
     .join("");
 
   bindImageFallbacks(productGrid);
+  renderProductPagination();
 }
 function formatOrderStatus(status) {
   const mapping = {
@@ -965,7 +1045,7 @@ async function loadProducts() {
   const suffix = query.toString();
   const products = await apiFetch(`/products${suffix ? `?${suffix}` : ""}`);
   allProducts = products;
-  applyProductView();
+  applyProductView({ resetPage: true });
 }
 
 async function loadAccount() {
@@ -1362,19 +1442,34 @@ registerPasswordConfirmInput?.addEventListener("input", () => syncRegisterPasswo
 registerPasswordConfirmInput?.addEventListener("blur", () => syncRegisterPasswordValidation(true));
 registerRoleIdInput?.addEventListener("input", () => registerRoleIdInput.setCustomValidity(""));
 keywordInput.addEventListener("input", () => {
-  loadProducts().catch((error) => setNotice(`商品刷新失败：${error.message}`, "error"));
+  resetProductPagination();
+  if (productSearchTimer) {
+    window.clearTimeout(productSearchTimer);
+  }
+  productSearchTimer = window.setTimeout(() => {
+    loadProducts().catch((error) => setNotice(`商品刷新失败：${error.message}`, "error"));
+  }, 220);
 });
-sortSelect.addEventListener("change", () => applyProductView());
+sortSelect.addEventListener("change", () => applyProductView({ resetPage: true }));
 productCategoryTabs.addEventListener("click", (event) => {
   const button = event.target.closest("[data-category]");
   if (!button) return;
   activeCategory = button.getAttribute("data-category") || "all";
-  applyProductView();
+  applyProductView({ resetPage: true });
 });
 productGrid.addEventListener("click", (event) => {
   const button = event.target.closest(".detail-btn, .buy-btn");
   if (!button) return;
   openProductModal(button.getAttribute("data-item-id"), button.getAttribute("data-item-kind"));
+});
+productPagination?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-product-page]");
+  if (!button) return;
+  const page = Number(button.getAttribute("data-product-page"));
+  if (!Number.isInteger(page) || page < 1) return;
+  productPaginationState.page = page;
+  renderProducts(currentProducts);
+  scrollProductsIntoView();
 });
 rechargeBody?.addEventListener("click", (event) => {
   const typeButton = event.target.closest("[data-recharge-order-type]");
