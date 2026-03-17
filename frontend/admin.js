@@ -64,6 +64,9 @@ const ordersPaginationRoot = document.getElementById("admin-orders-pagination");
 const rechargeOrdersPaginationRoot = document.getElementById("admin-recharge-orders-pagination");
 const quotaLogsPaginationRoot = document.getElementById("admin-quota-logs-pagination");
 const auditsPaginationRoot = document.getElementById("admin-audits-pagination");
+const productsPaginationRoot = document.getElementById("admin-products-pagination");
+const bundlesPaginationRoot = document.getElementById("admin-bundles-pagination");
+const usersPaginationRoot = document.getElementById("admin-users-pagination");
 
 const selectedProductIds = new Set();
 let allProducts = [];
@@ -80,6 +83,9 @@ let overviewCounts = {
 };
 const loadedAdminPages = new Set();
 const paginationState = {
+  products: { page: 1, pageSize: 12, total: 0, totalPages: 0 },
+  bundles: { page: 1, pageSize: 8, total: 0, totalPages: 0 },
+  users: { page: 1, pageSize: 10, total: 0, totalPages: 0 },
   orders: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
   rechargeOrders: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
   quotaLogs: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
@@ -207,6 +213,22 @@ function markPageLoaded(page, loaded = true) {
     return;
   }
   loadedAdminPages.delete(page);
+}
+
+function sliceLocalPage(items, stateKey) {
+  const state = paginationState[stateKey];
+  const total = items.length;
+  const pageSize = Number(state?.pageSize || 10);
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
+  const nextPage = Math.min(Math.max(Number(state?.page || 1), 1), Math.max(totalPages, 1));
+  paginationState[stateKey] = {
+    ...state,
+    page: nextPage,
+    total,
+    totalPages,
+  };
+  const start = (nextPage - 1) * pageSize;
+  return items.slice(start, start + pageSize);
 }
 
 function formatOrderItemSnapshot(item) {
@@ -542,13 +564,16 @@ function getFilteredUsers() {
 }
 
 function renderProducts(products) {
+  const pagedProducts = sliceLocalPage(products, "products");
+
   if (!products.length) {
     productsRoot.innerHTML = '<div class="stack-item">当前筛选条件下没有商品。</div>';
+    renderPagination(productsPaginationRoot, "products", paginationState.products);
     syncSelectedProducts();
     return;
   }
 
-  productsRoot.innerHTML = products
+  productsRoot.innerHTML = pagedProducts
     .map((product) => {
       const pricingMeta = getPricingMeta(product);
       const pricingLabel = pricingMeta.source === "manual" ? "手动价" : "自动价";
@@ -613,16 +638,20 @@ function renderProducts(products) {
     })
     .join("");
 
+  renderPagination(productsPaginationRoot, "products", paginationState.products);
   syncSelectedProducts();
 }
 
 function renderUsers(users) {
+  const pagedUsers = sliceLocalPage(users, "users");
+
   if (!users.length) {
     usersRoot.innerHTML = '<div class="stack-item">没有匹配到用户。</div>';
+    renderPagination(usersPaginationRoot, "users", paginationState.users);
     return;
   }
 
-  usersRoot.innerHTML = users
+  usersRoot.innerHTML = pagedUsers
     .map(
       (user) => `
         <div class="admin-card" data-user-id="${user.id}">
@@ -656,15 +685,20 @@ function renderUsers(users) {
       `
     )
     .join("");
+
+  renderPagination(usersPaginationRoot, "users", paginationState.users);
 }
 
 function renderBundles(bundles) {
+  const pagedBundles = sliceLocalPage(bundles, "bundles");
+
   if (!bundles.length) {
     bundlesRoot.innerHTML = '<div class="stack-item">暂无套餐 SKU。</div>';
+    renderPagination(bundlesPaginationRoot, "bundles", paginationState.bundles);
     return;
   }
 
-  bundlesRoot.innerHTML = bundles
+  bundlesRoot.innerHTML = pagedBundles
     .map(
       (bundle) => `
         <div class="admin-card" data-bundle-id="${bundle.id}">
@@ -719,6 +753,8 @@ function renderBundles(bundles) {
       `
     )
     .join("");
+
+  renderPagination(bundlesPaginationRoot, "bundles", paginationState.bundles);
 }
 
 function formatRechargeReviewStatusLabel(status) {
@@ -1637,9 +1673,11 @@ recalculatePricingBtn?.addEventListener("click", async () => {
 });
 
 adminProductKeywordInput?.addEventListener("input", () => {
+  resetPagedState("products");
   renderProducts(getFilteredProducts());
 });
 adminProductStatusFilter?.addEventListener("change", () => {
+  resetPagedState("products");
   renderProducts(getFilteredProducts());
 });
 adminRechargeStatusFilter?.addEventListener("change", () => {
@@ -1658,6 +1696,7 @@ document.getElementById("reload-recharge-orders-btn")?.addEventListener("click",
 });
 
 adminUserKeywordInput?.addEventListener("input", () => {
+  resetPagedState("users");
   renderUsers(getFilteredUsers());
 });
 linkedOrderUserState?.addEventListener("click", (event) => {
@@ -1734,6 +1773,21 @@ document.addEventListener("click", (event) => {
 
   if (target === "orders") {
     loadOrders({ page }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+    return;
+  }
+  if (target === "products") {
+    paginationState.products.page = page;
+    renderProducts(getFilteredProducts());
+    return;
+  }
+  if (target === "users") {
+    paginationState.users.page = page;
+    renderUsers(getFilteredUsers());
+    return;
+  }
+  if (target === "bundles") {
+    paginationState.bundles.page = page;
+    renderBundles(allBundles);
     return;
   }
   if (target === "rechargeOrders") {
