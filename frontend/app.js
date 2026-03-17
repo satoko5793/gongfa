@@ -987,6 +987,30 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
   };
 }
 
+function updateRechargeQuotePreview(profile, rechargeConfig) {
+  const quoteNode = document.getElementById("recharge-quote-value");
+  const detailNode = document.getElementById("recharge-quote-detail");
+  if (!quoteNode || !detailNode || !rechargeConfig) return;
+
+  const amountInput = document.getElementById("recharge-amount-input");
+  const amountValue =
+    selectedRechargeOrderType === "season_member"
+      ? Number(rechargeConfig?.season_member_price_yuan || 0)
+      : Number(amountInput?.value || selectedRechargeAmount || 0);
+  const quoteSummary = getRechargeQuoteSummary(
+    profile,
+    rechargeConfig,
+    amountValue,
+    selectedRechargeOrderType
+  );
+
+  quoteNode.textContent = `${quoteSummary.totalQuota} 额度`;
+  detailNode.textContent =
+    quoteSummary.bonusQuota > 0
+      ? `${quoteSummary.baseQuota} 基础额度 + ${quoteSummary.bonusQuota} 会员加成`
+      : `${quoteSummary.baseQuota} 基础额度`;
+}
+
 function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
   if (!rechargeBody || !rechargeOrderList) return;
 
@@ -1692,14 +1716,8 @@ rechargeBody?.addEventListener("click", (event) => {
 rechargeBody?.addEventListener("input", (event) => {
   if (event.target?.id !== "recharge-amount-input") return;
   selectedRechargeAmount = Number(event.target.value || 0);
-  const quoteNode = document.getElementById("recharge-quote-value");
-  if (quoteNode && currentRechargeConfig) {
-    const quotaQuote = Math.round(
-      (Math.max(Number(selectedRechargeAmount) || 0, 0) * Number(currentRechargeConfig.exchange_quota || 0)) /
-        Math.max(Number(currentRechargeConfig.exchange_yuan || 1), 1)
-    );
-    quoteNode.textContent = `${quotaQuote} 额度`;
-  }
+  const session = loadSession();
+  updateRechargeQuotePreview(session?.profile || null, currentRechargeConfig);
   rechargeBody.querySelectorAll("[data-recharge-amount]").forEach((node) => {
     node.classList.toggle("active", Number(node.getAttribute("data-recharge-amount")) === Number(selectedRechargeAmount));
   });
