@@ -163,6 +163,7 @@ ssh -L 8081:127.0.0.1:8081 root@101.34.247.186
   - `http://127.0.0.1:8081/`
   - `http://127.0.0.1:8081/admin.html`
   - `http://127.0.0.1:8081/health`
+  - 按 [16-staging-test-flow.md](/c:/Users/Administrator/Desktop/内包/gongfa/docs/16-staging-test-flow.md) 执行小测试或大测试
 
 4. 验证通过后，再把相同版本发布到正式目录 `/opt/gongfa`
 5. 执行：

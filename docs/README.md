@@ -22,6 +22,9 @@
 - [15-frontend-validation.md](/c:/Users/Administrator/Desktop/内包/gongfa/docs/15-frontend-validation.md)
   发版前检查前端脚本、资源版本号和公网可用性。
 
+- [16-staging-test-flow.md](/c:/Users/Administrator/Desktop/内包/gongfa/docs/16-staging-test-flow.md)
+  测试服固定的小测试和大测试流程。
+
 ## 按问题查文档
 
 - 价格规则：
