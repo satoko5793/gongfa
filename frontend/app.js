@@ -635,18 +635,23 @@ function formatFullStatValue(value, isFull = false) {
   return isFull ? `${compact}（满）` : compact;
 }
 
+function renderFullStatValue(value, isFull = false) {
+  const className = isFull ? ' class="stat-no-wrap"' : "";
+  return `<span${className}>${escapeHtml(formatFullStatValue(value, isFull))}</span>`;
+}
+
 function renderStatBlock(label, value, isFull = false, compact = false) {
   const numeric = Number(value || 0);
   const displayValue = isFull
-    ? formatFullStatValue(numeric, true)
+    ? renderFullStatValue(numeric, true)
     : compact
-      ? formatCompactNumber(value)
+      ? renderFullStatValue(value, false)
       : Number(value || 0);
 
   return `
     <div class="stat-block ${isFull ? "full" : ""}">
       <span class="stat-label">${escapeHtml(label)}</span>
-      <strong class="stat-value">${escapeHtml(displayValue)}</strong>
+      <strong class="stat-value">${displayValue}</strong>
     </div>
   `;
 }
@@ -1056,8 +1061,8 @@ function openProductModal(itemId, itemKind) {
         <div class="detail-row"><strong>库存</strong><span>${escapeHtml(stockLabel)}</span></div>
       `
     : `
-        <div class="detail-row"><strong>攻击</strong><span>${escapeHtml(formatFullStatValue(product.attack_value || 0, attackIsFull))}</span></div>
-        <div class="detail-row"><strong>血量</strong><span>${escapeHtml(formatFullStatValue(product.hp_value || 0, hpIsFull))}</span></div>
+        <div class="detail-row"><strong>攻击</strong><span>${renderFullStatValue(product.attack_value || 0, attackIsFull)}</span></div>
+        <div class="detail-row"><strong>血量</strong><span>${renderFullStatValue(product.hp_value || 0, hpIsFull)}</span></div>
         <div class="detail-row"><strong>赛季</strong><span>${escapeHtml(getSeasonDisplayText(product))}</span></div>
         <div class="detail-row"><strong>库存</strong><span>${escapeHtml(stockLabel)}</span></div>
       `;

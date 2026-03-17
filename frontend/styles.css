@@ -854,6 +854,10 @@ button {
   letter-spacing: -0.02em;
 }
 
+.stat-no-wrap {
+  white-space: nowrap;
+}
+
 .product-meta {
   display: grid;
   gap: 4px;
