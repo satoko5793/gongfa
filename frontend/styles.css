@@ -229,9 +229,52 @@ body {
 .bulk-toolbar,
 .admin-card-head,
 .checkbox-line,
-.category-tabs {
+.category-tabs,
+.admin-page-tabs,
+.pagination-bar {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-page-tabs {
+  gap: 10px;
+}
+
+.admin-page-tab {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 11px 18px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.admin-page-tab.active {
+  border-color: rgba(196, 85, 45, 0.28);
+  background: rgba(196, 85, 45, 0.12);
+  color: var(--accent);
+}
+
+.admin-page-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.pagination-bar {
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.pagination-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pagination-actions {
+  display: flex;
+  gap: 10px;
   flex-wrap: wrap;
 }
 

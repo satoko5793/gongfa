@@ -58,16 +58,33 @@ const importSubmitBtn = document.getElementById("import-submit-btn");
 const adminDebugAction = document.getElementById("admin-debug-action");
 const adminDebugSession = document.getElementById("admin-debug-session");
 const adminDebugError = document.getElementById("admin-debug-error");
+const adminPageButtons = Array.from(document.querySelectorAll("[data-admin-page-tab]"));
+const adminPagePanels = Array.from(document.querySelectorAll("[data-admin-page-panel]"));
+const ordersPaginationRoot = document.getElementById("admin-orders-pagination");
+const rechargeOrdersPaginationRoot = document.getElementById("admin-recharge-orders-pagination");
+const quotaLogsPaginationRoot = document.getElementById("admin-quota-logs-pagination");
+const auditsPaginationRoot = document.getElementById("admin-audits-pagination");
 
 const selectedProductIds = new Set();
 let allProducts = [];
 let allBundles = [];
 let allUsers = [];
-let allAudits = [];
-let allQuotaLogs = [];
-let allRechargeOrders = [];
 let currentRechargeConfig = null;
 let linkedOrderUser = null;
+let activeAdminPage = "imports";
+let currentOrderList = [];
+let currentRechargeOrderList = [];
+let overviewCounts = {
+  cancelReviewCount: 0,
+  rechargeReviewCount: 0,
+};
+const loadedAdminPages = new Set();
+const paginationState = {
+  orders: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+  rechargeOrders: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+  quotaLogs: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+  audits: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+};
 
 function setDebugLine(element, prefix, value) {
   if (!element) return;
@@ -122,6 +139,74 @@ function formatOrderStatusLabel(status) {
     default:
       return status || "-";
   }
+}
+
+function normalizePaginatedResponse(response, fallbackPageSize = 20) {
+  if (Array.isArray(response)) {
+    return {
+      items: response,
+      total: response.length,
+      page: 1,
+      page_size: fallbackPageSize,
+      total_pages: response.length > 0 ? 1 : 0,
+      has_more: false,
+    };
+  }
+
+  return {
+    items: Array.isArray(response?.items) ? response.items : [],
+    total: Number(response?.total || 0),
+    page: Number(response?.page || 1),
+    page_size: Number(response?.page_size || fallbackPageSize),
+    total_pages: Number(response?.total_pages || 0),
+    has_more: Boolean(response?.has_more),
+  };
+}
+
+function renderPagination(root, target, state) {
+  if (!root) return;
+
+  const total = Number(state?.total || 0);
+  const page = Math.max(Number(state?.page || 1), 1);
+  const totalPages = Math.max(Number(state?.totalPages || 0), 0);
+
+  if (total === 0) {
+    root.innerHTML = '<div class="pagination-meta">当前共 0 条记录。</div>';
+    return;
+  }
+
+  root.innerHTML = `
+    <div class="pagination-meta">第 ${page} / ${Math.max(totalPages, 1)} 页，共 ${total} 条</div>
+    <div class="pagination-actions">
+      <button
+        class="ghost"
+        type="button"
+        data-pagination-target="${target}"
+        data-pagination-page="${Math.max(page - 1, 1)}"
+        ${page <= 1 ? "disabled" : ""}
+      >上一页</button>
+      <button
+        class="ghost"
+        type="button"
+        data-pagination-target="${target}"
+        data-pagination-page="${Math.min(page + 1, Math.max(totalPages, 1))}"
+        ${totalPages === 0 || page >= totalPages ? "disabled" : ""}
+      >下一页</button>
+    </div>
+  `;
+}
+
+function resetPagedState(target) {
+  if (!paginationState[target]) return;
+  paginationState[target].page = 1;
+}
+
+function markPageLoaded(page, loaded = true) {
+  if (loaded) {
+    loadedAdminPages.add(page);
+    return;
+  }
+  loadedAdminPages.delete(page);
 }
 
 function formatOrderItemSnapshot(item) {
@@ -187,12 +272,8 @@ function renderSession(profile) {
 
 function renderOverview() {
   const onSaleCount = allProducts.filter((product) => product.status === "on_sale").length;
-  const cancelReviewCount = currentOrderList.filter(
-    (order) => order.status === "cancel_requested"
-  ).length;
-  const rechargeReviewCount = currentRechargeOrderList.filter(
-    (order) => order.status === "pending_review"
-  ).length;
+  const cancelReviewCount = Number(overviewCounts.cancelReviewCount || 0);
+  const rechargeReviewCount = Number(overviewCounts.rechargeReviewCount || 0);
   const activeUsers = allUsers.filter((user) => user.status === "active").length;
   const totalQuota = allUsers.reduce((sum, user) => sum + Number(user.quota_balance || 0), 0);
 
@@ -261,6 +342,19 @@ function renderRechargeConfig(config) {
   if (adminRechargeQrPreview) {
     adminRechargeQrPreview.src = config.qr_image_url || "/payment/alipay-qr.jpg";
   }
+}
+
+function activateAdminPage(page, { force = false } = {}) {
+  activeAdminPage = page;
+
+  adminPageButtons.forEach((button) => {
+    button.classList.toggle("active", button.getAttribute("data-admin-page-tab") === page);
+  });
+  adminPagePanels.forEach((panel) => {
+    panel.classList.toggle("hidden", panel.getAttribute("data-admin-page-panel") !== page);
+  });
+
+  return loadAdminPage(page, { force });
 }
 
 function setLinkedOrderUser(user) {
@@ -627,9 +721,6 @@ function renderBundles(bundles) {
     .join("");
 }
 
-let currentOrderList = [];
-let currentRechargeOrderList = [];
-
 function formatRechargeReviewStatusLabel(status) {
   switch (status) {
     case "pending_review":
@@ -713,6 +804,7 @@ function renderAudits(logs) {
 }
 
 async function loadQuotaLogs(options = {}) {
+  const nextPage = Math.max(Number(options.page || paginationState.quotaLogs.page || 1), 1);
   const query = new URLSearchParams();
   const keyword =
     options.keyword !== undefined ? options.keyword : adminQuotaLogKeywordInput?.value?.trim();
@@ -726,27 +818,44 @@ async function loadQuotaLogs(options = {}) {
   if (keyword) query.set("keyword", keyword);
   if (type && type !== "all") query.set("type", type);
   if (userId) query.set("user_id", userId);
-  query.set("limit", String(options.limit || 200));
+  query.set("page", String(nextPage));
+  query.set("page_size", String(paginationState.quotaLogs.pageSize));
 
-  const logs = await apiFetch(`/admin/quota-logs?${query.toString()}`);
-  if (!userId) {
-    allQuotaLogs = logs;
-  }
-  renderQuotaLogs(logs);
+  const response = normalizePaginatedResponse(await apiFetch(`/admin/quota-logs?${query.toString()}`));
+  paginationState.quotaLogs = {
+    ...paginationState.quotaLogs,
+    page: response.page,
+    pageSize: response.page_size,
+    total: response.total,
+    totalPages: response.total_pages,
+  };
+  renderQuotaLogs(response.items);
+  renderPagination(quotaLogsPaginationRoot, "quotaLogs", paginationState.quotaLogs);
 }
 
-async function loadAudits() {
+async function loadAudits(options = {}) {
+  const nextPage = Math.max(Number(options.page || paginationState.audits.page || 1), 1);
   const query = new URLSearchParams();
-  const keyword = adminAuditKeywordInput?.value?.trim();
-  const action = adminAuditActionInput?.value?.trim();
+  const keyword =
+    options.keyword !== undefined ? options.keyword : adminAuditKeywordInput?.value?.trim();
+  const action =
+    options.action !== undefined ? options.action : adminAuditActionInput?.value?.trim();
 
   if (keyword) query.set("keyword", keyword);
   if (action) query.set("action", action);
-  query.set("limit", "200");
+  query.set("page", String(nextPage));
+  query.set("page_size", String(paginationState.audits.pageSize));
 
-  const logs = await apiFetch(`/admin/audit-logs?${query.toString()}`);
-  allAudits = logs;
-  renderAudits(logs);
+  const response = normalizePaginatedResponse(await apiFetch(`/admin/audit-logs?${query.toString()}`));
+  paginationState.audits = {
+    ...paginationState.audits,
+    page: response.page,
+    pageSize: response.page_size,
+    total: response.total,
+    totalPages: response.total_pages,
+  };
+  renderAudits(response.items);
+  renderPagination(auditsPaginationRoot, "audits", paginationState.audits);
 }
 
 function formatQuotaLogType(type) {
@@ -868,7 +977,8 @@ function renderOrders(orders) {
     .join("");
 }
 
-async function loadOrders() {
+async function loadOrders(options = {}) {
+  const nextPage = Math.max(Number(options.page || paginationState.orders.page || 1), 1);
   const query = new URLSearchParams();
   if (adminOrderStatusFilter.value && adminOrderStatusFilter.value !== "all") {
     query.set("status", adminOrderStatusFilter.value);
@@ -876,15 +986,28 @@ async function loadOrders() {
   if (adminOrderKeywordInput.value.trim()) {
     query.set("keyword", adminOrderKeywordInput.value.trim());
   }
-  query.set("limit", "200");
+  if (linkedOrderUser?.id) {
+    query.set("user_id", String(linkedOrderUser.id));
+  }
+  query.set("page", String(nextPage));
+  query.set("page_size", String(paginationState.orders.pageSize));
 
   const suffix = query.toString();
-  const orders = await apiFetch(`/admin/orders${suffix ? `?${suffix}` : ""}`);
-  renderOrders(orders);
+  const response = normalizePaginatedResponse(await apiFetch(`/admin/orders${suffix ? `?${suffix}` : ""}`));
+  paginationState.orders = {
+    ...paginationState.orders,
+    page: response.page,
+    pageSize: response.page_size,
+    total: response.total,
+    totalPages: response.total_pages,
+  };
+  renderOrders(response.items);
+  renderPagination(ordersPaginationRoot, "orders", paginationState.orders);
   renderLinkedOrderUserState();
 }
 
-async function loadRechargeOrders() {
+async function loadRechargeOrders(options = {}) {
+  const nextPage = Math.max(Number(options.page || paginationState.rechargeOrders.page || 1), 1);
   const query = new URLSearchParams();
   if (adminRechargeStatusFilter?.value && adminRechargeStatusFilter.value !== "all") {
     query.set("status", adminRechargeStatusFilter.value);
@@ -892,12 +1015,26 @@ async function loadRechargeOrders() {
   if (adminRechargeKeywordInput?.value.trim()) {
     query.set("keyword", adminRechargeKeywordInput.value.trim());
   }
-  query.set("limit", "200");
+  query.set("page", String(nextPage));
+  query.set("page_size", String(paginationState.rechargeOrders.pageSize));
 
   const suffix = query.toString();
-  const orders = await apiFetch(`/admin/recharge-orders${suffix ? `?${suffix}` : ""}`);
-  allRechargeOrders = orders;
-  renderRechargeOrders(orders);
+  const response = normalizePaginatedResponse(
+    await apiFetch(`/admin/recharge-orders${suffix ? `?${suffix}` : ""}`)
+  );
+  paginationState.rechargeOrders = {
+    ...paginationState.rechargeOrders,
+    page: response.page,
+    pageSize: response.page_size,
+    total: response.total,
+    totalPages: response.total_pages,
+  };
+  renderRechargeOrders(response.items);
+  renderPagination(
+    rechargeOrdersPaginationRoot,
+    "rechargeOrders",
+    paginationState.rechargeOrders
+  );
 }
 
 async function loadRechargeConfig() {
@@ -905,43 +1042,87 @@ async function loadRechargeConfig() {
   renderRechargeConfig(config);
 }
 
+async function loadOverviewCounts() {
+  try {
+    const [cancelOrders, rechargeReviewOrders] = await Promise.all([
+      apiFetch("/admin/orders?status=cancel_requested&page=1&page_size=1"),
+      apiFetch("/admin/recharge-orders?status=pending_review&page=1&page_size=1"),
+    ]);
+    overviewCounts = {
+      cancelReviewCount: Number(cancelOrders?.total || 0),
+      rechargeReviewCount: Number(rechargeReviewOrders?.total || 0),
+    };
+  } catch (error) {
+    overviewCounts = {
+      cancelReviewCount: currentOrderList.filter((order) => order.status === "cancel_requested").length,
+      rechargeReviewCount: currentRechargeOrderList.filter((order) => order.status === "pending_review").length,
+    };
+  }
+  renderOverview();
+}
+
+async function loadBaseAdminData() {
+  const profile = await apiFetch("/auth/me");
+  const isAdmin = renderSession(profile);
+  if (!isAdmin) {
+    setMessage("当前账号不是 admin，后台接口会返回 403。", "error");
+    adminOverview.innerHTML = "";
+    return false;
+  }
+
+  const [products, bundles, users, rechargeConfig] = await Promise.all([
+    apiFetch("/admin/products"),
+    apiFetch("/admin/bundles"),
+    apiFetch("/admin/users"),
+    apiFetch("/admin/recharge-config"),
+  ]);
+
+  allProducts = products;
+  allBundles = bundles;
+  allUsers = users;
+  currentRechargeConfig = rechargeConfig;
+
+  renderProducts(getFilteredProducts());
+  renderBundles(allBundles);
+  renderUsers(getFilteredUsers());
+  renderRechargeConfig(rechargeConfig);
+  await loadOverviewCounts();
+  markPageLoaded("imports");
+  markPageLoaded("catalog");
+  markPageLoaded("users");
+  return true;
+}
+
+async function loadAdminPage(page, { force = false } = {}) {
+  if (!force && loadedAdminPages.has(page)) return;
+
+  if (page === "recharge") {
+    await loadRechargeOrders({ page: paginationState.rechargeOrders.page });
+    markPageLoaded("recharge");
+    return;
+  }
+
+  if (page === "orders") {
+    await loadOrders({ page: paginationState.orders.page });
+    markPageLoaded("orders");
+    return;
+  }
+
+  if (page === "logs") {
+    await Promise.all([
+      loadQuotaLogs({ page: paginationState.quotaLogs.page }),
+      loadAudits({ page: paginationState.audits.page }),
+    ]);
+    markPageLoaded("logs");
+  }
+}
+
 async function reloadAll() {
   try {
-    const profile = await apiFetch("/auth/me");
-    const isAdmin = renderSession(profile);
-    if (!isAdmin) {
-      setMessage("当前账号不是 admin，后台接口会返回 403。", "error");
-      adminOverview.innerHTML = "";
-      return;
-    }
-
-    const [products, bundles, users, audits, quotaLogs, rechargeOrders, rechargeConfig] = await Promise.all([
-      apiFetch("/admin/products"),
-      apiFetch("/admin/bundles"),
-      apiFetch("/admin/users"),
-      apiFetch("/admin/audit-logs?limit=200"),
-      apiFetch("/admin/quota-logs?limit=200"),
-      apiFetch("/admin/recharge-orders?limit=200"),
-      apiFetch("/admin/recharge-config"),
-    ]);
-
-    allProducts = products;
-    allBundles = bundles;
-    allUsers = users;
-    allAudits = audits;
-    allQuotaLogs = quotaLogs;
-    allRechargeOrders = rechargeOrders;
-    currentRechargeConfig = rechargeConfig;
-
-    renderProducts(getFilteredProducts());
-    renderBundles(allBundles);
-    renderUsers(getFilteredUsers());
-    renderQuotaLogs(allQuotaLogs);
-    renderAudits(allAudits);
-    renderRechargeConfig(rechargeConfig);
-    renderRechargeOrders(allRechargeOrders);
-    await loadOrders();
-    renderOverview();
+    loadedAdminPages.clear();
+    const isAdmin = await loadBaseAdminData();
+    if (!isAdmin) return;
+    await activateAdminPage(activeAdminPage, { force: true });
     setMessage("后台数据已刷新。", "success");
   } catch (error) {
     renderSession(null);
@@ -1189,9 +1370,13 @@ usersRoot.addEventListener("click", async (event) => {
     if (event.target.closest(".view-user-orders-btn")) {
       setLinkedOrderUser(user);
       adminOrderStatusFilter.value = "all";
-      await loadOrders();
-      await loadQuotaLogs({ userId, limit: 100 });
-      document.getElementById("orders")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      resetPagedState("orders");
+      resetPagedState("quotaLogs");
+      await activateAdminPage("orders", { force: true });
+      document.querySelector('[data-admin-page-panel="orders"]')?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
       setMessage(`已切换到用户 ${user?.game_role_name || userId} 的订单视图。`, "success");
       return;
     }
@@ -1259,6 +1444,7 @@ adminRechargeOrdersRoot?.addEventListener("click", async (event) => {
         method: "PATCH",
         body: JSON.stringify({ status: "rejected", admin_remark: adminRemark }),
       });
+      await loadOverviewCounts();
       await loadRechargeOrders();
       setMessage(`充值单 #${rechargeOrderId} 已驳回。`, "success");
     }
@@ -1392,8 +1578,18 @@ importSubmitBtn?.addEventListener("click", () => {
 });
 document.getElementById("load-sample-json-btn")?.addEventListener("click", loadSampleJson);
 document.getElementById("reload-admin-btn")?.addEventListener("click", reloadAll);
+adminPageButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const nextPage = button.getAttribute("data-admin-page-tab");
+    if (!nextPage) return;
+    activateAdminPage(nextPage).catch((error) => {
+      setMessage(`页面加载失败：${pickErrorMessage(error, "加载失败")}`, "error");
+    });
+  });
+});
 document.getElementById("reload-orders-btn")?.addEventListener("click", () => {
-  loadOrders().catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("orders");
+  loadOrders({ page: 1 }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
 });
 document.getElementById("select-all-products-btn")?.addEventListener("click", () => {
   selectedProductIds.clear();
@@ -1447,15 +1643,18 @@ adminProductStatusFilter?.addEventListener("change", () => {
   renderProducts(getFilteredProducts());
 });
 adminRechargeStatusFilter?.addEventListener("change", () => {
-  loadRechargeOrders().catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("rechargeOrders");
+  loadRechargeOrders({ page: 1 }).catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
 });
 adminRechargeKeywordInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadRechargeOrders().catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("rechargeOrders");
+  loadRechargeOrders({ page: 1 }).catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
 });
 document.getElementById("reload-recharge-orders-btn")?.addEventListener("click", () => {
-  loadRechargeOrders().catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("rechargeOrders");
+  loadRechargeOrders({ page: 1 }).catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
 });
 
 adminUserKeywordInput?.addEventListener("input", () => {
@@ -1466,16 +1665,22 @@ linkedOrderUserState?.addEventListener("click", (event) => {
   linkedOrderUser = null;
   adminOrderKeywordInput.value = "";
   renderLinkedOrderUserState();
-  loadQuotaLogs().catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
-  loadOrders().catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("orders");
+  resetPagedState("quotaLogs");
+  if (activeAdminPage === "logs") {
+    loadQuotaLogs({ page: 1 }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
+  }
+  loadOrders({ page: 1 }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
 });
 adminOrderStatusFilter?.addEventListener("change", () => {
-  loadOrders().catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("orders");
+  loadOrders({ page: 1 }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
 });
 adminOrderKeywordInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadOrders().catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("orders");
+  loadOrders({ page: 1 }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
 });
 adminOrderKeywordInput?.addEventListener("input", () => {
   if (linkedOrderUser && adminOrderKeywordInput.value.trim() !== linkedOrderUser.game_role_id) {
@@ -1490,31 +1695,63 @@ adminProductModal?.addEventListener("click", (event) => {
   }
 });
 document.getElementById("reload-quota-logs-btn")?.addEventListener("click", () => {
-  loadQuotaLogs().catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("quotaLogs");
+  loadQuotaLogs({ page: 1 }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
 });
 document.getElementById("reload-audits-btn")?.addEventListener("click", () => {
-  loadAudits().catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("audits");
+  loadAudits({ page: 1 }).catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
 });
 adminQuotaLogTypeFilter?.addEventListener("change", () => {
-  loadQuotaLogs().catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("quotaLogs");
+  loadQuotaLogs({ page: 1 }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
 });
 adminQuotaLogKeywordInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadQuotaLogs().catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("quotaLogs");
+  loadQuotaLogs({ page: 1 }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
 });
 adminAuditKeywordInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadAudits().catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("audits");
+  loadAudits({ page: 1 }).catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
 });
 adminAuditActionInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
-  loadAudits().catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
+  resetPagedState("audits");
+  loadAudits({ page: 1 }).catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
+});
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-pagination-target][data-pagination-page]");
+  if (!button) return;
+
+  const target = button.getAttribute("data-pagination-target");
+  const page = Number(button.getAttribute("data-pagination-page"));
+  if (!target || !Number.isInteger(page) || page < 1) return;
+
+  if (target === "orders") {
+    loadOrders({ page }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+    return;
+  }
+  if (target === "rechargeOrders") {
+    loadRechargeOrders({ page }).catch((error) =>
+      setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error")
+    );
+    return;
+  }
+  if (target === "quotaLogs") {
+    loadQuotaLogs({ page }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
+    return;
+  }
+  if (target === "audits") {
+    loadAudits({ page }).catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
+  }
 });
 
-markDebugAction("page_loaded_v20260316l");
+markDebugAction("page_loaded_v20260317m");
 markDebugSession(loadSession()?.token ? "token_present" : "no_token");
 markDebugError("none");
 window.__adminModuleReady = true;

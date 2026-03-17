@@ -1,9 +1,6 @@
 const { pool } = require("../db/pool");
 
-async function listOrders(
-  db = pool,
-  { orderId = null, userId = null, status = null, keyword = "", limit = 100 } = {}
-) {
+function buildOrderFilters({ orderId = null, userId = null, status = null, keyword = "" } = {}) {
   const where = [];
   const values = [];
 
@@ -46,7 +43,17 @@ async function listOrders(
     )`);
   }
 
+  return { where, values };
+}
+
+async function listOrders(
+  db = pool,
+  { orderId = null, userId = null, status = null, keyword = "", limit = 100, offset = 0 } = {}
+) {
+  const { where, values } = buildOrderFilters({ orderId, userId, status, keyword });
+
   values.push(limit);
+  values.push(Math.max(Number(offset) || 0, 0));
 
   const result = await db.query(
     `SELECT
@@ -59,7 +66,8 @@ async function listOrders(
      JOIN users u ON u.id=o.user_id
      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
      ORDER BY o.created_at DESC
-     LIMIT $${values.length}`,
+     LIMIT $${values.length - 1}
+     OFFSET $${values.length}`,
     values
   );
 
@@ -87,4 +95,16 @@ async function listOrders(
   }));
 }
 
-module.exports = { listOrders };
+async function countOrders(db = pool, filters = {}) {
+  const { where, values } = buildOrderFilters(filters);
+  const result = await db.query(
+    `SELECT COUNT(*)::int AS total
+     FROM orders o
+     JOIN users u ON u.id=o.user_id
+     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}`,
+    values
+  );
+  return Number(result.rows[0]?.total || 0);
+}
+
+module.exports = { buildOrderFilters, listOrders, countOrders };

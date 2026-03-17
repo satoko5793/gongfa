@@ -753,7 +753,14 @@ function listBundleSkus({ publicOnly = false } = {}) {
   return clone(bundles.map(normalizeBundleSku));
 }
 
-function listOrders({ userId = null, orderId = null, status = null, keyword = "", limit = 100 } = {}) {
+function listOrders({
+  userId = null,
+  orderId = null,
+  status = null,
+  keyword = "",
+  limit = 100,
+  offset = 0,
+} = {}) {
   const data = readData();
   let orders = data.orders.slice();
   if (orderId !== null) {
@@ -786,7 +793,9 @@ function listOrders({ userId = null, orderId = null, status = null, keyword = ""
     });
   }
   orders.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  return hydrateOrders(data, orders.slice(0, limit));
+  const normalizedOffset = Math.max(Number(offset) || 0, 0);
+  const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
+  return hydrateOrders(data, orders.slice(normalizedOffset, end));
 }
 
 function listRechargeOrders({
@@ -795,6 +804,7 @@ function listRechargeOrders({
   status = null,
   keyword = "",
   limit = 100,
+  offset = 0,
 } = {}) {
   const data = readData();
   let rechargeOrders = (data.rechargeOrders || []).slice();
@@ -829,7 +839,9 @@ function listRechargeOrders({
   }
 
   rechargeOrders.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  return hydrateRechargeOrders(data, rechargeOrders.slice(0, limit));
+  const normalizedOffset = Math.max(Number(offset) || 0, 0);
+  const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
+  return hydrateRechargeOrders(data, rechargeOrders.slice(normalizedOffset, end));
 }
 
 function applyQuotaChange(
@@ -1588,7 +1600,7 @@ function recalculatePricing(actorUserId = null) {
   return clone(data.products);
 }
 
-function listAuditLogs({ keyword = "", action = "", limit = 200 } = {}) {
+function listAuditLogs({ keyword = "", action = "", limit = 200, offset = 0 } = {}) {
   const data = readData();
   let logs = (data.auditLogs || []).slice();
   const trimmedKeyword = String(keyword || "").trim().toLowerCase();
@@ -1615,9 +1627,11 @@ function listAuditLogs({ keyword = "", action = "", limit = 200 } = {}) {
   }
 
   logs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const normalizedOffset = Math.max(Number(offset) || 0, 0);
+  const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
 
   return clone(
-    logs.slice(0, limit).map((log) => {
+    logs.slice(normalizedOffset, end).map((log) => {
       const actor = data.users.find((item) => item.id === log.actor_user_id);
       return {
         ...log,
@@ -1628,7 +1642,7 @@ function listAuditLogs({ keyword = "", action = "", limit = 200 } = {}) {
   );
 }
 
-function listQuotaLogs({ userId = null, keyword = "", type = "", limit = 200 } = {}) {
+function listQuotaLogs({ userId = null, keyword = "", type = "", limit = 200, offset = 0 } = {}) {
   const data = readData();
   let logs = (data.quotaLogs || []).slice();
   const trimmedKeyword = String(keyword || "").trim().toLowerCase();
@@ -1659,9 +1673,11 @@ function listQuotaLogs({ userId = null, keyword = "", type = "", limit = 200 } =
   }
 
   logs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const normalizedOffset = Math.max(Number(offset) || 0, 0);
+  const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
 
   return clone(
-    logs.slice(0, limit).map((log) => {
+    logs.slice(normalizedOffset, end).map((log) => {
       const user = data.users.find((item) => Number(item.id) === Number(log.user_id));
       return {
         ...log,

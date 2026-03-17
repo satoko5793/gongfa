@@ -15,7 +15,7 @@ const {
 } = require("../services/validate");
 const { parseLegacyProducts } = require("../services/legacy-parser");
 const { applyQuotaChange, ensureQuotaAccount } = require("../services/quota");
-const { listOrders } = require("../services/order-query");
+const { listOrders, countOrders } = require("../services/order-query");
 const { writeAuditLog } = require("../services/audit");
 const { recalculateDatabasePricing } = require("../services/pricing");
 const { ensureBundleSeeds } = require("../services/bundle-catalog");
@@ -43,6 +43,29 @@ function buildImportSummary(result) {
       created_at: importRow.created_at || null,
     },
     parsed_count: Number(result?.parsed_count || 0),
+  };
+}
+
+function parsePagination(query, defaultPageSize = 20, maxPageSize = 100) {
+  const page = Math.max(Number(query.page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(query.page_size) || defaultPageSize, 1), maxPageSize);
+  return {
+    page,
+    pageSize,
+    offset: (page - 1) * pageSize,
+  };
+}
+
+function buildPaginatedResponse(items, total, page, pageSize) {
+  const normalizedTotal = Math.max(Number(total) || 0, 0);
+  const totalPages = normalizedTotal > 0 ? Math.ceil(normalizedTotal / pageSize) : 0;
+  return {
+    items,
+    total: normalizedTotal,
+    page,
+    page_size: pageSize,
+    total_pages: totalPages,
+    has_more: page < totalPages,
   };
 }
 
@@ -754,15 +777,24 @@ adminRouter.patch("/users/:id/status", async (req, res, next) => {
 
 adminRouter.get("/orders", async (req, res, next) => {
   try {
+    const userId = Number.isFinite(Number(req.query.user_id)) ? Number(req.query.user_id) : null;
     const status = String(req.query.status || "").trim();
     const keyword = String(req.query.keyword || "").trim();
-    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const { page, pageSize, offset } = parsePagination(req.query, 20, 100);
 
     if (useFileStore()) {
-      return res.json(devStore.listOrders({ status, keyword, limit }));
+      const allOrders = devStore.listOrders({
+        userId,
+        status,
+        keyword,
+        limit: null,
+      });
+      const items = allOrders.slice(offset, offset + pageSize);
+      return res.json(buildPaginatedResponse(items, allOrders.length, page, pageSize));
     }
-    const orders = await listOrders(pool, { status, keyword, limit });
-    return res.json(orders);
+    const total = await countOrders(pool, { userId, status, keyword });
+    const orders = await listOrders(pool, { userId, status, keyword, limit: pageSize, offset });
+    return res.json(buildPaginatedResponse(orders, total, page, pageSize));
   } catch (error) {
     return next(error);
   }
@@ -819,12 +851,20 @@ adminRouter.patch("/recharge-config", async (req, res, next) => {
 
 adminRouter.get("/recharge-orders", async (req, res, next) => {
   try {
+    const userId = Number.isFinite(Number(req.query.user_id)) ? Number(req.query.user_id) : null;
     const status = String(req.query.status || "").trim();
     const keyword = String(req.query.keyword || "").trim();
-    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const { page, pageSize, offset } = parsePagination(req.query, 20, 100);
 
     if (useFileStore()) {
-      return res.json(devStore.listRechargeOrders({ status, keyword, limit }));
+      const allOrders = devStore.listRechargeOrders({
+        userId,
+        status,
+        keyword,
+        limit: null,
+      });
+      const items = allOrders.slice(offset, offset + pageSize);
+      return res.json(buildPaginatedResponse(items, allOrders.length, page, pageSize));
     }
 
     return res.status(501).json({ error: "recharge_order_not_supported_in_db_mode" });
@@ -864,13 +904,20 @@ adminRouter.patch("/recharge-orders/:id/review", async (req, res, next) => {
 
 adminRouter.get("/quota-logs", async (req, res, next) => {
   try {
-    const userId = req.query.user_id ? Number(req.query.user_id) : null;
+    const userId = Number.isFinite(Number(req.query.user_id)) ? Number(req.query.user_id) : null;
     const keyword = String(req.query.keyword || "").trim();
     const type = String(req.query.type || "").trim();
-    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const { page, pageSize, offset } = parsePagination(req.query, 20, 100);
 
     if (useFileStore()) {
-      return res.json(devStore.listQuotaLogs({ userId, keyword, type, limit }));
+      const allLogs = devStore.listQuotaLogs({
+        userId,
+        keyword,
+        type,
+        limit: null,
+      });
+      const items = allLogs.slice(offset, offset + pageSize);
+      return res.json(buildPaginatedResponse(items, allLogs.length, page, pageSize));
     }
 
     const values = [];
@@ -893,7 +940,18 @@ adminRouter.get("/quota-logs", async (req, res, next) => {
       );
     }
 
-    values.push(limit);
+    const countValues = values.slice();
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int AS total
+       FROM quota_logs q
+       LEFT JOIN users u ON u.id=q.user_id
+       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}`,
+      countValues
+    );
+
+    values.push(pageSize);
+    values.push(offset);
 
     const result = await pool.query(
       `SELECT
@@ -905,11 +963,14 @@ adminRouter.get("/quota-logs", async (req, res, next) => {
        LEFT JOIN users u ON u.id=q.user_id
        ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
        ORDER BY q.created_at DESC
-       LIMIT $${values.length}`,
+       LIMIT $${values.length - 1}
+       OFFSET $${values.length}`,
       values
     );
 
-    return res.json(result.rows);
+    return res.json(
+      buildPaginatedResponse(result.rows, Number(countResult.rows[0]?.total || 0), page, pageSize)
+    );
   } catch (error) {
     return next(error);
   }
@@ -1116,9 +1177,11 @@ adminRouter.get("/audit-logs", async (req, res, next) => {
   try {
     const keyword = String(req.query.keyword || "").trim();
     const action = String(req.query.action || "").trim();
-    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const { page, pageSize, offset } = parsePagination(req.query, 20, 100);
     if (useFileStore()) {
-      return res.json(devStore.listAuditLogs({ keyword, action, limit }));
+      const allLogs = devStore.listAuditLogs({ keyword, action, limit: null });
+      const items = allLogs.slice(offset, offset + pageSize);
+      return res.json(buildPaginatedResponse(items, allLogs.length, page, pageSize));
     }
 
     const values = [];
@@ -1136,7 +1199,18 @@ adminRouter.get("/audit-logs", async (req, res, next) => {
       );
     }
 
-    values.push(limit);
+    const countValues = values.slice();
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int AS total
+       FROM audit_logs a
+       LEFT JOIN users u ON u.id=a.actor_user_id
+       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}`,
+      countValues
+    );
+
+    values.push(pageSize);
+    values.push(offset);
 
     const result = await pool.query(
       `SELECT
@@ -1147,10 +1221,13 @@ adminRouter.get("/audit-logs", async (req, res, next) => {
        LEFT JOIN users u ON u.id=a.actor_user_id
        ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
        ORDER BY a.created_at DESC
-       LIMIT $${values.length}`,
+       LIMIT $${values.length - 1}
+       OFFSET $${values.length}`,
       values
     );
-    return res.json(result.rows);
+    return res.json(
+      buildPaginatedResponse(result.rows, Number(countResult.rows[0]?.total || 0), page, pageSize)
+    );
   } catch (error) {
     return next(error);
   }
