@@ -34,29 +34,29 @@ function maskPublicBuyerLabel(order) {
   if (nickname) return maskName(nickname);
   if (gameRoleName) return maskName(gameRoleName);
   if (gameRoleId) return maskName(gameRoleId);
-  if (source === "external") return "????";
-  return "????";
+  if (source === "external") return "站外买家";
+  return "匿名用户";
 }
 
 function getPublicOrderSourceLabel(order) {
   const source = String(order?.order_source || "mall").trim();
-  if (source === "external") return "????";
-  if (source === "draw_service") return "????";
-  return "????";
+  if (source === "external") return "站外成交";
+  if (source === "draw_service") return "代抽成交";
+  return "商城成交";
 }
 
 function buildRecentSalesSummary(order) {
   const items = Array.isArray(order?.items) ? order.items : [];
   if (items.length === 0) {
     return {
-      item_title: String(order?.order_source || "").trim() === "draw_service" ? "????" : "?????",
-      item_kind_label: String(order?.order_source || "").trim() === "draw_service" ? "??" : "??",
+      item_title: String(order?.order_source || "").trim() === "draw_service" ? "代抽服务" : "已成交订单",
+      item_kind_label: String(order?.order_source || "").trim() === "draw_service" ? "代抽" : "商品",
       item_count: 0,
     };
   }
 
   const firstItem = items[0];
-  const firstName = String(firstItem?.product_name || "?????").trim() || "?????";
+  const firstName = String(firstItem?.product_name || "已成交商品").trim() || "已成交商品";
   const isDrawService = String(order?.order_source || "").trim() === "draw_service";
   const itemKindLabel =
     isDrawService
@@ -233,7 +233,7 @@ productsRouter.get("/", async (req, res, next) => {
           FALSE AS is_current_season,
           'bundle'::text AS season_tag,
           '-'::text AS season_label,
-          '??'::text AS season_display,
+          '套餐'::text AS season_display,
           0 AS attack_value,
           0 AS hp_value,
           COALESCE(b.description, '') AS main_attrs,
@@ -243,7 +243,7 @@ productsRouter.get("/", async (req, res, next) => {
           b.status,
           b.created_at,
           b.updated_at,
-          jsonb_build_object('source', 'bundle', 'dominant_reason_label', '?????') AS pricing_meta,
+          jsonb_build_object('source', 'bundle', 'dominant_reason_label', '套餐固定价') AS pricing_meta,
           b.description,
           b.tags,
           b.code,
@@ -341,7 +341,7 @@ productsRouter.get("/:id", async (req, res, next) => {
           FALSE AS is_current_season,
           'bundle'::text AS season_tag,
           '-'::text AS season_label,
-          '??'::text AS season_display,
+          '套餐'::text AS season_display,
           0 AS attack_value,
           0 AS hp_value,
           COALESCE(description, '') AS main_attrs,
@@ -351,7 +351,7 @@ productsRouter.get("/:id", async (req, res, next) => {
           status,
           created_at,
           updated_at,
-          jsonb_build_object('source', 'bundle', 'dominant_reason_label', '?????') AS pricing_meta,
+          jsonb_build_object('source', 'bundle', 'dominant_reason_label', '套餐固定价') AS pricing_meta,
           description,
           tags,
           code,

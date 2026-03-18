@@ -1094,7 +1094,7 @@ function renderProductVisual(product, variant = "grid") {
       />
       <div class="product-badge-row">
         <span class="product-badge">${escapeHtml(getTierLabel(product))}</span>
-        <span class="product-badge subtle">${isBundle(product) ? "??" : `ID ${escapeHtml(product?.legacy_id || "-")}`}</span>
+        <span class="product-badge subtle">${isBundle(product) ? "套餐" : `ID ${escapeHtml(product?.legacy_id || "-")}`}</span>
         ${isBundle(product) ? "" : `<span class="product-badge subtle">${escapeHtml(getSeasonDisplayText(product))}</span>`}
       </div>
     </div>
@@ -1546,8 +1546,8 @@ function renderRecentSales(items = []) {
   if (!Array.isArray(items) || items.length === 0) {
     recentSalesList.innerHTML = `
       <div class="recent-sales-empty">
-        <div class="panel-title">?????????</div>
-        <div class="muted">????????????????????????</div>
+        <div class="panel-title">最近成交正在准备中</div>
+        <div class="muted">等第一批成交确认后，这里会自动展示匿名成交摘要。</div>
       </div>
     `;
     return;
@@ -1558,13 +1558,13 @@ function renderRecentSales(items = []) {
       (item) => `
         <article class="recent-sale-item">
           <div class="recent-sale-top">
-            <span class="chip subtle-chip">${escapeHtml(item.order_source_label || "????")}</span>
+            <span class="chip subtle-chip">${escapeHtml(item.order_source_label || "商城成交")}</span>
             <span class="recent-sale-time">${escapeHtml(formatRecentSaleTime(item.created_at))}</span>
           </div>
-          <div class="recent-sale-title">${escapeHtml(item.buyer_label || "????")} ?? ${escapeHtml(item.item_title || "?????")}</div>
+          <div class="recent-sale-title">${escapeHtml(item.buyer_label || "匿名用户")} 买下 ${escapeHtml(item.item_title || "已成交商品")}</div>
           <div class="recent-sale-meta">
-            <span>${escapeHtml(item.item_kind_label || "??")} / ${Number(item.item_count || 1)} ?</span>
-            <span>${Number(item.total_quota || 0)} ??</span>
+            <span>${escapeHtml(item.item_kind_label || "商品")} / ${Number(item.item_count || 1)} 项</span>
+            <span>${Number(item.total_quota || 0)} 额度</span>
           </div>
         </article>
       `
@@ -1604,58 +1604,58 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
     {
       index: "01",
       type: "account",
-      title: "?????",
+      title: "注册并登录",
       done: hasAccount,
       current: !hasAccount,
       description: hasAccount
-        ? `?????${escapeHtml(profile.game_role_name || profile.game_role_id || "???")}`
-        : "???????????????????????????",
-      actionLabel: hasAccount ? "???" : "?????",
+        ? `当前账号：${escapeHtml(profile.game_role_name || profile.game_role_id || "已登录")}`
+        : "先进入注册或登录，后续充值和下单都会绑定在这个账号下。",
+      actionLabel: hasAccount ? "已完成" : "去注册登录",
       actionHref: "#bind",
       actionTarget: "",
     },
     {
       index: "02",
       type: "recharge",
-      title: "??????",
+      title: "获取一次额度",
       done: hasApprovedRecharge,
       current: hasAccount && !hasApprovedRecharge,
       description: hasApprovedRecharge
-        ? "?????????????????????"
+        ? "通过残卷赠送或充值获取额度，额度已经到账。"
         : hasPendingRecharge
-          ? "??????????????????????????????????"
-          : "???????????????????????????????",
-      actionLabel: hasApprovedRecharge ? "???" : hasPendingRecharge ? "????" : "?????",
+          ? "你已经提交过残卷赠送或充值申请，等待管理员审核通过后就算完成这一步。"
+          : "去“我的”里通过残卷赠送或充值获取额度，审核通过后会自动到账。",
+      actionLabel: hasApprovedRecharge ? "已完成" : hasPendingRecharge ? "查看进度" : "去获取额度",
       actionHref: "#account",
       actionTarget: "recharge",
     },
     {
       index: "03",
       type: "order",
-      title: "??????",
+      title: "完成首单消费",
       done: hasConfirmedOrder,
       current: hasAccount && hasApprovedRecharge && !hasConfirmedOrder,
       description: hasConfirmedOrder
         ? rewardEarned
-          ? `???????? ${rewardQuota} ???????`
-          : "??????????????"
+          ? `首单已完成，奖励 ${rewardQuota} 额度已经发放。`
+          : "首单已完成，奖励会自动到账。"
         : hasPendingOrder
-          ? "???????????????????????"
-          : "???????????????????????????",
-      actionLabel: hasConfirmedOrder ? "???" : hasPendingOrder ? "????" : "????",
+          ? "你已经提交过订单，等管理员确认后就算完成首单。"
+          : "从商城挑一件合适的商品下单，管理员确认后就能完成首单。",
+      actionLabel: hasConfirmedOrder ? "已完成" : hasPendingOrder ? "查看订单" : "去选商品",
       actionHref: hasConfirmedOrder || hasPendingOrder ? "#account" : "#products",
       actionTarget: hasConfirmedOrder || hasPendingOrder ? "orders" : "",
     },
   ];
 
   beginnerGuideSummary.textContent = rewardEarned
-    ? `????????? ${rewardQuota} ?????????????????????????????`
+    ? `新手教学奖励已到账 ${rewardQuota} 额度，你可以继续直接下单，也可以切到最近成交查看公开流水。`
     : hasConfirmedOrder && hasApprovedRecharge
-      ? `????????????? ${rewardQuota} ?????`
-      : `?????????????????????? ${rewardQuota} ???`;
+      ? `三步已完成，系统会自动发放 ${rewardQuota} 额度奖励。`
+      : `完成注册、获取一次额度、完成首单后，额外奖励 ${rewardQuota} 额度。`;
   beginnerGuideReward.textContent = rewardEarned
-    ? `????? +${rewardQuota}`
-    : `?????? ${rewardQuota} ??`;
+    ? `奖励已发放 +${rewardQuota}`
+    : `完成三步奖励 ${rewardQuota} 额度`;
   beginnerGuideReward.classList.toggle("claimed", rewardEarned);
 
   beginnerGuideSteps.innerHTML = rewardEarned
@@ -1663,17 +1663,17 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
       <article class="tutorial-complete-card">
         <div class="tutorial-step-icon">${renderGuideGlyph("order")}</div>
         <div class="flow-step-index">GUIDE COMPLETE</div>
-        <div class="flow-step-title">????????</div>
-        <div class="muted">????????????????????????????????????????????????</div>
+        <div class="flow-step-title">新手奖励已经到账</div>
+        <div class="muted">你已经完成注册、获取额度和首单消费，后面可以直接逛商城，也可以切到“最近成交”查看公开成交摘要。</div>
         <div class="actions">
-          <a class="ghost-link tutorial-link" href="#products">?????</a>
-          <a class="ghost-link tutorial-link" href="#account">??????</a>
+          <a class="ghost-link tutorial-link" href="#products">继续逛商城</a>
+          <a class="ghost-link tutorial-link" href="#account">查看我的信息</a>
         </div>
       </article>
     `
     : steps
         .map((step) => {
-          const statusLabel = step.done ? "???" : step.current ? "????" : "???";
+          const statusLabel = step.done ? "已完成" : step.current ? "当前推荐" : "未完成";
           const statusClass = step.done ? "done" : step.current ? "current" : "pending";
           const actionAttrs = step.actionTarget ? ` data-account-tab-target="${step.actionTarget}"` : "";
           return `
