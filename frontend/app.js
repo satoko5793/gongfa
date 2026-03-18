@@ -12,6 +12,7 @@ import {
 const productGrid = document.getElementById("product-grid");
 const discountProductsSection = document.getElementById("discount-products-section");
 const discountProductGrid = document.getElementById("discount-product-grid");
+const discountProductPagination = document.getElementById("discount-product-pagination");
 const productCategoryTabs = document.getElementById("product-category-tabs");
 const productSubcategoryTabs = document.getElementById("product-subcategory-tabs");
 const productPagination = document.getElementById("product-pagination");
@@ -95,6 +96,12 @@ let activeAuthTab = "register";
 let activeAccountTab = "overview";
 let activeDockTarget = "products";
 const productPaginationState = {
+  page: 1,
+  pageSize: 12,
+  total: 0,
+  totalPages: 0,
+};
+const discountPaginationState = {
   page: 1,
   pageSize: 12,
   total: 0,
@@ -604,6 +611,10 @@ function resetProductPagination() {
   productPaginationState.page = 1;
 }
 
+function resetDiscountPagination() {
+  discountPaginationState.page = 1;
+}
+
 function scrollProductsIntoView() {
   productsSection?.scrollIntoView({
     behavior: "smooth",
@@ -623,6 +634,27 @@ function getPagedProducts(products) {
   productPaginationState.page = page;
   productPaginationState.total = total;
   productPaginationState.totalPages = totalPages;
+
+  if (total === 0) {
+    return [];
+  }
+
+  const start = (page - 1) * pageSize;
+  return products.slice(start, start + pageSize);
+}
+
+function getPagedDiscountProducts(products) {
+  const total = Array.isArray(products) ? products.length : 0;
+  const pageSize = Number(discountPaginationState.pageSize || 12);
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
+  const page = Math.min(
+    Math.max(Number(discountPaginationState.page || 1), 1),
+    Math.max(totalPages, 1)
+  );
+
+  discountPaginationState.page = page;
+  discountPaginationState.total = total;
+  discountPaginationState.totalPages = totalPages;
 
   if (total === 0) {
     return [];
@@ -1017,6 +1049,37 @@ function renderProductVisual(product, variant = "grid") {
   `;
 }
 
+function renderDiscountPagination() {
+  if (!discountProductPagination) return;
+
+  const total = Number(discountPaginationState.total || 0);
+  const page = Math.max(Number(discountPaginationState.page || 1), 1);
+  const totalPages = Math.max(Number(discountPaginationState.totalPages || 0), 0);
+
+  if (total === 0) {
+    discountProductPagination.innerHTML = '<div class="pagination-meta">褰撳墠娌℃湁鎵撴姌鍟嗗搧銆?/div>';
+    return;
+  }
+
+  discountProductPagination.innerHTML = `
+    <div class="pagination-meta">绗?${page} / ${Math.max(totalPages, 1)} 椤碉紝鍏?${total} 浠跺晢鍝?/div>
+    <div class="pagination-actions">
+      <button
+        class="ghost"
+        type="button"
+        data-discount-page="${Math.max(page - 1, 1)}"
+        ${page <= 1 ? "disabled" : ""}
+      >涓婁竴椤?/button>
+      <button
+        class="ghost"
+        type="button"
+        data-discount-page="${Math.min(page + 1, Math.max(totalPages, 1))}"
+        ${totalPages === 0 || page >= totalPages ? "disabled" : ""}
+      >涓嬩竴椤?/button>
+    </div>
+  `;
+}
+
 function renderProductCard(product) {
   const termBadges = parseTermBadges(product.ext_attrs, product);
   const stockLabel =
@@ -1076,17 +1139,20 @@ function renderProductCard(product) {
 
 function renderDiscountProducts(products) {
   if (!discountProductsSection || !discountProductGrid) return;
-  const discountedProducts = getDiscountedProducts(products).slice(0, 8);
+  const discountedProducts = getDiscountedProducts(products);
   const hasDiscounts = discountedProducts.length > 0;
   discountProductsSection.classList.toggle("hidden", !hasDiscounts);
   syncDiscountDockVisibility(hasDiscounts);
   if (!discountedProducts.length) {
     discountProductGrid.innerHTML = "";
+    renderDiscountPagination();
     syncDockWithViewport();
     return;
   }
-  discountProductGrid.innerHTML = discountedProducts.map((product) => renderProductCard(product)).join("");
+  const pagedDiscountProducts = getPagedDiscountProducts(discountedProducts);
+  discountProductGrid.innerHTML = pagedDiscountProducts.map((product) => renderProductCard(product)).join("");
   bindImageFallbacks(discountProductGrid);
+  renderDiscountPagination();
   syncDockWithViewport();
 }
 
@@ -1094,6 +1160,7 @@ function applyProductView(options = {}) {
   const { resetPage = false } = options;
   if (resetPage) {
     resetProductPagination();
+    resetDiscountPagination();
   }
   const categoryFiltered = filterProductsByCategory(allProducts, activeCategory);
   const filtered = filterProductsBySubcategory(categoryFiltered, activeSubcategory);
@@ -2304,6 +2371,18 @@ productPagination?.addEventListener("click", (event) => {
   productPaginationState.page = page;
   renderProducts(currentProducts);
   scrollProductsIntoView();
+});
+discountProductPagination?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-discount-page]");
+  if (!button) return;
+  const page = Number(button.getAttribute("data-discount-page"));
+  if (!Number.isInteger(page) || page < 1) return;
+  discountPaginationState.page = page;
+  renderDiscountProducts(allProducts);
+  discountProductsSection?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
 });
 rechargeBody?.addEventListener("click", (event) => {
   const clearDirectPurchaseButton = event.target.closest("[data-direct-purchase-clear]");
