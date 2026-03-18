@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260318p" />
+    <link rel="stylesheet" href="styles.css?v=20260318q" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -395,18 +395,31 @@
         </div>
       </section>
 
-      <section id="draw-service-zone" class="card dock-target-section teaser-panel">
+      <section id="draw-service-zone" class="card dock-target-section">
         <div class="section-head">
           <div>
-            <div class="eyebrow">Coming Soon</div>
+            <div class="eyebrow">Draw Service</div>
             <div class="card-title">代抽专区</div>
-            <div class="card-sub">后续如果做代抽、套餐活动或限时服务，这里单独承接，不和普通商城混在一起。</div>
+            <div class="card-sub">用户按额度提交代抽单，管理员代抽后返还符合规则的卡，并确认订单完成。</div>
           </div>
-          <span class="teaser-chip">预留中</span>
+          <span class="teaser-chip">已开放</span>
         </div>
-        <div class="teaser-body">
-          <div class="teaser-copy">
-            先把这个区域作为固定导航入口保留下来，后续可以继续挂代抽说明、价格、排队状态和订单结果。
+        <div class="draw-service-layout">
+          <div class="panel">
+            <div class="panel-title">代抽规则</div>
+            <div class="draw-rule-list">
+              <div class="stack-item">最低 200 额度，必须是 200 的倍数，可按任意额度提交。</div>
+              <div class="stack-item">返还所有双满紫、双满橙、双满红、双满金卡，大于等于 2.5 的单词条，双词条，珍。</div>
+              <div class="stack-item">其余卡默认不返还，由管理员代抽后统一处理。</div>
+              <div class="stack-item">每个账号每个赛季，第一次累计抽满 5w：返还 1w 额度，并送一套带金高攻高血图鉴，金卡从本次代抽抽到的最好一张里选。</div>
+              <div class="stack-item">后续每累计抽满 5w，再返还 5k 额度。</div>
+              <div class="stack-item">如需代抽视频确认真实性，可在咨询问题的群里联系管理员索取。</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">提交代抽</div>
+            <div id="draw-service-message" class="notice"></div>
+            <div id="draw-service-body" class="stack-list"></div>
           </div>
         </div>
       </section>
@@ -440,6 +453,6 @@
       <button class="page-dock-item" type="button" data-dock-target="auction-zone">拍卖</button>
       <button class="page-dock-item" type="button" data-dock-target="draw-service-zone">代抽专区</button>
     </nav>
-    <script type="module" src="./app.js?v=20260318o"></script>
+    <script type="module" src="./app.js?v=20260318q"></script>
   </body>
 </html>

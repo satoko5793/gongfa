@@ -1610,6 +1610,26 @@ button {
   font-weight: 700;
 }
 
+.draw-service-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
+}
+
+.draw-rule-list {
+  display: grid;
+  gap: 10px;
+}
+
+.draw-service-balance-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(196, 85, 45, 0.14);
+  background: linear-gradient(135deg, rgba(255, 246, 239, 0.92), rgba(255, 255, 255, 0.72));
+}
+
 .page-dock {
   position: fixed;
   left: 50%;
@@ -1830,6 +1850,10 @@ button {
 
   .product-grid {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+
+  .draw-service-layout {
+    grid-template-columns: 1fr;
   }
 
   .flow-grid,

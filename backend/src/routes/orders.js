@@ -3,7 +3,7 @@ const { pool } = require("../db/pool");
 const { authRequired } = require("../middlewares/auth");
 const { useFileStore } = require("../services/runtime");
 const devStore = require("../services/dev-store");
-const { validateOrderCreate } = require("../services/validate");
+const { validateOrderCreate, validateDrawOrderCreate } = require("../services/validate");
 const { listOrders } = require("../services/order-query");
 const { applyQuotaChange } = require("../services/quota");
 const { canAccessOrder } = require("../services/authz");
@@ -222,6 +222,28 @@ ordersRouter.post("/", async (req, res, next) => {
     return next(error);
   } finally {
     client.release();
+  }
+});
+
+ordersRouter.post("/draw-service", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateDrawOrderCreate(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    if (useFileStore()) {
+      return res.json(
+        devStore.createDrawServiceOrder(req.user.id, {
+          amountQuota: Number(body.amount_quota),
+        })
+      );
+    }
+
+    return res.status(501).json({ error: "draw_service_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
   }
 });
 

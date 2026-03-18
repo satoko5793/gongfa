@@ -275,6 +275,22 @@ function validateOrderStatus(status) {
   return ["pending", "confirmed", "cancel_requested", "cancelled"].includes(status);
 }
 
+function validateDrawOrderCreate(body) {
+  const errors = [];
+  if (!isInteger(body?.amount_quota)) {
+    errors.push("amount_quota_invalid");
+    return errors;
+  }
+  const amount = Number(body.amount_quota);
+  if (amount < 200) {
+    errors.push("amount_quota_too_small");
+  }
+  if (amount % 200 !== 0) {
+    errors.push("amount_quota_step_invalid");
+  }
+  return [...new Set(errors)];
+}
+
 function validateExternalOrderCreate(body) {
   const errors = [];
   const itemId = body.item_id ?? body.product_id;
@@ -339,6 +355,7 @@ module.exports = {
   validateBundleUpdate,
   validateQuotaChange,
   validateOrderCreate,
+  validateDrawOrderCreate,
   validateOrderStatus,
   validateExternalOrderCreate,
 };

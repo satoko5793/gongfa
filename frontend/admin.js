@@ -259,6 +259,19 @@ function formatOrderItemSnapshot(item) {
     item?.product_snapshot && typeof item.product_snapshot === "object" ? item.product_snapshot : {};
   const lines = [];
 
+  if (String(snapshot.service_kind || "") === "draw_service") {
+    if (snapshot.amount_quota) {
+      lines.push(`代抽额度：${Number(snapshot.amount_quota)}`);
+    }
+    if (snapshot.season_label) {
+      lines.push(`赛季：${snapshot.season_label}`);
+    }
+    if (snapshot.rule_summary) {
+      lines.push(snapshot.rule_summary);
+    }
+    return lines;
+  }
+
   if (snapshot.legacy_id) {
     lines.push(`Legacy ID：${snapshot.legacy_id}`);
   }
@@ -282,6 +295,30 @@ function formatOrderItemSnapshot(item) {
   }
 
   return lines;
+}
+
+function isDrawServiceOrder(order) {
+  return String(order?.order_source || "").trim() === "draw_service";
+}
+
+function getDrawServiceMeta(order) {
+  if (order?.draw_service && typeof order.draw_service === "object") {
+    return order.draw_service;
+  }
+  const item = Array.isArray(order?.items)
+    ? order.items.find(
+        (entry) =>
+          entry?.product_snapshot &&
+          String(entry.product_snapshot.service_kind || "").trim() === "draw_service"
+      )
+    : null;
+  return item?.product_snapshot || null;
+}
+
+function getOrderSourceLabel(order) {
+  if (isDrawServiceOrder(order)) return "代抽专区";
+  if (order?.order_source === "external") return "外部交易";
+  return "商城下单";
 }
 
 function renderSession(profile) {
@@ -1138,6 +1175,8 @@ function formatQuotaLogType(type) {
       return "充值到账";
     case "residual_transfer_credit":
       return "残卷到账";
+    case "draw_service_rebate":
+      return "代抽返利";
     case "beginner_guide_reward":
       return "新手教学奖励";
     default:
@@ -1181,6 +1220,7 @@ function renderOrders(orders) {
   ordersRoot.innerHTML = currentOrderList
     .map((order) => {
       const items = Array.isArray(order.items) ? order.items : [];
+      const drawMeta = getDrawServiceMeta(order);
       const itemLines = items.length
         ? items
             .map(
@@ -1200,11 +1240,51 @@ function renderOrders(orders) {
             .join("")
         : '<div class="order-item-line">没有订单明细</div>';
 
+      const drawFields =
+        isDrawServiceOrder(order) && drawMeta
+          ? `
+              ${
+                order.status === "pending"
+                  ? `
+                      <div class="inline-form order-toolbar">
+                        <textarea
+                          data-field="draw-returned-cards"
+                          rows="3"
+                          placeholder="确认代抽时填写返还了哪些卡"
+                        >${escapeHtml(drawMeta.returned_cards_text || "")}</textarea>
+                        <input
+                          data-field="draw-best-gold"
+                          type="text"
+                          value="${escapeHtml(drawMeta.best_gold_card || "")}"
+                          placeholder="如果触发 5w 首档奖励，填写本次选中的最佳金卡"
+                        />
+                      </div>
+                    `
+                  : `
+                      <div class="muted">返还卡：${escapeHtml(drawMeta.returned_cards_text || "-")}</div>
+                      <div class="muted">图鉴金卡：${escapeHtml(drawMeta.best_gold_card || "-")}</div>
+                    `
+              }
+              <div class="muted">规则：返还所有双满紫 / 橙 / 红 / 金卡、>=2.5 单词条、双词条、珍；视频如需查看请让用户去咨询群联系管理员。</div>
+              ${
+                drawMeta.reward_summary
+                  ? `<div class="muted">已结算奖励：${escapeHtml(drawMeta.reward_summary)}</div>`
+                  : ""
+              }
+            `
+          : "";
+
       const actionButtons =
         order.order_source === "external"
           ? `
               <button class="ghost save-order-remark-btn" type="button">保存备注</button>
             `
+          : isDrawServiceOrder(order) && order.status === "pending"
+            ? `
+                <button class="ghost save-order-remark-btn" type="button">保存备注</button>
+                <button class="primary confirm-order-btn" type="button">确认代抽</button>
+                <button class="danger cancel-order-btn" type="button">取消订单</button>
+              `
           :
         order.status === "cancel_requested"
           ? `
@@ -1230,9 +1310,14 @@ function renderOrders(orders) {
           </div>
           <div class="product-meta">
             <div>用户：${escapeHtml(order.game_role_name || "-")} / ${escapeHtml(order.game_server || "-")} / ${escapeHtml(order.game_role_id || "-")}</div>
-            <div>来源：${escapeHtml(order.order_source === "external" ? "外部交易" : "商城下单")}${order.buyer_label ? ` / 对象：${escapeHtml(order.buyer_label)}` : ""}</div>
+            <div>来源：${escapeHtml(getOrderSourceLabel(order))}${order.buyer_label ? ` / 对象：${escapeHtml(order.buyer_label)}` : ""}</div>
             <div>订单总额：${Number(order.total_quota || 0)} 额度</div>
             <div>创建时间：${formatDate(order.created_at)}</div>
+            ${
+              isDrawServiceOrder(order) && drawMeta
+                ? `<div>代抽赛季：${escapeHtml(drawMeta.season_label || "-")} / 返利：${Number(drawMeta.rebate_quota || 0)}</div>`
+                : ""
+            }
           </div>
           ${order.cancel_reason ? `<div class="muted">取消原因：${escapeHtml(order.cancel_reason)}</div>` : ""}
           <div class="order-item-list">${itemLines}</div>
@@ -1244,6 +1329,7 @@ function renderOrders(orders) {
               placeholder="填写后台备注或处理说明"
             />
           </div>
+          ${drawFields}
           <div class="actions">
             ${actionButtons}
           </div>
@@ -1888,6 +1974,10 @@ ordersRoot.addEventListener("click", async (event) => {
   if (!card) return;
   const orderId = Number(card.getAttribute("data-order-id"));
   const remark = card.querySelector('[data-field="remark"]').value.trim();
+  const returnedCardsText =
+    card.querySelector('[data-field="draw-returned-cards"]')?.value?.trim() || "";
+  const bestGoldCard =
+    card.querySelector('[data-field="draw-best-gold"]')?.value?.trim() || "";
 
   try {
     if (event.target.closest(".save-order-remark-btn")) {
@@ -1903,7 +1993,12 @@ ordersRoot.addEventListener("click", async (event) => {
     if (event.target.closest(".confirm-order-btn")) {
       await apiFetch(`/admin/orders/${orderId}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "confirmed", remark }),
+        body: JSON.stringify({
+          status: "confirmed",
+          remark,
+          returned_cards_text: returnedCardsText || null,
+          best_gold_card: bestGoldCard || null,
+        }),
       });
       setMessage(`订单 #${orderId} 已确认。`, "success");
       await reloadAll();

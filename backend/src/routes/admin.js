@@ -1012,15 +1012,33 @@ adminRouter.post("/pricing/recalculate", async (req, res, next) => {
 adminRouter.patch("/orders/:id/status", async (req, res, next) => {
   if (useFileStore()) {
     try {
-      const { status, remark } = req.body || {};
+      const { status, remark, returned_cards_text, best_gold_card } = req.body || {};
       if (!validateOrderStatus(status)) {
         return res.status(400).json({ error: "status_invalid" });
+      }
+      if (
+        returned_cards_text !== undefined &&
+        returned_cards_text !== null &&
+        typeof returned_cards_text !== "string"
+      ) {
+        return res.status(400).json({ error: "returned_cards_text_invalid" });
+      }
+      if (
+        best_gold_card !== undefined &&
+        best_gold_card !== null &&
+        typeof best_gold_card !== "string"
+      ) {
+        return res.status(400).json({ error: "best_gold_card_invalid" });
       }
       const updated = devStore.updateOrderStatus(
         req.params.id,
         status,
         remark || null,
-        req.user.id
+        req.user.id,
+        {
+          returnedCardsText: returned_cards_text || null,
+          bestGoldCard: best_gold_card || null,
+        }
       );
       if (!updated) {
         return res.status(404).json({ error: "order_not_found" });

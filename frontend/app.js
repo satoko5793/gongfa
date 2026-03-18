@@ -33,6 +33,8 @@ const bindSection = document.getElementById("bind");
 const accountSection = document.getElementById("account");
 const auctionZoneSection = document.getElementById("auction-zone");
 const drawServiceZoneSection = document.getElementById("draw-service-zone");
+const drawServiceBody = document.getElementById("draw-service-body");
+const drawServiceMessage = document.getElementById("draw-service-message");
 const accountProfile = document.getElementById("account-profile");
 const quotaBalance = document.getElementById("quota-balance");
 const orderList = document.getElementById("order-list");
@@ -94,10 +96,13 @@ let activeDiscountSubcategory = "all";
 let currentRechargeConfig = null;
 let publicRechargeConfig = null;
 let currentRechargeOrders = [];
+let currentProfile = null;
+let currentQuota = null;
 let selectedRechargeAmount = null;
 let selectedRechargeOrderType = "normal";
 let selectedRechargePaymentChannel = "alipay_qr";
 let pendingDirectPurchaseContext = null;
+let selectedDrawServiceAmount = 200;
 let productSearchTimer = null;
 let discountSearchTimer = null;
 let activeAuthTab = "register";
@@ -116,6 +121,11 @@ const discountPaginationState = {
   totalPages: 0,
 };
 const BEGINNER_GUIDE_REWARD_QUOTA = 1000;
+const DRAW_SERVICE_MIN_QUOTA = 200;
+const DRAW_SERVICE_STEP_QUOTA = 200;
+const DRAW_SERVICE_MILESTONE_QUOTA = 50000;
+const DRAW_SERVICE_FIRST_REBATE_QUOTA = 10000;
+const DRAW_SERVICE_REPEAT_REBATE_QUOTA = 5000;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1287,6 +1297,183 @@ function formatRechargeStatus(status) {
   return mapping[status] || status || "-";
 }
 
+function isDrawServiceOrder(order) {
+  return String(order?.order_source || "").trim() === "draw_service";
+}
+
+function getDrawServiceMeta(order) {
+  if (!order) return null;
+  if (order.draw_service && typeof order.draw_service === "object") {
+    return order.draw_service;
+  }
+  const item = Array.isArray(order.items)
+    ? order.items.find(
+        (entry) => entry?.product_snapshot && String(entry.product_snapshot.service_kind || "") === "draw_service"
+      )
+    : null;
+  return item?.product_snapshot || null;
+}
+
+function normalizeDrawServiceAmount(value) {
+  const amount = Number(value);
+  if (!Number.isInteger(amount) || amount < DRAW_SERVICE_MIN_QUOTA) return null;
+  if (amount % DRAW_SERVICE_STEP_QUOTA !== 0) return null;
+  return amount;
+}
+
+function setDrawServiceMessage(text, type = "") {
+  if (!drawServiceMessage) return;
+  drawServiceMessage.textContent = text || "";
+  drawServiceMessage.className = type ? `notice ${type}` : "notice";
+}
+
+function updateDrawServiceQuote() {
+  const amountInput = document.getElementById("draw-service-amount-input");
+  const valueNode = document.getElementById("draw-service-quote-value");
+  const detailNode = document.getElementById("draw-service-quote-detail");
+  if (!amountInput || !valueNode || !detailNode) return;
+
+  const normalizedAmount = normalizeDrawServiceAmount(amountInput.value);
+  const balance = Number(currentQuota?.balance ?? currentProfile?.quota_balance ?? 0);
+
+  if (!normalizedAmount) {
+    valueNode.textContent = "请输入合法额度";
+    detailNode.textContent = "最低 200，且必须是 200 的倍数。";
+    return;
+  }
+
+  const milestoneCount = Math.floor(normalizedAmount / DRAW_SERVICE_MILESTONE_QUOTA);
+  valueNode.textContent = `本次代抽 ${normalizedAmount} 额度`;
+  detailNode.textContent =
+    milestoneCount > 0
+      ? `本单已覆盖 ${milestoneCount} 个 5w 档位；当前可用额度 ${balance}`
+      : `当前可用额度 ${balance}，累计满 5w 才会触发赛季返利。`;
+}
+
+function renderDrawServiceZone(profile, quota) {
+  if (!drawServiceBody) return;
+  currentProfile = profile || null;
+  currentQuota = quota || null;
+
+  if (!profile) {
+    drawServiceBody.innerHTML = `
+      <div class="stack-item">登录后才能提交代抽订单，系统会直接从你的额度里扣除。</div>
+      <div class="actions">
+        <a class="ghost-link" href="#bind">去登录</a>
+      </div>
+    `;
+    setDrawServiceMessage("");
+    return;
+  }
+
+  const balance = Number(quota?.balance ?? profile?.quota_balance ?? 0);
+  if (!normalizeDrawServiceAmount(selectedDrawServiceAmount)) {
+    selectedDrawServiceAmount = DRAW_SERVICE_MIN_QUOTA;
+  }
+
+  drawServiceBody.innerHTML = `
+    <form id="draw-service-form" class="form-grid">
+      <div class="draw-service-balance-card">
+        <strong>当前可用额度 ${balance}</strong>
+        <span class="muted">代抽单提交后会立即扣额度，管理员确认完成后按规则返还卡和阶段奖励。</span>
+      </div>
+      <label>
+        代抽额度
+        <input
+          id="draw-service-amount-input"
+          type="number"
+          min="${DRAW_SERVICE_MIN_QUOTA}"
+          step="${DRAW_SERVICE_STEP_QUOTA}"
+          value="${selectedDrawServiceAmount}"
+          required
+        />
+      </label>
+      <div class="preset-list">
+        ${[200, 1000, 2000, 5000, 10000, 50000]
+          .map(
+            (amount) => `
+              <button
+                class="preset-chip ${Number(selectedDrawServiceAmount) === Number(amount) ? "active" : ""}"
+                type="button"
+                data-draw-service-amount="${amount}"
+              >${amount} 额度</button>
+            `
+          )
+          .join("")}
+      </div>
+      <div class="recharge-quote">
+        <span class="muted">本次代抽预览</span>
+        <strong id="draw-service-quote-value"></strong>
+        <span id="draw-service-quote-detail" class="muted"></span>
+      </div>
+      <div class="stack-item muted">
+        返还卡由管理员代抽后人工录入；如果你需要代抽视频，请去咨询群联系管理员索取。
+      </div>
+      <div class="actions">
+        <button class="primary" type="submit">提交代抽订单</button>
+      </div>
+    </form>
+  `;
+
+  const amountInput = document.getElementById("draw-service-amount-input");
+  amountInput?.addEventListener("input", () => {
+    const nextValue = Number(amountInput.value || 0);
+    if (Number.isFinite(nextValue)) {
+      selectedDrawServiceAmount = nextValue;
+    }
+    updateDrawServiceQuote();
+  });
+
+  drawServiceBody.querySelectorAll("[data-draw-service-amount]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const amount = Number(button.getAttribute("data-draw-service-amount") || 0);
+      selectedDrawServiceAmount = amount;
+      if (amountInput) amountInput.value = String(amount);
+      renderDrawServiceZone(currentProfile, currentQuota);
+    });
+  });
+
+  document.getElementById("draw-service-form")?.addEventListener("submit", submitDrawServiceOrder);
+  updateDrawServiceQuote();
+  setDrawServiceMessage("");
+}
+
+async function submitDrawServiceOrder(event) {
+  event.preventDefault();
+  const amountInput = document.getElementById("draw-service-amount-input");
+  const normalizedAmount = normalizeDrawServiceAmount(amountInput?.value || selectedDrawServiceAmount);
+  const balance = Number(currentQuota?.balance ?? currentProfile?.quota_balance ?? 0);
+
+  if (!currentProfile) {
+    setDrawServiceMessage("请先登录后再提交代抽订单。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  if (!normalizedAmount) {
+    setDrawServiceMessage("代抽额度最低 200，且必须是 200 的倍数。", "error");
+    return;
+  }
+  if (normalizedAmount > balance) {
+    setDrawServiceMessage("当前额度不足，先去获取额度再来提交。", "error");
+    return;
+  }
+
+  try {
+    const order = await apiFetch("/orders/draw-service", {
+      method: "POST",
+      body: JSON.stringify({ amount_quota: normalizedAmount }),
+    });
+    selectedDrawServiceAmount = normalizedAmount;
+    setDrawServiceMessage(
+      `代抽单 #${order.id} 已提交，管理员代抽后会返还符合规则的卡，并在确认时录入返还结果。`,
+      "success"
+    );
+    await loadAccount();
+  } catch (error) {
+    setDrawServiceMessage(`代抽提交失败：${error.message}`, "error");
+  }
+}
+
 
 function renderGuideGlyph(type) {
   if (type === "account") {
@@ -1458,7 +1645,17 @@ function renderProfile(profile, quota, orders) {
   orderList.innerHTML = orders
     .map((order) => {
       const itemNames = (order.items || []).map((item) => item.product_name).join(" / ");
+      const drawMeta = getDrawServiceMeta(order);
       const remark = order.remark ? `<div class="muted">备注：${escapeHtml(order.remark)}</div>` : "";
+      const drawLines =
+        isDrawServiceOrder(order) && drawMeta
+          ? `
+              <div class="muted">代抽额度：${Number(drawMeta.amount_quota || order.total_quota || 0)} / 赛季：${escapeHtml(drawMeta.season_label || "-")}</div>
+              ${drawMeta.returned_cards_text ? `<div class="muted">返还卡：${escapeHtml(drawMeta.returned_cards_text)}</div>` : ""}
+              ${drawMeta.reward_summary ? `<div class="muted">阶段奖励：${escapeHtml(drawMeta.reward_summary)}</div>` : ""}
+              ${drawMeta.best_gold_card ? `<div class="muted">图鉴金卡：${escapeHtml(drawMeta.best_gold_card)}</div>` : ""}
+            `
+          : "";
       const actions =
         order.status === "pending"
           ? `<div class="actions"><button class="ghost request-cancel-btn" type="button" data-order-id="${order.id}">申请取消</button></div>`
@@ -1469,8 +1666,9 @@ function renderProfile(profile, quota, orders) {
       return `
         <div class="stack-item">
           <div>订单 #${order.id} / ${escapeHtml(formatOrderStatus(order.status))}</div>
-          <div class="muted">商品：${escapeHtml(itemNames || "-")}</div>
+          <div class="muted">${escapeHtml(isDrawServiceOrder(order) ? "代抽项目" : "商品")}：${escapeHtml(itemNames || "-")}</div>
           <div class="muted">消耗：${Number(order.total_quota || 0)} / 下单时间：${formatDate(order.created_at)}</div>
+          ${drawLines}
           ${remark}
           ${actions}
         </div>
@@ -1953,12 +2151,15 @@ async function loadAccount() {
   if (!session?.token) {
     currentRechargeConfig = null;
     currentRechargeOrders = [];
+    currentProfile = null;
+    currentQuota = null;
     selectedRechargePaymentChannel = "alipay_qr";
     pendingDirectPurchaseContext = null;
     renderSessionSummary(null);
     renderProfile(null, null, []);
     renderBeginnerGuide(null, [], []);
     renderRechargeSection(null, null, []);
+    renderDrawServiceZone(null, null);
     return;
   }
 
@@ -1974,22 +2175,28 @@ async function loadAccount() {
     currentRechargeConfig = rechargeConfig;
     publicRechargeConfig = rechargeConfig;
     currentRechargeOrders = rechargeOrders || [];
+    currentProfile = profile;
+    currentQuota = quota;
     renderSessionSummary(profile);
     renderProfile(profile, quota, orders || []);
     renderBeginnerGuide(profile, orders || [], rechargeOrders || []);
     renderRechargeSection(profile, rechargeConfig, rechargeOrders || []);
+    renderDrawServiceZone(profile, quota);
     setNotice("");
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
       clearSession();
       currentRechargeConfig = null;
       currentRechargeOrders = [];
+      currentProfile = null;
+      currentQuota = null;
       selectedRechargePaymentChannel = "alipay_qr";
       pendingDirectPurchaseContext = null;
       renderSessionSummary(null);
       renderProfile(null, null, []);
       renderBeginnerGuide(null, [], []);
       renderRechargeSection(null, null, []);
+      renderDrawServiceZone(null, null);
       setNotice("登录状态已失效，请重新登录。", "error");
       return;
     }

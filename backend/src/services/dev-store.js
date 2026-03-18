@@ -25,6 +25,15 @@ const FIXED_ADMIN_ACCOUNT = {
 };
 const BEGINNER_GUIDE_REWARD_QUOTA = 1000;
 const BEGINNER_GUIDE_REWARD_REMARK = "beginner_guide_reward";
+const DRAW_SERVICE_MIN_QUOTA = 200;
+const DRAW_SERVICE_STEP_QUOTA = 200;
+const DRAW_SERVICE_MILESTONE_QUOTA = 50000;
+const DRAW_SERVICE_FIRST_REBATE_QUOTA = 10000;
+const DRAW_SERVICE_REPEAT_REBATE_QUOTA = 5000;
+const DRAW_SERVICE_ATLAS_BONUS_LABEL = "一套带金高攻高血图鉴";
+const DRAW_SERVICE_VIDEO_NOTICE = "如需代抽视频，可在咨询群联系管理员索取。";
+const DRAW_SERVICE_RULE_SUMMARY =
+  "返还所有双满紫、双满橙、双满红、双满金卡、>=2.5 单词条、双词条、珍。";
 const LEGACY_DISPLAY_NAME_BY_ID = {
   1: "随便掌",
   2: "折凳要诀",
@@ -477,6 +486,95 @@ function withQuota(user, data) {
     beginner_guide_reward_earned: Boolean(guideReward?.granted_at),
     beginner_guide_reward_granted_at: guideReward?.granted_at || null,
     beginner_guide_reward_source_order_id: guideReward?.source_order_id || null,
+  };
+}
+
+function getCurrentDrawSeasonLabel(data) {
+  const currentSeasonProduct = (data.products || []).find(
+    (item) => Boolean(item?.is_current_season) && String(item?.season_label || "").trim()
+  );
+  if (currentSeasonProduct?.season_label) {
+    return String(currentSeasonProduct.season_label).trim();
+  }
+  const rechargeConfig = normalizeRechargeConfig(data.rechargeConfig || {});
+  if (String(rechargeConfig.season_member_season_label || "").trim()) {
+    return String(rechargeConfig.season_member_season_label).trim();
+  }
+  return "当前赛季";
+}
+
+function isDrawServiceOrder(order) {
+  return String(order?.order_source || "").trim() === "draw_service";
+}
+
+function normalizeDrawAmountQuota(value) {
+  const amount = Number(value);
+  if (!Number.isInteger(amount) || amount < DRAW_SERVICE_MIN_QUOTA) return null;
+  if (amount % DRAW_SERVICE_STEP_QUOTA !== 0) return null;
+  return amount;
+}
+
+function getDrawServiceSnapshot(drawService) {
+  return {
+    service_kind: "draw_service",
+    amount_quota: Number(drawService?.amount_quota || 0),
+    season_label: String(drawService?.season_label || "").trim() || null,
+    rule_summary: DRAW_SERVICE_RULE_SUMMARY,
+    video_notice: DRAW_SERVICE_VIDEO_NOTICE,
+  };
+}
+
+function calculateDrawServiceReward(data, order) {
+  const drawService = order?.draw_service || {};
+  const seasonLabel =
+    String(drawService.season_label || "").trim() || getCurrentDrawSeasonLabel(data);
+  const confirmedOrders = (data.orders || []).filter(
+    (item) =>
+      Number(item.user_id) === Number(order.user_id) &&
+      Number(item.id) !== Number(order.id) &&
+      String(item.status || "") === "confirmed" &&
+      isDrawServiceOrder(item) &&
+      String(item?.draw_service?.season_label || "").trim() === seasonLabel
+  );
+  const previousTotal = confirmedOrders.reduce(
+    (sum, item) => sum + Number(item?.draw_service?.amount_quota || item?.total_quota || 0),
+    0
+  );
+  const currentAmount = Number(drawService.amount_quota || order.total_quota || 0);
+  const nextTotal = previousTotal + currentAmount;
+  const previousMilestones = Math.floor(previousTotal / DRAW_SERVICE_MILESTONE_QUOTA);
+  const nextMilestones = Math.floor(nextTotal / DRAW_SERVICE_MILESTONE_QUOTA);
+  let rebateQuota = 0;
+  let grantsAtlasBonus = false;
+
+  for (let milestone = previousMilestones + 1; milestone <= nextMilestones; milestone += 1) {
+    if (milestone === 1) {
+      rebateQuota += DRAW_SERVICE_FIRST_REBATE_QUOTA;
+      grantsAtlasBonus = true;
+    } else {
+      rebateQuota += DRAW_SERVICE_REPEAT_REBATE_QUOTA;
+    }
+  }
+
+  const rewardLines = [];
+  if (rebateQuota > 0) {
+    rewardLines.push(`返还 ${rebateQuota} 额度`);
+  }
+  if (grantsAtlasBonus) {
+    rewardLines.push(DRAW_SERVICE_ATLAS_BONUS_LABEL);
+  }
+
+  return {
+    seasonLabel,
+    previousTotal,
+    nextTotal,
+    previousMilestones,
+    nextMilestones,
+    crossedMilestones: Math.max(nextMilestones - previousMilestones, 0),
+    rebateQuota,
+    grantsAtlasBonus,
+    atlasBonusLabel: grantsAtlasBonus ? DRAW_SERVICE_ATLAS_BONUS_LABEL : null,
+    rewardSummary: rewardLines.length ? rewardLines.join(" / ") : "本次没有触发赛季返利",
   };
 }
 
@@ -976,6 +1074,7 @@ function listOrders({
         ...items.map((item) => String(item.product_id)),
         ...items.map((item) => String(item.bundle_sku_id)),
         ...items.map((item) => item.item_kind),
+        JSON.stringify(order?.draw_service || {}),
       ]
         .filter(Boolean)
         .some((field) => String(field).toLowerCase().includes(trimmedKeyword));
@@ -1603,6 +1702,94 @@ function createRechargeOrder(
   return listRechargeOrders({ rechargeOrderId: rechargeOrder.id, userId: Number(userId), limit: 1 })[0];
 }
 
+function createDrawServiceOrder(userId, { amountQuota }) {
+  const data = readData();
+  const user = data.users.find((item) => item.id === Number(userId));
+  if (!user) {
+    const err = new Error("user_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (user.status !== "active") {
+    const err = new Error("user_disabled");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const normalizedAmount = normalizeDrawAmountQuota(amountQuota);
+  if (!normalizedAmount) {
+    const err = new Error("draw_amount_quota_invalid");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  applyQuotaChange(data, {
+    userId,
+    changeAmount: -normalizedAmount,
+    type: "order_deduct",
+    remark: `draw_service_order_create:${normalizedAmount}`,
+  });
+
+  const drawService = {
+    amount_quota: normalizedAmount,
+    season_label: getCurrentDrawSeasonLabel(data),
+    returned_cards_text: null,
+    best_gold_card: null,
+    rebate_quota: 0,
+    reward_summary: null,
+    reward_milestones: 0,
+    atlas_bonus_granted: false,
+    atlas_bonus_label: null,
+    video_notice: DRAW_SERVICE_VIDEO_NOTICE,
+    rule_summary: DRAW_SERVICE_RULE_SUMMARY,
+    settled_at: null,
+  };
+
+  const order = {
+    id: nextId(data.orders),
+    user_id: Number(userId),
+    total_quota: normalizedAmount,
+    status: "pending",
+    remark: null,
+    order_source: "draw_service",
+    draw_service: drawService,
+    created_at: now(),
+    updated_at: now(),
+  };
+  data.orders.push(order);
+
+  data.orderItems.push({
+    id: nextId(data.orderItems),
+    order_id: order.id,
+    item_kind: "service",
+    product_id: null,
+    bundle_sku_id: null,
+    product_name: `代抽 ${normalizedAmount} 额度`,
+    product_snapshot: getDrawServiceSnapshot(drawService),
+    price_quota: normalizedAmount,
+    created_at: now(),
+  });
+
+  const quotaLog = data.quotaLogs[data.quotaLogs.length - 1];
+  if (quotaLog && quotaLog.type === "order_deduct" && !quotaLog.order_id) {
+    quotaLog.order_id = order.id;
+  }
+
+  addAuditLog(data, {
+    actorUserId: Number(userId),
+    targetType: "order",
+    targetId: order.id,
+    action: "draw_service_order_create",
+    detail: {
+      amount_quota: normalizedAmount,
+      season_label: drawService.season_label,
+    },
+  });
+
+  writeData(data);
+  return listOrders({ orderId: order.id, userId: Number(userId), limit: 1 })[0];
+}
+
 function reviewRechargeOrder(rechargeOrderId, { status, adminRemark = null }, actorUserId) {
   const data = readData();
   const rechargeOrder = (data.rechargeOrders || []).find(
@@ -1827,7 +2014,7 @@ function requestOrderCancellation(orderId, userId, remark = null) {
   return listOrders({ orderId: order.id, userId: Number(userId), limit: 1 })[0];
 }
 
-function updateOrderStatus(orderId, status, remark, actorUserId) {
+function updateOrderStatus(orderId, status, remark, actorUserId, options = {}) {
   const data = readData();
   const order = data.orders.find((item) => item.id === Number(orderId));
   if (!order) return null;
@@ -1872,6 +2059,49 @@ function updateOrderStatus(orderId, status, remark, actorUserId) {
   order.status = status;
   order.remark = remark || null;
   order.updated_at = now();
+  if (status === "confirmed" && previousStatus !== "confirmed" && isDrawServiceOrder(order)) {
+    const returnedCardsText = String(options.returnedCardsText || "").trim();
+    const bestGoldCard = String(options.bestGoldCard || "").trim();
+    if (!returnedCardsText) {
+      const err = new Error("draw_returned_cards_required");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const reward = calculateDrawServiceReward(data, order);
+    if (reward.grantsAtlasBonus && !bestGoldCard) {
+      const err = new Error("draw_best_gold_card_required");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    order.draw_service = {
+      ...(order.draw_service || {}),
+      season_label: reward.seasonLabel,
+      returned_cards_text: returnedCardsText,
+      best_gold_card: bestGoldCard || null,
+      rebate_quota: reward.rebateQuota,
+      reward_summary: reward.rewardSummary,
+      reward_milestones: reward.crossedMilestones,
+      atlas_bonus_granted: reward.grantsAtlasBonus,
+      atlas_bonus_label: reward.atlasBonusLabel,
+      season_total_before: reward.previousTotal,
+      season_total_after: reward.nextTotal,
+      video_notice: DRAW_SERVICE_VIDEO_NOTICE,
+      settled_at: now(),
+    };
+
+    if (reward.rebateQuota > 0) {
+      applyQuotaChange(data, {
+        userId: order.user_id,
+        changeAmount: reward.rebateQuota,
+        type: "draw_service_rebate",
+        orderId: order.id,
+        remark: reward.rewardSummary,
+        bonusAmount: 0,
+      });
+    }
+  }
   if (status === "confirmed" && previousStatus !== "confirmed") {
     maybeGrantBeginnerGuideReward(data, order.user_id, actorUserId, "order_confirmed");
   }
@@ -2063,6 +2293,7 @@ module.exports = {
   updateSelfProfile,
   changeSelfPassword,
   createOrder,
+  createDrawServiceOrder,
   createRechargeOrder,
   updateRechargeConfig,
   requestOrderCancellation,
