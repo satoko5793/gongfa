@@ -892,6 +892,13 @@ button {
   object-fit: cover;
 }
 
+.product-summary {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  align-content: start;
+}
+
 .bundle-collage {
   position: relative;
   width: 100%;
@@ -2198,8 +2205,26 @@ button {
   }
 
   .product-card {
+    grid-template-columns: minmax(92px, 108px) minmax(0, 1fr);
+    grid-template-areas:
+      "cover summary"
+      "chips chips"
+      "actions actions";
+    align-items: start;
     padding: 10px;
     gap: 10px;
+  }
+
+  .product-cover {
+    grid-area: cover;
+    aspect-ratio: auto;
+    min-height: 132px;
+    height: 100%;
+  }
+
+  .product-summary {
+    grid-area: summary;
+    gap: 8px;
   }
 
   .quick-link {
@@ -2219,6 +2244,7 @@ button {
 
   .product-name {
     font-size: 14px;
+    line-height: 1.2;
   }
 
   .product-type-chip,
@@ -2235,6 +2261,46 @@ button {
 
   .stat-value {
     font-size: 16px;
+  }
+
+  .product-headline {
+    gap: 4px;
+    margin-bottom: 0;
+  }
+
+  .product-type-chip {
+    max-width: 100%;
+    padding: 4px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .product-stats-grid {
+    gap: 6px;
+    margin-bottom: 0;
+  }
+
+  .term-row {
+    gap: 6px;
+  }
+
+  .term-badge,
+  .term-empty,
+  .chip {
+    padding: 5px 8px;
+  }
+
+  .chip-row {
+    grid-area: chips;
+    gap: 6px;
+  }
+
+  .actions {
+    grid-area: actions;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .actions button {

@@ -1138,7 +1138,7 @@ function renderProductCard(product) {
   return `
     <article class="product-card ${discounted ? "discounted" : ""}">
       <div class="product-cover">${renderProductVisual(product, "grid")}</div>
-      <div>
+      <div class="product-summary">
         <div class="product-headline">
           <div class="discount-title-line">
             <div class="product-name">${escapeHtml(product.name)}</div>
