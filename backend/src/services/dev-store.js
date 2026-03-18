@@ -6,9 +6,14 @@ const { hashPassword, verifyPassword } = require("./password-auth");
 const { buildDefaultRechargeConfig, normalizeRechargeConfig } = require("../config/recharge-config");
 const { getSignupSeedQuota } = require("../config/signup-seed-quota");
 
-const dataPath = process.env.DEV_STORE_DATA_PATH
+const defaultDataPath = path.resolve(__dirname, "..", "..", "dev-data.json");
+const configuredDataPath = process.env.DEV_STORE_DATA_PATH
   ? path.resolve(process.cwd(), process.env.DEV_STORE_DATA_PATH)
-  : path.resolve(__dirname, "..", "..", "dev-data.json");
+  : null;
+const dataPath =
+  configuredDataPath && fs.existsSync(configuredDataPath)
+    ? configuredDataPath
+    : defaultDataPath;
 const FIXED_ADMIN_ACCOUNT = {
   game_role_id: "584967604",
   game_role_name: "繁星✨秋",
@@ -20,6 +25,20 @@ const FIXED_ADMIN_ACCOUNT = {
 };
 const BEGINNER_GUIDE_REWARD_QUOTA = 1000;
 const BEGINNER_GUIDE_REWARD_REMARK = "beginner_guide_reward";
+const LEGACY_DISPLAY_NAME_BY_ID = {
+  1: "随便掌",
+  2: "折凳要诀",
+  101: "退堂鼓",
+  102: "杠上开花手",
+  201: "也行刀法",
+  202: "摸牌透视眼",
+  301: "杠精罡气",
+  302: "摸鱼化劲",
+  401: "对穿肠文攻术",
+  402: "小强不死身",
+  403: "跑路草上飞",
+  501: "运气诀",
+};
 
 function now() {
   return new Date().toISOString();
@@ -147,6 +166,33 @@ function removeLegacySeedJunk(data) {
   );
 }
 
+function normalizeLegacyCardNames(data) {
+  let changed = false;
+
+  data.products = (data.products || []).map((product) => {
+    const legacyId = Number(product?.legacy_id || 0);
+    const expectedName = LEGACY_DISPLAY_NAME_BY_ID[legacyId];
+    if (!expectedName) return product;
+
+    const next = { ...product };
+    if (String(product?.name || "").trim() !== expectedName) {
+      next.name = expectedName;
+      changed = true;
+    }
+
+    const uidParts = String(product?.uid || "").split("|");
+    if (uidParts.length >= 2 && uidParts[1] !== expectedName) {
+      uidParts[1] = expectedName;
+      next.uid = uidParts.join("|");
+      changed = true;
+    }
+
+    return next;
+  });
+
+  return changed;
+}
+
 function repriceDataProducts(data) {
   const pricedProducts = repriceProducts(
     data.products || [],
@@ -252,6 +298,9 @@ function normalizeData(data) {
     changed = true;
   }
   if (removeLegacySeedJunk(next)) {
+    changed = true;
+  }
+  if (normalizeLegacyCardNames(next)) {
     changed = true;
   }
   next.products = (next.products || []).map((product) => {
