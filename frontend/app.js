@@ -440,7 +440,8 @@ function getGoldSubcategory(product) {
   if (getTierKey(product) !== "gold" || isBundle(product)) return "all";
   const extStats = parseExtAttrStats(product?.ext_attrs);
   if (extStats.fire > 0 && extStats.calm > 0) return "double_term";
-  if (extStats.fire > 0 || extStats.calm > 0) return "single_term";
+  if (extStats.fire > 0) return "fire_only";
+  if (extStats.calm > 0) return "calm_only";
   return "no_term";
 }
 
@@ -448,7 +449,8 @@ function buildGoldSubcategoryEntries(products) {
   const labels = {
     all: "全部金卡",
     double_term: "双词条",
-    single_term: "单词条",
+    fire_only: "走火",
+    calm_only: "气定",
     no_term: "无词条",
   };
   const goldProducts = (products || []).filter((product) => getTierKey(product) === "gold" && !isBundle(product));
