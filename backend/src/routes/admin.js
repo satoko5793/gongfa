@@ -284,6 +284,7 @@ adminRouter.patch("/products/bulk-update", async (req, res, next) => {
     if (body.main_attrs !== undefined) patch.main_attrs = body.main_attrs;
     if (body.ext_attrs !== undefined) patch.ext_attrs = body.ext_attrs;
     if (body.price_quota !== undefined) patch.price_quota = body.price_quota;
+    if (body.discount_rate !== undefined) patch.discount_rate = body.discount_rate;
     if (body.stock !== undefined) patch.stock = body.stock;
 
     if (Object.keys(patch).length === 0) {
@@ -384,6 +385,7 @@ adminRouter.patch("/products/:id", async (req, res, next) => {
           ...(body.main_attrs !== undefined ? { main_attrs: body.main_attrs } : {}),
           ...(body.ext_attrs !== undefined ? { ext_attrs: body.ext_attrs } : {}),
           ...(body.price_quota !== undefined ? { price_quota: body.price_quota } : {}),
+          ...(body.discount_rate !== undefined ? { discount_rate: body.discount_rate } : {}),
           ...(body.stock !== undefined ? { stock: body.stock } : {}),
         },
         req.user.id
@@ -407,7 +409,8 @@ adminRouter.patch("/products/:id", async (req, res, next) => {
         main_attrs=COALESCE($6, main_attrs),
         ext_attrs=COALESCE($7, ext_attrs),
         manual_price_quota=COALESCE($8, manual_price_quota),
-        stock=COALESCE($9, stock),
+        discount_rate=COALESCE($9, discount_rate),
+        stock=COALESCE($10, stock),
         updated_at=NOW()
        WHERE id=$1
        RETURNING *`,
@@ -420,6 +423,7 @@ adminRouter.patch("/products/:id", async (req, res, next) => {
         body.main_attrs ?? null,
         body.ext_attrs ?? null,
         manualPrice ?? null,
+        body.discount_rate ?? null,
         body.stock ?? null,
       ]
     );
