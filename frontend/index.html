@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260318f" />
+    <link rel="stylesheet" href="styles.css?v=20260318g" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -104,16 +104,6 @@
         </div>
       </section>
 
-      <section id="discount-products-section" class="card hidden">
-        <div class="section-head">
-          <div>
-            <div class="card-title">打折专区</div>
-            <div class="card-sub">这里的商品会在当前价格基础上额外打折，按折后价直接下单。</div>
-          </div>
-        </div>
-        <div id="discount-product-grid" class="product-grid"></div>
-      </section>
-
       <section id="products" class="card dock-target-section">
         <div class="section-head">
           <div>
@@ -138,6 +128,16 @@
         <div id="product-subcategory-tabs" class="subcategory-tabs hidden"></div>
         <div id="product-grid" class="product-grid"></div>
         <div id="product-pagination" class="pagination-bar"></div>
+      </section>
+
+      <section id="discount-products-section" class="card dock-target-section hidden">
+        <div class="section-head">
+          <div>
+            <div class="card-title">打折专区</div>
+            <div class="card-sub">这里的商品会在当前价格基础上额外打折，按折后价直接下单。</div>
+          </div>
+        </div>
+        <div id="discount-product-grid" class="product-grid"></div>
       </section>
 
       <section id="bind" class="card">
@@ -420,10 +420,11 @@
 
     <nav class="page-dock" aria-label="页面快捷切换">
       <button class="page-dock-item active" type="button" data-dock-target="products">商城</button>
+      <button class="page-dock-item hidden" type="button" data-dock-target="discount-products-section">打折</button>
       <button class="page-dock-item" type="button" data-dock-target="account">我的信息</button>
       <button class="page-dock-item" type="button" data-dock-target="auction-zone">拍卖</button>
       <button class="page-dock-item" type="button" data-dock-target="draw-service-zone">代抽专区</button>
     </nav>
-    <script type="module" src="./app.js?v=20260318f"></script>
+    <script type="module" src="./app.js?v=20260318g"></script>
   </body>
 </html>

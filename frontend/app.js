@@ -56,6 +56,7 @@ const accountTabPanels = Array.from(document.querySelectorAll("[data-account-pan
 const accountTabLinks = Array.from(document.querySelectorAll("[data-account-tab-target]"));
 const accountSecurityTabButton = document.querySelector('[data-account-tab="security"]');
 const pageDockItems = Array.from(document.querySelectorAll("[data-dock-target]"));
+const discountDockButton = document.querySelector('[data-dock-target="discount-products-section"]');
 
 const registerForm = document.getElementById("register-form");
 const registerRoleIdInput = document.getElementById("register-role-id");
@@ -290,10 +291,11 @@ function syncAccountTabWithHash() {
 function getDockSections() {
   return [
     { key: "products", node: productsSection },
+    { key: "discount-products-section", node: discountProductsSection },
     { key: "account", node: accountSection },
     { key: "auction-zone", node: auctionZoneSection },
     { key: "draw-service-zone", node: drawServiceZoneSection },
-  ].filter((entry) => entry.node);
+  ].filter((entry) => entry.node && !entry.node.classList.contains("hidden"));
 }
 
 function getScrollOffset() {
@@ -329,11 +331,21 @@ function navigateWithDock(target) {
   if (!section) return;
   if (target === "products") {
     window.location.hash = "products";
+  } else if (target === "discount-products-section") {
+    window.location.hash = "discount-products-section";
   } else {
     window.location.hash = target;
   }
   scrollSectionIntoView(section);
   setActiveDockTarget(target);
+}
+
+function syncDiscountDockVisibility(hasDiscounts) {
+  if (!discountDockButton) return;
+  discountDockButton.classList.toggle("hidden", !hasDiscounts);
+  if (!hasDiscounts && activeDockTarget === "discount-products-section") {
+    setActiveDockTarget("products");
+  }
 }
 
 function syncDockWithViewport() {
@@ -1065,13 +1077,17 @@ function renderProductCard(product) {
 function renderDiscountProducts(products) {
   if (!discountProductsSection || !discountProductGrid) return;
   const discountedProducts = getDiscountedProducts(products).slice(0, 8);
-  discountProductsSection.classList.toggle("hidden", discountedProducts.length === 0);
+  const hasDiscounts = discountedProducts.length > 0;
+  discountProductsSection.classList.toggle("hidden", !hasDiscounts);
+  syncDiscountDockVisibility(hasDiscounts);
   if (!discountedProducts.length) {
     discountProductGrid.innerHTML = "";
+    syncDockWithViewport();
     return;
   }
   discountProductGrid.innerHTML = discountedProducts.map((product) => renderProductCard(product)).join("");
   bindImageFallbacks(discountProductGrid);
+  syncDockWithViewport();
 }
 
 function applyProductView(options = {}) {
