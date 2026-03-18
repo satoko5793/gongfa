@@ -528,6 +528,21 @@ function getPricingMeta(product) {
     : {};
 }
 
+function normalizeDiscountRate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 100;
+  const normalized = Math.round(numeric);
+  if (normalized <= 0 || normalized > 100) return 100;
+  return normalized;
+}
+
+function getDiscountLabel(discountRate) {
+  const normalized = normalizeDiscountRate(discountRate);
+  if (normalized >= 100) return "无折扣";
+  const fold = normalized / 10;
+  return Number.isInteger(fold) ? `${fold}折` : `${fold.toFixed(1)}折`;
+}
+
 function formatRate(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric) || numeric <= 0) return "-";
@@ -708,6 +723,9 @@ function renderProducts(products) {
         product.manual_price_quota === null || product.manual_price_quota === undefined
           ? "-"
           : Number(product.manual_price_quota);
+      const discountRate = normalizeDiscountRate(product.discount_rate);
+      const effectivePrice = Number(product.effective_price_quota || product.price_quota || 0);
+      const basePrice = Number(product.price_quota || 0);
 
       return `
         <div class="admin-card" data-product-id="${product.id}">
@@ -729,7 +747,8 @@ function renderProducts(products) {
                 <div>Source: ${escapeHtml(product.source_file_name || "-")}</div>
                 <div>Stats: ATK ${Number(product.attack_value || 0)} / HP ${Number(product.hp_value || 0)}</div>
                 <div>Terms: ${escapeHtml(product.ext_attrs || "none")}</div>
-                <div>Stock: ${Number(product.stock || 0)} / Price: ${Number(product.price_quota || 0)}</div>
+                <div>Stock: ${Number(product.stock || 0)} / Base price: ${basePrice}</div>
+                <div>Discount: ${escapeHtml(getDiscountLabel(discountRate))} / Final: ${effectivePrice}</div>
                 <div>Pricing: ${pricingLabel} / Reason: ${escapeHtml(dominantLabel)}</div>
                 <div>Floor: ${floorPrice} / Auto: ${autoPrice} / Manual: ${manualPrice}</div>
                 <div>Market factor: ${marketFactor}</div>
@@ -740,6 +759,7 @@ function renderProducts(products) {
           <div class="inline-form">
             <input data-field="name" value="${escapeHtml(product.name)}" />
             <input data-field="price_quota" type="number" value="${Number(product.price_quota || 0)}" />
+            <input data-field="discount_rate" type="number" min="1" max="100" value="${discountRate}" placeholder="折扣率" />
             <input data-field="stock" type="number" value="${Number(product.stock || 0)}" />
             <select data-field="status">
               ${["draft", "on_sale", "off_sale", "sold"]
@@ -1477,6 +1497,7 @@ productsRoot.addEventListener("click", async (event) => {
         body: JSON.stringify({
           name: card.querySelector('[data-field="name"]').value.trim(),
           price_quota: Number(card.querySelector('[data-field="price_quota"]').value),
+          discount_rate: Number(card.querySelector('[data-field="discount_rate"]').value),
           stock: Number(card.querySelector('[data-field="stock"]').value),
         }),
       });

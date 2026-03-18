@@ -1161,6 +1161,30 @@ button {
   border: 1px solid rgba(196, 85, 45, 0.12);
 }
 
+.chip.discount {
+  background: rgba(35, 78, 82, 0.12);
+  color: #234e52;
+  border: 1px solid rgba(35, 78, 82, 0.12);
+}
+
+.chip.original-price {
+  background: rgba(72, 60, 48, 0.08);
+  color: rgba(72, 60, 48, 0.7);
+  text-decoration: line-through;
+}
+
+.product-card.discounted {
+  --product-border: rgba(196, 85, 45, 0.28);
+  --product-glow: rgba(196, 85, 45, 0.12);
+}
+
+.discount-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .category-tabs {
   margin: 16px 0 18px;
 }

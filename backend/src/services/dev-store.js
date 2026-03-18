@@ -44,6 +44,28 @@ function now() {
   return new Date().toISOString();
 }
 
+function normalizeDiscountRate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 100;
+  const normalized = Math.round(numeric);
+  if (normalized <= 0 || normalized > 100) return 100;
+  return normalized;
+}
+
+function getDiscountLabel(discountRate) {
+  const normalized = normalizeDiscountRate(discountRate);
+  if (normalized >= 100) return "";
+  const fold = normalized / 10;
+  return Number.isInteger(fold) ? `${fold}折` : `${fold.toFixed(1)}折`;
+}
+
+function getEffectiveQuotaPrice(basePrice, discountRate) {
+  const normalizedPrice = Math.max(0, Number(basePrice) || 0);
+  const normalizedRate = normalizeDiscountRate(discountRate);
+  if (normalizedRate >= 100) return normalizedPrice;
+  return Math.max(1, Math.round((normalizedPrice * normalizedRate) / 100));
+}
+
 function defaultData() {
   return {
     users: [],
@@ -304,10 +326,12 @@ function normalizeData(data) {
     changed = true;
   }
   next.products = (next.products || []).map((product) => {
+    const normalizedDiscountRate = normalizeDiscountRate(product?.discount_rate);
     const normalized = {
       ...product,
       manual_price_quota:
         product?.manual_price_quota === undefined ? null : product.manual_price_quota,
+      discount_rate: normalizedDiscountRate,
       pricing_meta:
         product?.pricing_meta && typeof product.pricing_meta === "object"
           ? product.pricing_meta
@@ -317,7 +341,12 @@ function normalizeData(data) {
       changed = true;
       normalized.status = "on_sale";
     }
-    if (product?.manual_price_quota === undefined || !product?.pricing_meta) {
+    if (
+      product?.manual_price_quota === undefined ||
+      product?.discount_rate === undefined ||
+      Number(product?.discount_rate) !== normalizedDiscountRate ||
+      !product?.pricing_meta
+    ) {
       changed = true;
     }
     if (normalized.pricing_meta?.version !== PRICE_CONFIG.version) {
@@ -516,10 +545,19 @@ function backfillBeginnerGuideRewards(data) {
 }
 
 function normalizeCardProduct(product) {
+  const basePriceQuota = Number(product?.price_quota || 0);
+  const discountRate = normalizeDiscountRate(product?.discount_rate);
+  const effectivePriceQuota = getEffectiveQuotaPrice(basePriceQuota, discountRate);
   return {
     ...clone(product),
     item_kind: "card",
     item_id: Number(product.id),
+    original_price_quota: basePriceQuota,
+    price_quota: effectivePriceQuota,
+    discount_rate: discountRate,
+    discount_label: getDiscountLabel(discountRate),
+    discount_saved_quota: Math.max(0, basePriceQuota - effectivePriceQuota),
+    is_discounted: discountRate < 100 && effectivePriceQuota < basePriceQuota,
     schedule_id: product?.schedule_id === undefined ? null : Number(product.schedule_id),
     current_schedule_id:
       product?.current_schedule_id === undefined ? null : Number(product.current_schedule_id),
@@ -982,10 +1020,12 @@ function createExternalOrder(
     throw err;
   }
 
+  const effectivePriceQuota = getEffectiveQuotaPrice(item.price_quota, item.discount_rate);
+
   const order = {
     id: nextId(data.orders),
     user_id: null,
-    total_quota: Number(item.price_quota),
+    total_quota: effectivePriceQuota,
     status: "confirmed",
     remark: remark || null,
     order_source: "external",
@@ -1003,7 +1043,7 @@ function createExternalOrder(
     bundle_sku_id: isBundle ? item.id : null,
     product_name: item.name,
     product_snapshot: clone(item),
-    price_quota: Number(item.price_quota),
+    price_quota: effectivePriceQuota,
     created_at: now(),
   });
 
@@ -1027,7 +1067,7 @@ function createExternalOrder(
     detail: {
       item_kind: itemKind,
       item_id: item.id,
-      total_quota: item.price_quota,
+      total_quota: effectivePriceQuota,
       buyer_label: order.buyer_label,
       remark: order.remark,
     },
@@ -1186,6 +1226,7 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
         season_display: product.season_display || "老卡",
         price_quota: 0,
         manual_price_quota: null,
+        discount_rate: 100,
         pricing_meta: {},
         stock: Number(product.stock) || 1,
         status: "on_sale",
@@ -1208,6 +1249,7 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
       existing.season_tag = product.season_tag || "legacy";
       existing.season_label = product.season_label || "-";
       existing.season_display = product.season_display || "老卡";
+      existing.discount_rate = normalizeDiscountRate(existing.discount_rate);
       existing.stock = Number(product.stock) || 1;
       existing.status = "on_sale";
       existing.updated_at = importedAt;
@@ -1238,8 +1280,16 @@ function listAdminProducts() {
     data.products
       .map((product) => {
         const imported = data.productImports.find((item) => item.id === product.import_id);
+        const basePriceQuota = Number(product.price_quota || 0);
+        const discountRate = normalizeDiscountRate(product.discount_rate);
+        const effectivePriceQuota = getEffectiveQuotaPrice(basePriceQuota, discountRate);
         return {
           ...product,
+          discount_rate: discountRate,
+          effective_price_quota: effectivePriceQuota,
+          discount_saved_quota: Math.max(0, basePriceQuota - effectivePriceQuota),
+          discount_label: getDiscountLabel(discountRate),
+          is_discounted: discountRate < 100 && effectivePriceQuota < basePriceQuota,
           source_type: imported?.source_type || null,
           source_file_name: imported?.source_file_name || null,
           imported_at: imported?.created_at || null,
@@ -1269,6 +1319,9 @@ function updateProduct(productId, patch, actorUserId) {
   if (Object.prototype.hasOwnProperty.call(nextPatch, "price_quota")) {
     product.manual_price_quota = Number(nextPatch.price_quota);
     delete nextPatch.price_quota;
+  }
+  if (Object.prototype.hasOwnProperty.call(nextPatch, "discount_rate")) {
+    nextPatch.discount_rate = normalizeDiscountRate(nextPatch.discount_rate);
   }
 
   Object.assign(product, nextPatch, { updated_at: now() });
@@ -1353,6 +1406,9 @@ function bulkUpdateProducts(productIds, patch, actorUserId) {
 
   if (Object.prototype.hasOwnProperty.call(nextPatch, "price_quota")) {
     delete nextPatch.price_quota;
+  }
+  if (Object.prototype.hasOwnProperty.call(nextPatch, "discount_rate")) {
+    nextPatch.discount_rate = normalizeDiscountRate(nextPatch.discount_rate);
   }
 
   data.products.forEach((product) => {
@@ -1676,9 +1732,11 @@ function createOrder(userId, itemId, itemKind = "card") {
     throw err;
   }
 
+  const effectivePriceQuota = getEffectiveQuotaPrice(item.price_quota, item.discount_rate);
+
   applyQuotaChange(data, {
     userId,
-    changeAmount: -Number(item.price_quota),
+    changeAmount: -effectivePriceQuota,
     type: "order_deduct",
     remark: `order create for ${itemKind} ${item.id}`,
   });
@@ -1686,7 +1744,7 @@ function createOrder(userId, itemId, itemKind = "card") {
   const order = {
     id: nextId(data.orders),
     user_id: Number(userId),
-    total_quota: Number(item.price_quota),
+    total_quota: effectivePriceQuota,
     status: "pending",
     remark: null,
     created_at: now(),
@@ -1702,7 +1760,7 @@ function createOrder(userId, itemId, itemKind = "card") {
     bundle_sku_id: isBundle ? item.id : null,
     product_name: item.name,
     product_snapshot: clone(item),
-    price_quota: Number(item.price_quota),
+    price_quota: effectivePriceQuota,
     created_at: now(),
   });
 
@@ -1732,7 +1790,7 @@ function createOrder(userId, itemId, itemKind = "card") {
     targetType: "order",
     targetId: order.id,
     action: "order_create",
-    detail: { item_kind: itemKind, item_id: item.id, total_quota: item.price_quota },
+    detail: { item_kind: itemKind, item_id: item.id, total_quota: effectivePriceQuota },
   });
 
   repriceDataProducts(data);

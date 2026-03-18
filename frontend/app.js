@@ -10,6 +10,8 @@ import {
 } from "./shared.js";
 
 const productGrid = document.getElementById("product-grid");
+const discountProductsSection = document.getElementById("discount-products-section");
+const discountProductGrid = document.getElementById("discount-product-grid");
 const productCategoryTabs = document.getElementById("product-category-tabs");
 const productSubcategoryTabs = document.getElementById("product-subcategory-tabs");
 const productPagination = document.getElementById("product-pagination");
@@ -744,6 +746,33 @@ function getQuotaCashAmount(quotaAmount, rechargeConfig = getEffectiveRechargeCo
   return (quota * exchangeYuan) / exchangeQuota;
 }
 
+function getOriginalQuotaPrice(product) {
+  const original = Number(product?.original_price_quota || 0);
+  const current = Number(product?.price_quota || 0);
+  return original > 0 ? original : current;
+}
+
+function isDiscountedProduct(product) {
+  return (
+    !isBundle(product) &&
+    Boolean(product?.is_discounted) &&
+    Number(product?.original_price_quota || 0) > Number(product?.price_quota || 0)
+  );
+}
+
+function getDiscountedProducts(products) {
+  return (products || [])
+    .filter((product) => isDiscountedProduct(product))
+    .sort((a, b) => {
+      const rateDiff = Number(a?.discount_rate || 100) - Number(b?.discount_rate || 100);
+      if (rateDiff !== 0) return rateDiff;
+      const saveDiff =
+        Number(b?.discount_saved_quota || 0) - Number(a?.discount_saved_quota || 0);
+      if (saveDiff !== 0) return saveDiff;
+      return compareShopDefault(a, b);
+    });
+}
+
 function formatCashAmount(amount) {
   const numeric = Number(amount);
   if (!Number.isFinite(numeric) || numeric <= 0) return "";
@@ -907,6 +936,75 @@ function renderProductVisual(product, variant = "grid") {
   `;
 }
 
+function renderProductCard(product) {
+  const termBadges = parseTermBadges(product.ext_attrs, product);
+  const stockLabel =
+    product.stock === null || product.stock === undefined
+      ? "不限量"
+      : `库存 ${Number(product.stock || 0)}`;
+  const cashPriceText = getProductCashPriceText(product);
+  const subtitle = isBundle(product)
+    ? `${getTierLabel(product)} / ${escapeHtml(product.uid || "")}`
+    : `${getTierLabel(product)} / ID ${product.legacy_id} / ${escapeHtml(getSeasonDisplayText(product))}`;
+  const bodyHtml = isBundle(product)
+    ? `<div class="product-meta">${escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>`
+    : `
+        <div class="product-stats-grid">
+          ${renderStatBlock("攻击", product.attack_value, isAttackFull(product), true)}
+          ${renderStatBlock("血量", product.hp_value, isHpFull(product), true)}
+        </div>
+      `;
+  const originalPriceQuota = getOriginalQuotaPrice(product);
+  const discounted = isDiscountedProduct(product);
+
+  return `
+    <article class="product-card ${discounted ? "discounted" : ""}">
+      <div class="product-cover">${renderProductVisual(product, "grid")}</div>
+      <div>
+        <div class="product-headline">
+          <div class="discount-title-line">
+            <div class="product-name">${escapeHtml(product.name)}</div>
+            ${discounted ? `<span class="chip discount">${escapeHtml(product.discount_label || "限时折扣")}</span>` : ""}
+          </div>
+          <div class="product-type-chip">${subtitle}</div>
+        </div>
+        ${bodyHtml}
+        <div class="term-row">
+          ${
+            termBadges.length > 0
+              ? termBadges.map((badge) => renderTermBadge(badge)).join("")
+              : '<span class="term-empty">无额外词条</span>'
+          }
+        </div>
+      </div>
+      <div class="chip-row">
+        ${discounted ? `<span class="chip original-price">原价 ${formatCompactNumber(originalPriceQuota)}</span>` : ""}
+        <span class="chip ${discounted ? "accent" : ""}">现价 ${formatCompactNumber(product.price_quota || 0)}</span>
+        ${cashPriceText ? `<span class="chip accent">${escapeHtml(cashPriceText)}</span>` : ""}
+        ${discounted && Number(product.discount_saved_quota || 0) > 0 ? `<span class="chip discount">立省 ${formatCompactNumber(product.discount_saved_quota)}</span>` : ""}
+        <span class="chip">${escapeHtml(product.stock_label || stockLabel)}</span>
+      </div>
+      <div class="actions">
+        <button class="ghost detail-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">详情</button>
+        <button class="ghost direct-buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">转账购买</button>
+        <button class="primary buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">购买</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderDiscountProducts(products) {
+  if (!discountProductsSection || !discountProductGrid) return;
+  const discountedProducts = getDiscountedProducts(products).slice(0, 8);
+  discountProductsSection.classList.toggle("hidden", discountedProducts.length === 0);
+  if (!discountedProducts.length) {
+    discountProductGrid.innerHTML = "";
+    return;
+  }
+  discountProductGrid.innerHTML = discountedProducts.map((product) => renderProductCard(product)).join("");
+  bindImageFallbacks(discountProductGrid);
+}
+
 function applyProductView(options = {}) {
   const { resetPage = false } = options;
   if (resetPage) {
@@ -917,6 +1015,7 @@ function applyProductView(options = {}) {
   currentProducts = sortProducts(filtered, sortSelect.value);
   renderCategoryTabs(allProducts);
   renderSubcategoryTabs(categoryFiltered);
+  renderDiscountProducts(allProducts);
   renderProducts(currentProducts);
 }
 
@@ -929,50 +1028,7 @@ function renderProducts(products) {
     return;
   }
 
-  productGrid.innerHTML = pagedProducts
-    .map((product) => {
-      const termBadges = parseTermBadges(product.ext_attrs, product);
-      const stockLabel = product.stock === null || product.stock === undefined ? "不限量" : `库存 ${Number(product.stock || 0)}`;
-      const cashPriceText = getProductCashPriceText(product);
-      const subtitle = isBundle(product)
-        ? `${getTierLabel(product)} / ${escapeHtml(product.uid || "")}`
-        : `${getTierLabel(product)} / ID ${product.legacy_id} / ${escapeHtml(getSeasonDisplayText(product))}`;
-      const bodyHtml = isBundle(product)
-        ? `<div class="product-meta">${escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>`
-        : `
-            <div class="product-stats-grid">
-              ${renderStatBlock("攻击", product.attack_value, isAttackFull(product), true)}
-              ${renderStatBlock("血量", product.hp_value, isHpFull(product), true)}
-            </div>
-          `;
-
-      return `
-        <article class="product-card">
-          <div class="product-cover">${renderProductVisual(product, "grid")}</div>
-          <div>
-            <div class="product-headline">
-              <div class="product-name">${escapeHtml(product.name)}</div>
-              <div class="product-type-chip">${subtitle}</div>
-            </div>
-            ${bodyHtml}
-            <div class="term-row">
-              ${termBadges.length > 0 ? termBadges.map((badge) => renderTermBadge(badge)).join("") : '<span class="term-empty">无额外词条</span>'}
-            </div>
-          </div>
-          <div class="chip-row">
-            <span class="chip">价 ${formatCompactNumber(product.price_quota || 0)}</span>
-            ${cashPriceText ? `<span class="chip accent">${escapeHtml(cashPriceText)}</span>` : ""}
-            <span class="chip">${escapeHtml(product.stock_label || stockLabel)}</span>
-          </div>
-          <div class="actions">
-            <button class="ghost detail-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">详情</button>
-            <button class="ghost direct-buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">转账购买</button>
-            <button class="primary buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">购买</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  productGrid.innerHTML = pagedProducts.map((product) => renderProductCard(product)).join("");
 
   bindImageFallbacks(productGrid);
   renderProductPagination();
@@ -1062,15 +1118,15 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
     {
       index: "02",
       type: "recharge",
-      title: "完成一次充值",
+      title: "完成一次额度获取",
       done: hasApprovedRecharge,
       current: hasAccount && !hasApprovedRecharge,
       description: hasApprovedRecharge
-        ? "至少有一笔充值审核通过，额度已经到账。"
+        ? "至少有一笔额度获取审核通过，额度已经到账。"
         : hasPendingRecharge
-          ? "你已经提交过充值申请，等待管理员审核通过后就算完成这一步。"
+          ? "你已经提交过额度获取申请，等待管理员审核通过后就算完成这一步。"
           : "去“我的”里提交一次充值或残卷转赠，审核通过后会自动到账。",
-      actionLabel: hasApprovedRecharge ? "已完成" : hasPendingRecharge ? "查看进度" : "去充值",
+      actionLabel: hasApprovedRecharge ? "已完成" : hasPendingRecharge ? "查看进度" : "去获取额度",
       actionHref: "#account",
       actionTarget: "recharge",
     },
@@ -1097,7 +1153,7 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
     ? `新手教学奖励已到账 ${rewardQuota} 额度，你可以继续直接下单或充值。`
     : hasConfirmedOrder && hasApprovedRecharge
       ? `三步已完成，系统会自动发放 ${rewardQuota} 额度奖励。`
-      : `完成注册、完成充值、完成首单后，额外奖励 ${rewardQuota} 额度。`;
+      : `完成注册、完成一次额度获取、完成首单后，额外奖励 ${rewardQuota} 额度。`;
   beginnerGuideReward.textContent = rewardEarned
     ? `奖励已发放 +${rewardQuota}`
     : `完成三步奖励 ${rewardQuota} 额度`;
@@ -1528,7 +1584,12 @@ function renderRechargeSection(profile, rechargeConfig, rechargeOrders) {
 }
 
 function findProduct(itemId, itemKind) {
-  return currentProducts.find((item) => Number(item.item_id) === Number(itemId) && String(item.item_kind) === String(itemKind)) || null;
+  return (
+    allProducts.find(
+      (item) =>
+        Number(item.item_id) === Number(itemId) && String(item.item_kind) === String(itemKind)
+    ) || null
+  );
 }
 
 function openProductModal(itemId, itemKind) {
@@ -1545,6 +1606,8 @@ function openProductModal(itemId, itemKind) {
   const attackIsFull = isAttackFull(product);
   const hpIsFull = isHpFull(product);
   const cashPriceText = getProductCashPriceText(product);
+  const originalPriceQuota = getOriginalQuotaPrice(product);
+  const discounted = isDiscountedProduct(product);
   const detailRows = isBundle(product)
     ? `
         <div class="detail-row"><strong>类型</strong><span>套餐 SKU</span></div>
@@ -1569,7 +1632,7 @@ function openProductModal(itemId, itemKind) {
         ${isBundle(product) ? `<div class="product-meta">${escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>` : ""}
         <div class="term-row">${termBadges.length > 0 ? termBadges.map((badge) => renderTermBadge(badge)).join("") : '<span class="term-empty">无额外词条</span>'}</div>
         <div class="detail-list">
-          <div class="detail-row"><strong>价格</strong><span>${Number(product.price_quota || 0)} 额度${cashPriceText ? ` / ${escapeHtml(cashPriceText)}` : ""}</span></div>
+          <div class="detail-row"><strong>价格</strong><span>${discounted ? `原价 ${originalPriceQuota} / ` : ""}${Number(product.price_quota || 0)} 额度${cashPriceText ? ` / ${escapeHtml(cashPriceText)}` : ""}${discounted ? ` / ${escapeHtml(product.discount_label || "折扣")}` : ""}</span></div>
           ${detailRows}
           <div class="detail-row"><strong>购买账号</strong><span>${escapeHtml(session?.profile?.game_role_name || "未登录")}</span></div>
         </div>
@@ -2126,7 +2189,7 @@ productSubcategoryTabs?.addEventListener("click", (event) => {
   activeSubcategory = button.getAttribute("data-subcategory") || "all";
   applyProductView({ resetPage: true });
 });
-productGrid.addEventListener("click", (event) => {
+function handleProductGridClick(event) {
   const directBuyButton = event.target.closest(".direct-buy-btn");
   if (directBuyButton) {
     startDirectPurchase(
@@ -2139,7 +2202,10 @@ productGrid.addEventListener("click", (event) => {
   const button = event.target.closest(".detail-btn, .buy-btn");
   if (!button) return;
   openProductModal(button.getAttribute("data-item-id"), button.getAttribute("data-item-kind"));
-});
+}
+
+productGrid.addEventListener("click", handleProductGridClick);
+discountProductGrid?.addEventListener("click", handleProductGridClick);
 productPagination?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-product-page]");
   if (!button) return;

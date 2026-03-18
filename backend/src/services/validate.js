@@ -230,7 +230,7 @@ function validateImportInput(body) {
 
 function validateProductUpdate(body) {
   const errors = [];
-  const intFields = ["attack_value", "hp_value", "price_quota", "stock"];
+  const intFields = ["attack_value", "hp_value", "price_quota", "stock", "discount_rate"];
   for (const field of intFields) {
     if (body[field] !== undefined && !isInteger(body[field])) {
       errors.push(`${field}_invalid`);
