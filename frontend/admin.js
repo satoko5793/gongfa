@@ -24,8 +24,11 @@ const ordersRoot = document.getElementById("admin-orders");
 const quotaLogsRoot = document.getElementById("admin-quota-logs");
 const auditsRoot = document.getElementById("admin-audits");
 const selectedProductsChip = document.getElementById("selected-products-chip");
+const filteredProductsChip = document.getElementById("filtered-products-chip");
+const discountedProductsChip = document.getElementById("discounted-products-chip");
 const adminProductKeywordInput = document.getElementById("admin-product-keyword-input");
 const adminProductStatusFilter = document.getElementById("admin-product-status-filter");
+const adminProductDiscountFilter = document.getElementById("admin-product-discount-filter");
 const adminUserKeywordInput = document.getElementById("admin-user-keyword-input");
 const adminRechargeKeywordInput = document.getElementById("admin-recharge-keyword-input");
 const adminRechargeStatusFilter = document.getElementById("admin-recharge-status-filter");
@@ -67,6 +70,9 @@ const adminAuditActionInput = document.getElementById("admin-audit-action-input"
 const linkedOrderUserState = document.getElementById("linked-order-user-state");
 const bulkPriceInput = document.getElementById("bulk-price-input");
 const bulkStockInput = document.getElementById("bulk-stock-input");
+const bulkDiscountRateInput = document.getElementById("bulk-discount-rate-input");
+const randomDiscountCountInput = document.getElementById("random-discount-count-input");
+const randomDiscountRateInput = document.getElementById("random-discount-rate-input");
 const recalculatePricingBtn = document.getElementById("recalculate-pricing-btn");
 const importForm = document.getElementById("import-form");
 const importSubmitBtn = document.getElementById("import-submit-btn");
@@ -311,6 +317,7 @@ function renderSession(profile) {
 
 function renderOverview() {
   const onSaleCount = allProducts.filter((product) => product.status === "on_sale").length;
+  const discountedCount = allProducts.filter(isDiscountedProduct).length;
   const pendingOrderCount = Number(overviewCounts.pendingOrderCount || 0);
   const cancelReviewCount = Number(overviewCounts.cancelReviewCount || 0);
   const rechargeReviewCount = Number(overviewCounts.rechargeReviewCount || 0);
@@ -319,6 +326,7 @@ function renderOverview() {
 
   const cards = [
     { label: "商品总数", value: allProducts.length, hint: `上架中 ${onSaleCount}` },
+    { label: "打折商品", value: discountedCount, hint: "当前折扣管理" },
     { label: "套餐总数", value: allBundles.length, hint: "独立 SKU" },
     { label: "用户总数", value: allUsers.length, hint: `活跃 ${activeUsers}` },
     { label: "待处理订单", value: pendingOrderCount, hint: "交易处理" },
@@ -522,6 +530,45 @@ function syncSelectedProducts() {
   selectedProductsChip.textContent = `已选 ${selectedProductIds.size}`;
 }
 
+function isDiscountedProduct(product) {
+  return normalizeDiscountRate(product?.discount_rate) < 100;
+}
+
+function syncProductSummary(products = getFilteredProducts()) {
+  syncSelectedProducts();
+  if (filteredProductsChip) {
+    filteredProductsChip.textContent = `当前筛选 ${products.length}`;
+  }
+  if (discountedProductsChip) {
+    discountedProductsChip.textContent = `打折中 ${products.filter(isDiscountedProduct).length}`;
+  }
+}
+
+function parseDiscountRateInputValue(value, fallback = null) {
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric < 1 || numeric > 100) {
+    return fallback;
+  }
+  return numeric;
+}
+
+function parsePositiveCountInputValue(value) {
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric <= 0) {
+    return null;
+  }
+  return numeric;
+}
+
+function sampleProducts(list, count) {
+  const items = [...list];
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
+  }
+  return items.slice(0, count);
+}
+
 function getPricingMeta(product) {
   return product && product.pricing_meta && typeof product.pricing_meta === "object"
     ? product.pricing_meta
@@ -667,9 +714,12 @@ function closeProductModal() {
 function getFilteredProducts() {
   const keyword = String(adminProductKeywordInput.value || "").trim().toLowerCase();
   const status = adminProductStatusFilter.value;
+  const discountFilter = adminProductDiscountFilter?.value || "all";
 
   return allProducts.filter((product) => {
     if (status !== "all" && product.status !== status) return false;
+    if (discountFilter === "discounted" && !isDiscountedProduct(product)) return false;
+    if (discountFilter === "full_price" && isDiscountedProduct(product)) return false;
     if (!keyword) return true;
     return [
       product.name,
@@ -681,6 +731,16 @@ function getFilteredProducts() {
       .filter(Boolean)
       .some((field) => String(field).toLowerCase().includes(keyword));
   });
+}
+
+function getDiscountedFilteredProducts() {
+  return getFilteredProducts().filter(isDiscountedProduct);
+}
+
+function getRandomDiscountCandidates() {
+  return getFilteredProducts().filter(
+    (product) => product.status === "on_sale" && Number(product.stock || 0) > 0
+  );
 }
 
 function getFilteredUsers() {
@@ -707,7 +767,7 @@ function renderProducts(products) {
   if (!products.length) {
     productsRoot.innerHTML = '<div class="stack-item">当前筛选条件下没有商品。</div>';
     renderPagination(productsPaginationRoot, "products", paginationState.products);
-    syncSelectedProducts();
+    syncProductSummary(products);
     return;
   }
 
@@ -787,7 +847,7 @@ function renderProducts(products) {
     .join("");
 
   renderPagination(productsPaginationRoot, "products", paginationState.products);
-  syncSelectedProducts();
+  syncProductSummary(products);
 }
 
 function renderUsers(users) {
@@ -1477,6 +1537,62 @@ async function bulkPatchSelectedProducts(patch) {
   }
 }
 
+async function restoreDiscountForProducts(products) {
+  const productIds = [...new Set((products || []).map((product) => Number(product.id)).filter(Boolean))];
+  if (productIds.length === 0) {
+    setMessage("当前没有可恢复原价的商品。", "error");
+    return;
+  }
+
+  try {
+    const result = await apiFetch("/admin/products/bulk-update", {
+      method: "PATCH",
+      body: JSON.stringify({
+        product_ids: productIds,
+        discount_rate: 100,
+      }),
+    });
+    setMessage(`已恢复 ${result.updated_count} 个商品的原价。`, "success");
+    await reloadAll();
+  } catch (error) {
+    setMessage(`恢复原价失败：${pickErrorMessage(error, "恢复失败")}`, "error");
+  }
+}
+
+function applyRandomSelection() {
+  const count = parsePositiveCountInputValue(randomDiscountCountInput?.value);
+  if (!count) {
+    setMessage("随机件数必须是大于 0 的整数。", "error");
+    return [];
+  }
+
+  const candidates = getRandomDiscountCandidates();
+  if (!candidates.length) {
+    setMessage("当前筛选下没有可随机打折的在售商品。", "error");
+    return [];
+  }
+
+  const picked = sampleProducts(candidates, Math.min(count, candidates.length));
+  selectedProductIds.clear();
+  picked.forEach((product) => selectedProductIds.add(product.id));
+  renderProducts(getFilteredProducts());
+  setMessage(`已随机选中 ${picked.length} 个商品。`, "success");
+  return picked;
+}
+
+async function applyRandomDiscount() {
+  const discountRate = parseDiscountRateInputValue(randomDiscountRateInput?.value);
+  if (!discountRate) {
+    setMessage("随机折扣率必须是 1 到 100 之间的整数。", "error");
+    return;
+  }
+
+  const picked = applyRandomSelection();
+  if (!picked.length) return;
+
+  await bulkPatchSelectedProducts({ discount_rate: discountRate });
+}
+
 productsRoot.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-product-id]");
   if (!card) return;
@@ -1557,7 +1673,7 @@ productsRoot.addEventListener("change", (event) => {
   const productId = Number(checkbox.getAttribute("data-product-id"));
   if (checkbox.checked) selectedProductIds.add(productId);
   else selectedProductIds.delete(productId);
-  syncSelectedProducts();
+  syncProductSummary(getFilteredProducts());
 });
 
 bundlesRoot.addEventListener("click", async (event) => {
@@ -1861,12 +1977,17 @@ document.getElementById("select-all-products-btn")?.addEventListener("click", ()
   getFilteredProducts().forEach((product) => selectedProductIds.add(product.id));
   renderProducts(getFilteredProducts());
 });
+document.getElementById("select-discounted-products-btn")?.addEventListener("click", () => {
+  selectedProductIds.clear();
+  getDiscountedFilteredProducts().forEach((product) => selectedProductIds.add(product.id));
+  renderProducts(getFilteredProducts());
+});
 document.getElementById("clear-selected-products-btn")?.addEventListener("click", () => {
   selectedProductIds.clear();
   productsRoot?.querySelectorAll(".product-select").forEach((checkbox) => {
     checkbox.checked = false;
   });
-  syncSelectedProducts();
+  syncProductSummary(getFilteredProducts());
 });
 document.getElementById("bulk-on-sale-btn")?.addEventListener("click", () => {
   bulkUpdateSelectedProducts("on_sale");
@@ -1890,6 +2011,28 @@ document.getElementById("bulk-stock-btn")?.addEventListener("click", () => {
   }
   bulkPatchSelectedProducts({ stock });
 });
+document.getElementById("bulk-discount-btn")?.addEventListener("click", () => {
+  const discountRate = parseDiscountRateInputValue(bulkDiscountRateInput?.value);
+  if (!discountRate) {
+    setMessage("批量折扣率必须是 1 到 100 之间的整数。", "error");
+    return;
+  }
+  bulkPatchSelectedProducts({ discount_rate: discountRate });
+});
+document.getElementById("bulk-restore-discount-btn")?.addEventListener("click", () => {
+  restoreDiscountForProducts(
+    allProducts.filter((product) => selectedProductIds.has(Number(product.id)) && isDiscountedProduct(product))
+  );
+});
+document.getElementById("filtered-restore-discount-btn")?.addEventListener("click", () => {
+  restoreDiscountForProducts(getDiscountedFilteredProducts());
+});
+document.getElementById("random-select-products-btn")?.addEventListener("click", () => {
+  applyRandomSelection();
+});
+document.getElementById("random-discount-btn")?.addEventListener("click", () => {
+  applyRandomDiscount();
+});
 
 recalculatePricingBtn?.addEventListener("click", async () => {
   try {
@@ -1906,6 +2049,10 @@ adminProductKeywordInput?.addEventListener("input", () => {
   renderProducts(getFilteredProducts());
 });
 adminProductStatusFilter?.addEventListener("change", () => {
+  resetPagedState("products");
+  renderProducts(getFilteredProducts());
+});
+adminProductDiscountFilter?.addEventListener("change", () => {
   resetPagedState("products");
   renderProducts(getFilteredProducts());
 });

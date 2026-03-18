@@ -116,15 +116,23 @@
                 <option value="sold">已售罄</option>
                 <option value="draft">草稿</option>
               </select>
+              <select id="admin-product-discount-filter">
+                <option value="all">全部折扣</option>
+                <option value="discounted">只看打折</option>
+                <option value="full_price">只看原价</option>
+              </select>
             </div>
           </div>
           <div class="bulk-toolbar">
             <div class="chip-row">
               <span id="selected-products-chip" class="chip">已选 0</span>
+              <span id="filtered-products-chip" class="chip">当前筛选 0</span>
+              <span id="discounted-products-chip" class="chip">打折中 0</span>
             </div>
             <div class="actions">
               <button id="recalculate-pricing-btn" class="ghost" type="button">重算定价</button>
               <button id="select-all-products-btn" class="ghost" type="button">按当前筛选全选</button>
+              <button id="select-discounted-products-btn" class="ghost" type="button">选中打折商品</button>
               <button id="clear-selected-products-btn" class="ghost" type="button">清空</button>
               <button id="bulk-on-sale-btn" class="ghost" type="button">批量上架</button>
               <button id="bulk-off-sale-btn" class="danger" type="button">批量下架</button>
@@ -136,6 +144,22 @@
               <button id="bulk-price-btn" class="ghost" type="button">批量改价</button>
               <input id="bulk-stock-input" type="number" placeholder="批量设置库存" />
               <button id="bulk-stock-btn" class="ghost" type="button">批量改库存</button>
+            </div>
+          </div>
+          <div class="bulk-toolbar">
+            <div class="inline-form bulk-inline-form">
+              <input id="bulk-discount-rate-input" type="number" min="1" max="100" placeholder="折扣率，例如 90" />
+              <button id="bulk-discount-btn" class="ghost" type="button">选中商品打折</button>
+              <button id="bulk-restore-discount-btn" class="ghost" type="button">选中恢复原价</button>
+              <button id="filtered-restore-discount-btn" class="ghost" type="button">当前筛选恢复原价</button>
+            </div>
+          </div>
+          <div class="bulk-toolbar">
+            <div class="inline-form bulk-inline-form">
+              <input id="random-discount-count-input" type="number" min="1" placeholder="随机几件" />
+              <input id="random-discount-rate-input" type="number" min="1" max="100" placeholder="随机折扣率" />
+              <button id="random-select-products-btn" class="ghost" type="button">随机选中</button>
+              <button id="random-discount-btn" class="primary" type="button">随机打折</button>
             </div>
           </div>
           <div id="admin-products" class="admin-list"></div>
@@ -415,6 +439,6 @@
     <script>
       window.__adminModuleReady = false;
     </script>
-    <script type="module" src="./admin.js?v=20260318e"></script>
+    <script type="module" src="./admin.js?v=20260318h"></script>
   </body>
 </html>
