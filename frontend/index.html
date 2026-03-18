@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260318j" />
+    <link rel="stylesheet" href="styles.css?v=20260318n" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -84,7 +84,7 @@
           <div>
             <div class="eyebrow">Starter Quest</div>
             <div class="card-title">新手教学</div>
-            <div id="beginner-guide-summary" class="card-sub">完成注册、完成充值、完成首单后，额外奖励 1000 额度。</div>
+            <div id="beginner-guide-summary" class="card-sub">完成注册、获取一次额度、完成首单后，额外奖励 1000 额度。</div>
           </div>
           <div id="beginner-guide-reward" class="guide-reward-chip">完成三步奖励 1000 额度</div>
         </div>
@@ -98,7 +98,7 @@
             </div>
             <div class="tutorial-side-note">
               <div class="tutorial-side-title">推荐顺序</div>
-              <div class="muted">先注册，再完成一次充值，最后确认一单消费。奖励会在条件满足后自动到账。</div>
+              <div class="muted">先注册，再通过残卷赠送或充值获取额度，最后确认一单消费。奖励会在条件满足后自动到账。</div>
             </div>
           </aside>
         </div>
@@ -137,6 +137,20 @@
             <div class="card-sub">这里的商品会在当前价格基础上额外打折，按折后价直接下单。</div>
           </div>
         </div>
+        <div class="toolbar compact-toolbar">
+          <input id="discount-keyword-input" type="text" placeholder="搜索打折商品名称、ID 或词条" />
+          <div class="filters">
+            <select id="discount-sort-select">
+              <option value="shop_default">打折区排序</option>
+              <option value="price_asc">价格升序</option>
+              <option value="price_desc">价格降序</option>
+              <option value="attack_asc">攻击升序</option>
+              <option value="hp_asc">血量升序</option>
+            </select>
+          </div>
+        </div>
+        <div id="discount-category-tabs" class="category-tabs"></div>
+        <div id="discount-subcategory-tabs" class="subcategory-tabs hidden"></div>
         <div id="discount-product-grid" class="product-grid"></div>
         <div id="discount-product-pagination" class="pagination-bar"></div>
       </section>
@@ -426,6 +440,6 @@
       <button class="page-dock-item" type="button" data-dock-target="auction-zone">拍卖</button>
       <button class="page-dock-item" type="button" data-dock-target="draw-service-zone">代抽专区</button>
     </nav>
-    <script type="module" src="./app.js?v=20260318j"></script>
+    <script type="module" src="./app.js?v=20260318n"></script>
   </body>
 </html>

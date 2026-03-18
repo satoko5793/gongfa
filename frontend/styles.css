@@ -1203,14 +1203,16 @@ button {
 .subcategory-tab {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid rgba(35, 78, 82, 0.14);
   border-radius: 999px;
   background: rgba(35, 78, 82, 0.06);
   color: #234e52;
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 7px 10px;
+  font-size: 11px;
   font-weight: 700;
+  min-width: 0;
+  max-width: 172px;
 }
 
 .subcategory-tab.active {
@@ -1238,13 +1240,16 @@ button {
 .category-tab {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid rgba(118, 93, 67, 0.18);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
   color: var(--ink);
-  padding: 10px 14px;
+  padding: 8px 11px;
+  font-size: 13px;
   font-weight: 700;
+  min-width: 0;
+  max-width: 188px;
 }
 
 .category-tab.active {
@@ -1267,6 +1272,14 @@ button {
 
 .category-tab.active .category-count {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.tab-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quota-balance {
@@ -2024,10 +2037,12 @@ button {
 
   .category-tab {
     flex: 0 0 auto;
+    max-width: 156px;
   }
 
   .subcategory-tab {
     flex: 0 0 auto;
+    max-width: 132px;
   }
 
   .panel-grid,

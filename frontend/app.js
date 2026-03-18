@@ -15,10 +15,14 @@ const discountProductGrid = document.getElementById("discount-product-grid");
 const discountProductPagination = document.getElementById("discount-product-pagination");
 const productCategoryTabs = document.getElementById("product-category-tabs");
 const productSubcategoryTabs = document.getElementById("product-subcategory-tabs");
+const discountCategoryTabs = document.getElementById("discount-category-tabs");
+const discountSubcategoryTabs = document.getElementById("discount-subcategory-tabs");
 const productPagination = document.getElementById("product-pagination");
 const productsSection = document.getElementById("products");
 const keywordInput = document.getElementById("product-keyword-input");
 const sortSelect = document.getElementById("product-sort-select");
+const discountKeywordInput = document.getElementById("discount-keyword-input");
+const discountSortSelect = document.getElementById("discount-sort-select");
 const sessionSummary = document.getElementById("session-summary");
 const sessionRole = document.getElementById("session-role");
 const navBindLink = document.getElementById("nav-bind-link");
@@ -80,10 +84,13 @@ const productDetailMessage = document.getElementById("product-detail-message");
 
 let allProducts = [];
 let currentProducts = [];
+let currentDiscountProducts = [];
 let activeItemId = null;
 let activeItemKind = "card";
 let activeCategory = "all";
 let activeSubcategory = "all";
+let activeDiscountCategory = "all";
+let activeDiscountSubcategory = "all";
 let currentRechargeConfig = null;
 let publicRechargeConfig = null;
 let currentRechargeOrders = [];
@@ -92,6 +99,7 @@ let selectedRechargeOrderType = "normal";
 let selectedRechargePaymentChannel = "alipay_qr";
 let pendingDirectPurchaseContext = null;
 let productSearchTimer = null;
+let discountSearchTimer = null;
 let activeAuthTab = "register";
 let activeAccountTab = "overview";
 let activeDockTarget = "products";
@@ -506,24 +514,26 @@ function buildCategoryEntries(products) {
     .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
 }
 
-function renderCategoryTabs(products) {
+function renderCategoryTabs(container, products, activeKey, dataAttr = "category") {
+  if (!container) return activeKey;
   const entries = buildCategoryEntries(products || []);
   const validKeys = new Set(entries.map((item) => item.key));
-  if (!validKeys.has(activeCategory)) activeCategory = "all";
-  productCategoryTabs.innerHTML = entries
+  const nextActiveKey = validKeys.has(activeKey) ? activeKey : "all";
+  container.innerHTML = entries
     .map(
       (entry) => `
         <button
           type="button"
-          class="category-tab ${entry.key === activeCategory ? "active" : ""}"
-          data-category="${entry.key}"
+          class="category-tab ${entry.key === nextActiveKey ? "active" : ""}"
+          data-${dataAttr}="${entry.key}"
         >
-          ${escapeHtml(entry.label)}
+          <span class="tab-label">${escapeHtml(entry.label)}</span>
           <span class="category-count">${entry.count}</span>
         </button>
       `
     )
     .join("");
+  return nextActiveKey;
 }
 
 function getGoldSubcategory(product) {
@@ -579,32 +589,33 @@ function buildSubcategoryEntries(products, category) {
   ];
 }
 
-function renderSubcategoryTabs(products) {
-  if (!productSubcategoryTabs) return;
-  if (!activeCategory || activeCategory === "all" || activeCategory === "bundle") {
-    productSubcategoryTabs.classList.add("hidden");
-    productSubcategoryTabs.innerHTML = "";
-    return;
+function renderSubcategoryTabs(container, products, category, activeKey, dataAttr = "subcategory") {
+  if (!container) return activeKey;
+  if (!category || category === "all" || category === "bundle") {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return "all";
   }
 
-  const entries = buildSubcategoryEntries(products || [], activeCategory);
+  const entries = buildSubcategoryEntries(products || [], category);
   const validKeys = new Set(entries.map((entry) => entry.key));
-  if (!validKeys.has(activeSubcategory)) activeSubcategory = "all";
-  productSubcategoryTabs.classList.toggle("hidden", entries.length <= 1);
-  productSubcategoryTabs.innerHTML = entries
+  const nextActiveKey = validKeys.has(activeKey) ? activeKey : "all";
+  container.classList.toggle("hidden", entries.length <= 1);
+  container.innerHTML = entries
     .map(
       (entry) => `
         <button
           type="button"
-          class="subcategory-tab ${entry.key === activeSubcategory ? "active" : ""}"
-          data-subcategory="${escapeHtml(entry.key)}"
+          class="subcategory-tab ${entry.key === nextActiveKey ? "active" : ""}"
+          data-${dataAttr}="${escapeHtml(entry.key)}"
         >
-          ${escapeHtml(entry.label)}
+          <span class="tab-label">${escapeHtml(entry.label)}</span>
           <span class="subcategory-count">${entry.count}</span>
         </button>
       `
     )
     .join("");
+  return nextActiveKey;
 }
 
 function resetProductPagination() {
@@ -700,10 +711,33 @@ function filterProductsByCategory(products, category) {
   return (products || []).filter((product) => getProductCategory(product) === category);
 }
 
-function filterProductsBySubcategory(products, subcategory) {
-  if (!activeCategory || activeCategory === "all" || activeCategory === "bundle") return products || [];
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildProductSearchText(product) {
+  return [
+    product?.name,
+    product?.legacy_id,
+    product?.uid,
+    product?.ext_attrs,
+    product?.item_id,
+    product?.description,
+  ]
+    .map((item) => String(item || "").trim().toLowerCase())
+    .join(" ");
+}
+
+function filterProductsByKeyword(products, keyword) {
+  const needle = normalizeSearchText(keyword);
+  if (!needle) return products || [];
+  return (products || []).filter((product) => buildProductSearchText(product).includes(needle));
+}
+
+function filterProductsBySubcategory(products, category, subcategory) {
+  if (!category || category === "all" || category === "bundle") return products || [];
   if (!subcategory || subcategory === "all") return products || [];
-  if (activeCategory === "gold") {
+  if (category === "gold") {
     return (products || []).filter((product) => getGoldSubcategory(product) === subcategory);
   }
   return (products || []).filter((product) => getNameSubcategoryKey(product) === subcategory);
@@ -1057,7 +1091,7 @@ function renderDiscountPagination() {
   const totalPages = Math.max(Number(discountPaginationState.totalPages || 0), 0);
 
   if (total === 0) {
-    discountProductPagination.innerHTML = '<div class="pagination-meta">当前没有打折商品。</div>';
+    discountProductPagination.innerHTML = '<div class="pagination-meta">当前筛选下没有打折商品。</div>';
     return;
   }
 
@@ -1139,12 +1173,25 @@ function renderProductCard(product) {
 
 function renderDiscountProducts(products) {
   if (!discountProductsSection || !discountProductGrid) return;
-  const discountedProducts = getDiscountedProducts(products);
-  const hasDiscounts = discountedProducts.length > 0;
-  discountProductsSection.classList.toggle("hidden", !hasDiscounts);
-  syncDiscountDockVisibility(hasDiscounts);
-  if (!discountedProducts.length) {
+  const allDiscountedProducts = getDiscountedProducts(allProducts);
+  const discountedProducts = (products || []).filter((product) => isDiscountedProduct(product));
+  const hasAnyDiscounts = allDiscountedProducts.length > 0;
+  discountProductsSection.classList.toggle("hidden", !hasAnyDiscounts);
+  syncDiscountDockVisibility(hasAnyDiscounts);
+  if (!hasAnyDiscounts) {
     discountProductGrid.innerHTML = "";
+    discountPaginationState.page = 1;
+    discountPaginationState.total = 0;
+    discountPaginationState.totalPages = 0;
+    renderDiscountPagination();
+    syncDockWithViewport();
+    return;
+  }
+  if (!discountedProducts.length) {
+    discountProductGrid.innerHTML = '<div class="stack-item">当前筛选下没有打折商品。</div>';
+    discountPaginationState.page = 1;
+    discountPaginationState.total = 0;
+    discountPaginationState.totalPages = 0;
     renderDiscountPagination();
     syncDockWithViewport();
     return;
@@ -1160,15 +1207,51 @@ function applyProductView(options = {}) {
   const { resetPage = false } = options;
   if (resetPage) {
     resetProductPagination();
+  }
+  const keywordFiltered = filterProductsByKeyword(allProducts, keywordInput?.value || "");
+  activeCategory = renderCategoryTabs(productCategoryTabs, keywordFiltered, activeCategory, "category");
+  const categoryFiltered = filterProductsByCategory(keywordFiltered, activeCategory);
+  activeSubcategory = renderSubcategoryTabs(
+    productSubcategoryTabs,
+    categoryFiltered,
+    activeCategory,
+    activeSubcategory,
+    "subcategory"
+  );
+  const filtered = filterProductsBySubcategory(categoryFiltered, activeCategory, activeSubcategory);
+  currentProducts = sortProducts(filtered, sortSelect?.value || "shop_default");
+  renderProducts(currentProducts);
+}
+
+function applyDiscountView(options = {}) {
+  const { resetPage = false } = options;
+  if (resetPage) {
     resetDiscountPagination();
   }
-  const categoryFiltered = filterProductsByCategory(allProducts, activeCategory);
-  const filtered = filterProductsBySubcategory(categoryFiltered, activeSubcategory);
-  currentProducts = sortProducts(filtered, sortSelect.value);
-  renderCategoryTabs(allProducts);
-  renderSubcategoryTabs(categoryFiltered);
-  renderDiscountProducts(allProducts);
-  renderProducts(currentProducts);
+
+  const allDiscountedProducts = getDiscountedProducts(allProducts);
+  const keywordFiltered = filterProductsByKeyword(allDiscountedProducts, discountKeywordInput?.value || "");
+  activeDiscountCategory = renderCategoryTabs(
+    discountCategoryTabs,
+    keywordFiltered,
+    activeDiscountCategory,
+    "discount-category"
+  );
+  const categoryFiltered = filterProductsByCategory(keywordFiltered, activeDiscountCategory);
+  activeDiscountSubcategory = renderSubcategoryTabs(
+    discountSubcategoryTabs,
+    categoryFiltered,
+    activeDiscountCategory,
+    activeDiscountSubcategory,
+    "discount-subcategory"
+  );
+  const filtered = filterProductsBySubcategory(
+    categoryFiltered,
+    activeDiscountCategory,
+    activeDiscountSubcategory
+  );
+  currentDiscountProducts = sortProducts(filtered, discountSortSelect?.value || "shop_default");
+  renderDiscountProducts(currentDiscountProducts);
 }
 
 function renderProducts(products) {
@@ -1270,14 +1353,14 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
     {
       index: "02",
       type: "recharge",
-      title: "完成一次额度获取",
+      title: "获取一次额度",
       done: hasApprovedRecharge,
       current: hasAccount && !hasApprovedRecharge,
       description: hasApprovedRecharge
-        ? "至少有一笔额度获取审核通过，额度已经到账。"
+        ? "通过残卷赠送或充值获取额度，额度已经到账。"
         : hasPendingRecharge
-          ? "你已经提交过额度获取申请，等待管理员审核通过后就算完成这一步。"
-          : "去“我的”里提交一次充值或残卷转赠，审核通过后会自动到账。",
+          ? "你已经提交过残卷赠送或充值申请，等待管理员审核通过后就算完成这一步。"
+          : "去“我的”里通过残卷赠送或充值获取额度，审核通过后会自动到账。",
       actionLabel: hasApprovedRecharge ? "已完成" : hasPendingRecharge ? "查看进度" : "去获取额度",
       actionHref: "#account",
       actionTarget: "recharge",
@@ -1305,7 +1388,7 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
     ? `新手教学奖励已到账 ${rewardQuota} 额度，你可以继续直接下单或充值。`
     : hasConfirmedOrder && hasApprovedRecharge
       ? `三步已完成，系统会自动发放 ${rewardQuota} 额度奖励。`
-      : `完成注册、完成一次额度获取、完成首单后，额外奖励 ${rewardQuota} 额度。`;
+      : `完成注册、获取一次额度、完成首单后，额外奖励 ${rewardQuota} 额度。`;
   beginnerGuideReward.textContent = rewardEarned
     ? `奖励已发放 +${rewardQuota}`
     : `完成三步奖励 ${rewardQuota} 额度`;
@@ -1853,18 +1936,16 @@ function startDirectPurchase(itemId, itemKind = "card") {
 }
 
 async function loadProducts() {
-  const query = new URLSearchParams();
-  if (keywordInput.value.trim()) query.set("keyword", keywordInput.value.trim());
-  const suffix = query.toString();
   try {
     const meta = await apiFetch("/products/meta");
     publicRechargeConfig = meta?.recharge_config || publicRechargeConfig;
   } catch (error) {
     // Keep product list usable even if the public pricing meta is temporarily unavailable.
   }
-  const products = await apiFetch(`/products${suffix ? `?${suffix}` : ""}`);
+  const products = await apiFetch("/products");
   allProducts = products;
   applyProductView({ resetPage: true });
+  applyDiscountView({ resetPage: true });
 }
 
 async function loadAccount() {
@@ -2329,8 +2410,8 @@ keywordInput.addEventListener("input", () => {
     window.clearTimeout(productSearchTimer);
   }
   productSearchTimer = window.setTimeout(() => {
-    loadProducts().catch((error) => setNotice(`商品刷新失败：${error.message}`, "error"));
-  }, 220);
+    applyProductView({ resetPage: true });
+  }, 120);
 });
 sortSelect.addEventListener("change", () => applyProductView({ resetPage: true }));
 productCategoryTabs.addEventListener("click", (event) => {
@@ -2345,6 +2426,29 @@ productSubcategoryTabs?.addEventListener("click", (event) => {
   if (!button) return;
   activeSubcategory = button.getAttribute("data-subcategory") || "all";
   applyProductView({ resetPage: true });
+});
+discountKeywordInput?.addEventListener("input", () => {
+  resetDiscountPagination();
+  if (discountSearchTimer) {
+    window.clearTimeout(discountSearchTimer);
+  }
+  discountSearchTimer = window.setTimeout(() => {
+    applyDiscountView({ resetPage: true });
+  }, 120);
+});
+discountSortSelect?.addEventListener("change", () => applyDiscountView({ resetPage: true }));
+discountCategoryTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-discount-category]");
+  if (!button) return;
+  activeDiscountCategory = button.getAttribute("data-discount-category") || "all";
+  activeDiscountSubcategory = "all";
+  applyDiscountView({ resetPage: true });
+});
+discountSubcategoryTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-discount-subcategory]");
+  if (!button) return;
+  activeDiscountSubcategory = button.getAttribute("data-discount-subcategory") || "all";
+  applyDiscountView({ resetPage: true });
 });
 function handleProductGridClick(event) {
   const directBuyButton = event.target.closest(".direct-buy-btn");
@@ -2378,7 +2482,7 @@ discountProductPagination?.addEventListener("click", (event) => {
   const page = Number(button.getAttribute("data-discount-page"));
   if (!Number.isInteger(page) || page < 1) return;
   discountPaginationState.page = page;
-  renderDiscountProducts(allProducts);
+  renderDiscountProducts(currentDiscountProducts);
   discountProductsSection?.scrollIntoView({
     behavior: "smooth",
     block: "start",
