@@ -60,13 +60,13 @@ function buildRecentSalesSummary(order) {
   const isDrawService = String(order?.order_source || "").trim() === "draw_service";
   const itemKindLabel =
     isDrawService
-      ? "??"
+      ? "代抽"
       : String(firstItem?.item_kind || "").trim() === "bundle"
-        ? "??"
-        : "??";
+        ? "套餐"
+        : "商品";
 
   return {
-    item_title: items.length === 1 ? firstName : `${firstName} ? ${items.length} ?`,
+    item_title: items.length === 1 ? firstName : `${firstName} 等 ${items.length} 项`,
     item_kind_label: itemKindLabel,
     item_count: items.length,
   };
