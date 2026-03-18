@@ -1057,25 +1057,25 @@ function renderDiscountPagination() {
   const totalPages = Math.max(Number(discountPaginationState.totalPages || 0), 0);
 
   if (total === 0) {
-    discountProductPagination.innerHTML = '<div class="pagination-meta">褰撳墠娌℃湁鎵撴姌鍟嗗搧銆?/div>';
+    discountProductPagination.innerHTML = '<div class="pagination-meta">当前没有打折商品。</div>';
     return;
   }
 
   discountProductPagination.innerHTML = `
-    <div class="pagination-meta">绗?${page} / ${Math.max(totalPages, 1)} 椤碉紝鍏?${total} 浠跺晢鍝?/div>
+    <div class="pagination-meta">第 ${page} / ${Math.max(totalPages, 1)} 页，共 ${total} 件商品</div>
     <div class="pagination-actions">
       <button
         class="ghost"
         type="button"
         data-discount-page="${Math.max(page - 1, 1)}"
         ${page <= 1 ? "disabled" : ""}
-      >涓婁竴椤?/button>
+      >上一页</button>
       <button
         class="ghost"
         type="button"
         data-discount-page="${Math.min(page + 1, Math.max(totalPages, 1))}"
         ${totalPages === 0 || page >= totalPages ? "disabled" : ""}
-      >涓嬩竴椤?/button>
+      >下一页</button>
     </div>
   `;
 }
