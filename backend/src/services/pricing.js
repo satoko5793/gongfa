@@ -1,10 +1,28 @@
 const { LEGACY_CAPS } = require("../config/catalog-config");
 
 const PRICE_CONFIG = {
-  version: "pricing_v3",
+  version: "pricing_v4",
   marketFactor: {
     min: 0.5,
     max: 4.0,
+  },
+  similarity: {
+    topMatches: 3,
+    gold: {
+      baseBlend: 0.34,
+      minMatches: 2,
+      clampMin: 0.72,
+      clampMax: 1.38,
+      maxStatDistance: 0.26,
+      seasonMismatchWeight: 0.34,
+    },
+    other: {
+      baseBlend: 0.28,
+      minMatches: 2,
+      clampMin: 0.78,
+      clampMax: 1.24,
+      maxStatDistance: 0.24,
+    },
   },
   floorMultiplier: 2,
   tierRules: {
@@ -431,12 +449,199 @@ function buildOrderEvents(orders, orderItems) {
     .filter(Boolean);
 }
 
+function getTermBucketRank(wear = {}) {
+  const termCount = (Number(wear.fire_count) || 0) + (Number(wear.calm_count) || 0);
+  if (termCount >= 2) return 2;
+  if (termCount >= 1) return 1;
+  return 0;
+}
+
+function createSimilarityProfile(product, atlas, wear, autoBasePrice) {
+  return {
+    attack_rate: Number(atlas?.attack_rate || 0),
+    hp_rate: Number(atlas?.hp_rate || 0),
+    attack_value: Number(product?.attack_value || 0),
+    hp_value: Number(product?.hp_value || 0),
+    fire_rate: Number(wear?.fire_rate || 0),
+    calm_rate: Number(wear?.calm_rate || 0),
+    fire_total: Number(wear?.fire_total || 0),
+    calm_total: Number(wear?.calm_total || 0),
+    term_bucket_rank: getTermBucketRank(wear),
+    is_current_season: Boolean(product?.is_current_season),
+    auto_base_price: Number(autoBasePrice || 0),
+  };
+}
+
+function getLogGap(a, b) {
+  const left = Math.log1p(Math.max(0, Number(a) || 0));
+  const right = Math.log1p(Math.max(0, Number(b) || 0));
+  return Math.abs(left - right);
+}
+
+function getGoldSimilarityWeight(target, candidate) {
+  const config = PRICE_CONFIG.similarity.gold;
+  const statDistance =
+    Math.abs(Number(target.profile.attack_rate || 0) - Number(candidate.profile.attack_rate || 0)) *
+      0.58 +
+    Math.abs(Number(target.profile.hp_rate || 0) - Number(candidate.profile.hp_rate || 0)) * 0.42;
+  if (statDistance > config.maxStatDistance) return null;
+
+  const termDistance =
+    Math.abs(Number(target.profile.fire_rate || 0) - Number(candidate.profile.fire_rate || 0)) * 0.55 +
+    Math.abs(Number(target.profile.calm_rate || 0) - Number(candidate.profile.calm_rate || 0)) * 0.45 +
+    Math.abs(
+      Number(target.profile.term_bucket_rank || 0) - Number(candidate.profile.term_bucket_rank || 0)
+    ) *
+      0.12;
+  const priceGap = getLogGap(target.profile.auto_base_price, candidate.profile.auto_base_price) * 0.18;
+  const seasonWeight =
+    target.profile.is_current_season === candidate.profile.is_current_season
+      ? 1
+      : config.seasonMismatchWeight;
+  const rawScore = 1.18 - statDistance * 2.5 - termDistance * 0.95 - priceGap;
+  if (rawScore <= 0) return null;
+  return Math.pow(rawScore, 2) * seasonWeight;
+}
+
+function getOtherTierSimilarityWeight(target, candidate) {
+  const config = PRICE_CONFIG.similarity.other;
+  const statDistance =
+    Math.abs(Number(target.profile.attack_rate || 0) - Number(candidate.profile.attack_rate || 0)) *
+      0.62 +
+    Math.abs(Number(target.profile.hp_rate || 0) - Number(candidate.profile.hp_rate || 0)) * 0.38 +
+    getLogGap(target.profile.attack_value, candidate.profile.attack_value) * 0.03 +
+    getLogGap(target.profile.hp_value, candidate.profile.hp_value) * 0.02;
+  if (statDistance > config.maxStatDistance) return null;
+
+  const priceGap = getLogGap(target.profile.auto_base_price, candidate.profile.auto_base_price) * 0.22;
+  const rawScore = 1.12 - statDistance * 2.7 - priceGap;
+  if (rawScore <= 0) return null;
+  return Math.pow(rawScore, 2);
+}
+
+function buildSimilarityReference(target, pricedProducts) {
+  if (!target || target.tier === "bundle") {
+    return {
+      applied: false,
+      reason: "tier_not_supported",
+      sample_size: 0,
+      effective_sample_size: 0,
+      reference_price: null,
+      blended_base_price: Number(target?.auto_base_price || 0),
+      top_matches: [],
+    };
+  }
+
+  const tierConfig =
+    target.tier === "gold" ? PRICE_CONFIG.similarity.gold : PRICE_CONFIG.similarity.other;
+  const weightedMatches = [];
+
+  for (const candidate of pricedProducts) {
+    if (Number(candidate.id) === Number(target.id)) continue;
+    if (candidate.tier !== target.tier) continue;
+
+    const weight =
+      target.tier === "gold"
+        ? getGoldSimilarityWeight(target, candidate)
+        : getOtherTierSimilarityWeight(target, candidate);
+    if (!weight) continue;
+
+    weightedMatches.push({
+      id: Number(candidate.id),
+      legacy_id: Number(candidate.legacy_id) || 0,
+      name: candidate.name || "",
+      weight,
+      price: Number(candidate.auto_base_price || 0),
+      is_current_season: Boolean(candidate.profile?.is_current_season),
+      attack_rate: Number(candidate.profile?.attack_rate || 0),
+      hp_rate: Number(candidate.profile?.hp_rate || 0),
+      term_bucket_rank: Number(candidate.profile?.term_bucket_rank || 0),
+    });
+  }
+
+  const candidateMatches =
+    target.tier === "gold"
+      ? (() => {
+          const sameSeasonMatches = weightedMatches.filter(
+            (item) => Boolean(item.is_current_season) === Boolean(target.profile?.is_current_season)
+          );
+          return sameSeasonMatches.length >= tierConfig.minMatches ? sameSeasonMatches : weightedMatches;
+        })()
+      : weightedMatches;
+
+  if (candidateMatches.length < tierConfig.minMatches) {
+    return {
+      applied: false,
+      reason: "not_enough_matches",
+      sample_size: candidateMatches.length,
+      effective_sample_size: Number(
+        candidateMatches.reduce((sum, item) => sum + Number(item.weight || 0), 0).toFixed(4)
+      ),
+      reference_price: null,
+      blended_base_price: Number(target.auto_base_price || 0),
+      top_matches: candidateMatches
+        .sort((a, b) => b.weight - a.weight)
+        .slice(0, PRICE_CONFIG.similarity.topMatches),
+    };
+  }
+
+  const weightedSum = candidateMatches.reduce(
+    (sum, item) => sum + Number(item.price || 0) * Number(item.weight || 0),
+    0
+  );
+  const totalWeight = candidateMatches.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+  if (!totalWeight) {
+    return {
+      applied: false,
+      reason: "zero_weight",
+      sample_size: candidateMatches.length,
+      effective_sample_size: 0,
+      reference_price: null,
+      blended_base_price: Number(target.auto_base_price || 0),
+      top_matches: [],
+    };
+  }
+
+  const referencePrice = weightedSum / totalWeight;
+  const blendedBasePrice =
+    Number(target.auto_base_price || 0) * (1 - tierConfig.baseBlend) +
+    referencePrice * tierConfig.baseBlend;
+  const minAllowed = Number(target.auto_base_price || 0) * tierConfig.clampMin;
+  const maxAllowed = Number(target.auto_base_price || 0) * tierConfig.clampMax;
+
+  return {
+    applied: true,
+    reason: "similar_cards_blend",
+    sample_size: candidateMatches.length,
+    effective_sample_size: Number(totalWeight.toFixed(4)),
+    reference_price: roundPrice(referencePrice),
+    blended_base_price: roundPrice(clamp(blendedBasePrice, minAllowed, maxAllowed)),
+    blend_ratio: tierConfig.baseBlend,
+    clamp_min: Number(tierConfig.clampMin),
+    clamp_max: Number(tierConfig.clampMax),
+    season_sensitive: target.tier === "gold",
+    top_matches: candidateMatches
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, PRICE_CONFIG.similarity.topMatches)
+      .map((item) => ({
+        product_id: item.id,
+        legacy_id: item.legacy_id,
+        name: item.name,
+        weight: Number(item.weight.toFixed(4)),
+        price: roundPrice(item.price),
+        is_current_season: item.is_current_season,
+        attack_rate: Number(item.attack_rate.toFixed(4)),
+        hp_rate: Number(item.hp_rate.toFixed(4)),
+        term_bucket_rank: item.term_bucket_rank,
+      })),
+  };
+}
+
 function createIntrinsicSortKey(product, pricingMeta) {
   const wear = pricingMeta.wear || {};
-  const termCount = (Number(wear.fire_count) || 0) + (Number(wear.calm_count) || 0);
   const atlas = pricingMeta.atlas || {};
   return {
-    term_bucket_rank: termCount >= 2 ? 2 : termCount >= 1 ? 1 : 0,
+    term_bucket_rank: getTermBucketRank(wear),
     strength: Math.max(Number(wear.price) || 0, Number(atlas.price) || 0),
     fire_total: Number(wear.fire_total) || 0,
     calm_total: Number(wear.calm_total) || 0,
@@ -461,7 +666,7 @@ function splitPricingBuckets(products) {
 
   for (const product of products) {
     const wear = product.pricing_meta?.wear || {};
-    const termCount = (Number(wear.fire_count) || 0) + (Number(wear.calm_count) || 0);
+    const termCount = getTermBucketRank(wear);
     if (termCount >= 2) {
       doubleTermProducts.push(product);
       continue;
@@ -500,7 +705,7 @@ function repriceProducts(products, orderEvents, now = new Date()) {
   const configuredMaxMap = buildConfiguredMaxMap(products);
   const demandMap = buildDemandMap(orderEvents, now);
 
-  const pricedProducts = products.map((product) => {
+  const basePricedProducts = products.map((product) => {
     const tier = getLegacyTier(product.legacy_id);
     const tierRule = PRICE_CONFIG.tierRules[tier];
     const floorPrice = tierRule.salvageQuota * PRICE_CONFIG.floorMultiplier;
@@ -518,11 +723,35 @@ function repriceProducts(products, orderEvents, now = new Date()) {
         ? { type: "wear", label: "佩戴价主导" }
         : { type: "atlas", label: "图鉴价主导" };
     const autoBasePrice = Math.max(floorPrice, Number(atlas.price) || 0, Number(wear.price) || 0);
+    const profile = createSimilarityProfile(product, atlas, wear, autoBasePrice);
+
+    return {
+      ...product,
+      tier,
+      floor_price: floorPrice,
+      atlas,
+      wear,
+      dominant,
+      auto_base_price: autoBasePrice,
+      reference_caps: referenceCaps,
+      profile,
+    };
+  });
+
+  const pricedProducts = basePricedProducts.map((product) => {
+    const similarity = buildSimilarityReference(product, basePricedProducts);
+    const adjustedAutoBasePrice = Math.max(
+      Number(product.floor_price || 0),
+      Number(similarity.blended_base_price || product.auto_base_price || 0)
+    );
     const market = getMarketFactor({
       ...(demandMap.get(Number(product.id)) || {}),
       previous_factor: Number(product?.pricing_meta?.market?.factor || 1),
     });
-    const autoPrice = Math.max(floorPrice, roundPrice(autoBasePrice * market.factor));
+    const autoPrice = Math.max(
+      Number(product.floor_price || 0),
+      roundPrice(adjustedAutoBasePrice * market.factor)
+    );
     const manualPrice =
       product.manual_price_quota === null || product.manual_price_quota === undefined
         ? null
@@ -531,18 +760,20 @@ function repriceProducts(products, orderEvents, now = new Date()) {
     const pricingMeta = {
       version: PRICE_CONFIG.version,
       source: Number.isInteger(manualPrice) ? "manual" : "auto",
-      tier,
-      floor_price: floorPrice,
-      reference_caps: referenceCaps,
+      tier: product.tier,
+      floor_price: product.floor_price,
+      reference_caps: product.reference_caps,
       reference_source: LEGACY_CAPS[Number(product.legacy_id)] ? "catalog_config" : "observed_fallback",
-      atlas,
-      wear,
+      atlas: product.atlas,
+      wear: product.wear,
+      similarity,
       market,
-      auto_base_price: autoBasePrice,
+      auto_base_price: product.auto_base_price,
+      adjusted_auto_base_price: adjustedAutoBasePrice,
       auto_price: autoPrice,
       manual_price: manualPrice,
-      dominant_reason: dominant.type,
-      dominant_reason_label: dominant.label,
+      dominant_reason: product.dominant.type,
+      dominant_reason_label: product.dominant.label,
     };
 
     return {
@@ -584,6 +815,10 @@ async function recalculateDatabasePricing(db) {
       image_url,
       attack_value,
       hp_value,
+      schedule_id,
+      current_schedule_id,
+      is_current_season,
+      season_display,
       main_attrs,
       ext_attrs,
       price_quota,
