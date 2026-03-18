@@ -76,7 +76,7 @@ let currentProducts = [];
 let activeItemId = null;
 let activeItemKind = "card";
 let activeCategory = "all";
-let activeGoldSubcategory = "all";
+let activeSubcategory = "all";
 let currentRechargeConfig = null;
 let publicRechargeConfig = null;
 let currentRechargeOrders = [];
@@ -445,44 +445,69 @@ function getGoldSubcategory(product) {
   return "no_term";
 }
 
-function buildGoldSubcategoryEntries(products) {
-  const labels = {
-    all: "全部金卡",
-    double_term: "双词条",
-    fire_only: "走火",
-    calm_only: "气定",
-    no_term: "无词条",
-  };
-  const goldProducts = (products || []).filter((product) => getTierKey(product) === "gold" && !isBundle(product));
-  const counts = { all: goldProducts.length };
-  for (const product of goldProducts) {
-    const key = getGoldSubcategory(product);
-    counts[key] = (counts[key] || 0) + 1;
-  }
-  return Object.entries(labels)
-    .filter(([key]) => key === "all" || counts[key] > 0)
-    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+function getNameSubcategoryKey(product) {
+  const name = String(product?.name || "").trim();
+  return name ? `name:${name}` : "all";
 }
 
-function renderGoldSubcategoryTabs(products) {
+function buildSubcategoryEntries(products, category) {
+  const subset = (products || []).filter((product) => getProductCategory(product) === category && !isBundle(product));
+  if (!subset.length) return [];
+
+  if (category === "gold") {
+    const labels = {
+      all: "全部金卡",
+      double_term: "双词条",
+      fire_only: "走火",
+      calm_only: "气定",
+      no_term: "无词条",
+    };
+    const counts = { all: subset.length };
+    for (const product of subset) {
+      const key = getGoldSubcategory(product);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return Object.entries(labels)
+      .filter(([key]) => key === "all" || counts[key] > 0)
+      .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+  }
+
+  const counts = new Map();
+  for (const product of subset) {
+    const key = getNameSubcategoryKey(product);
+    counts.set(key, {
+      key,
+      label: String(product?.name || "未命名"),
+      count: (counts.get(key)?.count || 0) + 1,
+    });
+  }
+  return [
+    { key: "all", label: `全部${getTierLabel(subset[0])}`, count: subset.length },
+    ...Array.from(counts.values()).sort(
+      (a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label), "zh-Hans-CN")
+    ),
+  ];
+}
+
+function renderSubcategoryTabs(products) {
   if (!productSubcategoryTabs) return;
-  if (activeCategory !== "gold") {
+  if (!activeCategory || activeCategory === "all" || activeCategory === "bundle") {
     productSubcategoryTabs.classList.add("hidden");
     productSubcategoryTabs.innerHTML = "";
     return;
   }
 
-  const entries = buildGoldSubcategoryEntries(products || []);
+  const entries = buildSubcategoryEntries(products || [], activeCategory);
   const validKeys = new Set(entries.map((entry) => entry.key));
-  if (!validKeys.has(activeGoldSubcategory)) activeGoldSubcategory = "all";
+  if (!validKeys.has(activeSubcategory)) activeSubcategory = "all";
   productSubcategoryTabs.classList.toggle("hidden", entries.length <= 1);
   productSubcategoryTabs.innerHTML = entries
     .map(
       (entry) => `
         <button
           type="button"
-          class="subcategory-tab ${entry.key === activeGoldSubcategory ? "active" : ""}"
-          data-gold-subcategory="${entry.key}"
+          class="subcategory-tab ${entry.key === activeSubcategory ? "active" : ""}"
+          data-subcategory="${escapeHtml(entry.key)}"
         >
           ${escapeHtml(entry.label)}
           <span class="subcategory-count">${entry.count}</span>
@@ -560,10 +585,13 @@ function filterProductsByCategory(products, category) {
   return (products || []).filter((product) => getProductCategory(product) === category);
 }
 
-function filterGoldProductsBySubcategory(products, subcategory) {
-  if (activeCategory !== "gold") return products || [];
+function filterProductsBySubcategory(products, subcategory) {
+  if (!activeCategory || activeCategory === "all" || activeCategory === "bundle") return products || [];
   if (!subcategory || subcategory === "all") return products || [];
-  return (products || []).filter((product) => getGoldSubcategory(product) === subcategory);
+  if (activeCategory === "gold") {
+    return (products || []).filter((product) => getGoldSubcategory(product) === subcategory);
+  }
+  return (products || []).filter((product) => getNameSubcategoryKey(product) === subcategory);
 }
 
 function getTierOrder(product) {
@@ -885,10 +913,10 @@ function applyProductView(options = {}) {
     resetProductPagination();
   }
   const categoryFiltered = filterProductsByCategory(allProducts, activeCategory);
-  const filtered = filterGoldProductsBySubcategory(categoryFiltered, activeGoldSubcategory);
+  const filtered = filterProductsBySubcategory(categoryFiltered, activeSubcategory);
   currentProducts = sortProducts(filtered, sortSelect.value);
   renderCategoryTabs(allProducts);
-  renderGoldSubcategoryTabs(categoryFiltered);
+  renderSubcategoryTabs(categoryFiltered);
   renderProducts(currentProducts);
 }
 
@@ -2089,12 +2117,13 @@ productCategoryTabs.addEventListener("click", (event) => {
   const button = event.target.closest("[data-category]");
   if (!button) return;
   activeCategory = button.getAttribute("data-category") || "all";
+  activeSubcategory = "all";
   applyProductView({ resetPage: true });
 });
 productSubcategoryTabs?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-gold-subcategory]");
+  const button = event.target.closest("[data-subcategory]");
   if (!button) return;
-  activeGoldSubcategory = button.getAttribute("data-gold-subcategory") || "all";
+  activeSubcategory = button.getAttribute("data-subcategory") || "all";
   applyProductView({ resetPage: true });
 });
 productGrid.addEventListener("click", (event) => {
