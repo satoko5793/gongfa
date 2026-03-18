@@ -14,49 +14,105 @@ function normalizeRecentSalesLimit(value) {
 }
 
 function maskPublicBuyerLabel(order) {
+  const nickname = String(order?.nickname || "").trim();
+  const gameRoleName = String(order?.game_role_name || "").trim();
   const gameRoleId = String(order?.game_role_id || "").trim();
-  if (gameRoleId) {
-    if (gameRoleId.length <= 4) return `${gameRoleId.slice(0, 1)}***`;
-    return `${gameRoleId.slice(0, 2)}***${gameRoleId.slice(-2)}`;
-  }
-  if (String(order?.order_source || "").trim() === "external") {
-    return "外部成交";
-  }
-  return "匿名用户";
+  const source = String(order?.order_source || "").trim();
+
+  const maskName = (value) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return "";
+    if (/^\d+$/.test(trimmed)) {
+      if (trimmed.length <= 4) return `${trimmed.slice(0, 1)}***`;
+      return `${trimmed.slice(0, 2)}***${trimmed.slice(-2)}`;
+    }
+    if (trimmed.length === 1) return `${trimmed}***`;
+    if (trimmed.length === 2) return `${trimmed.slice(0, 1)}***`;
+    return `${trimmed.slice(0, 2)}***`;
+  };
+
+  if (nickname) return maskName(nickname);
+  if (gameRoleName) return maskName(gameRoleName);
+  if (gameRoleId) return maskName(gameRoleId);
+  if (source === "external") return "????";
+  return "????";
 }
 
 function getPublicOrderSourceLabel(order) {
   const source = String(order?.order_source || "mall").trim();
-  if (source === "external") return "站外成交";
-  if (source === "draw_service") return "代抽成交";
-  return "商城成交";
+  if (source === "external") return "????";
+  if (source === "draw_service") return "????";
+  return "????";
 }
 
 function buildRecentSalesSummary(order) {
   const items = Array.isArray(order?.items) ? order.items : [];
   if (items.length === 0) {
     return {
-      item_title: String(order?.order_source || "").trim() === "draw_service" ? "代抽服务" : "已成交订单",
-      item_kind_label: String(order?.order_source || "").trim() === "draw_service" ? "代抽" : "商品",
+      item_title: String(order?.order_source || "").trim() === "draw_service" ? "????" : "?????",
+      item_kind_label: String(order?.order_source || "").trim() === "draw_service" ? "??" : "??",
       item_count: 0,
     };
   }
 
   const firstItem = items[0];
-  const firstName = String(firstItem?.product_name || "已成交商品").trim() || "已成交商品";
+  const firstName = String(firstItem?.product_name || "?????").trim() || "?????";
   const isDrawService = String(order?.order_source || "").trim() === "draw_service";
   const itemKindLabel =
     isDrawService
-      ? "代抽"
+      ? "??"
       : String(firstItem?.item_kind || "").trim() === "bundle"
-        ? "套餐"
-        : "商品";
+        ? "??"
+        : "??";
 
   return {
-    item_title: items.length === 1 ? firstName : `${firstName} 等 ${items.length} 项`,
+    item_title: items.length === 1 ? firstName : `${firstName} ? ${items.length} ?`,
     item_kind_label: itemKindLabel,
     item_count: items.length,
   };
+}
+
+function getRecentSaleBuyerKey(order) {
+  if (order?.user_id !== null && order?.user_id !== undefined && order?.user_id !== "") {
+    return `user:${order.user_id}`;
+  }
+  const nickname = String(order?.nickname || "").trim();
+  if (nickname) return `nickname:${nickname.toLowerCase()}`;
+  const roleName = String(order?.game_role_name || "").trim();
+  if (roleName) return `role:${roleName.toLowerCase()}`;
+  const roleId = String(order?.game_role_id || "").trim();
+  if (roleId) return `id:${roleId}`;
+  const buyerLabel = String(order?.buyer_label || "").trim();
+  if (buyerLabel) return `external:${buyerLabel.toLowerCase()}`;
+  return `order:${order?.id || Math.random()}`;
+}
+
+function diversifyRecentSales(orders, limit) {
+  const pool = Array.isArray(orders) ? orders.slice() : [];
+  const selected = [];
+  const buyerCounts = new Map();
+
+  while (pool.length > 0 && selected.length < limit) {
+    const previousKey =
+      selected.length > 0 ? getRecentSaleBuyerKey(selected[selected.length - 1]) : null;
+    let pickIndex = pool.findIndex((order) => {
+      const key = getRecentSaleBuyerKey(order);
+      return key !== previousKey && Number(buyerCounts.get(key) || 0) < 2;
+    });
+    if (pickIndex === -1) {
+      pickIndex = pool.findIndex((order) => getRecentSaleBuyerKey(order) !== previousKey);
+    }
+    if (pickIndex === -1) {
+      pickIndex = 0;
+    }
+
+    const [picked] = pool.splice(pickIndex, 1);
+    const buyerKey = getRecentSaleBuyerKey(picked);
+    buyerCounts.set(buyerKey, Number(buyerCounts.get(buyerKey) || 0) + 1);
+    selected.push(picked);
+  }
+
+  return selected;
 }
 
 function mapPublicRecentSale(order) {
@@ -105,6 +161,7 @@ productsRouter.get("/", async (req, res, next) => {
         })
       );
     }
+
     await ensureBundleSeeds(pool);
     const values = ["on_sale"];
     const cardWhere = ["p.status=$1"];
@@ -176,7 +233,7 @@ productsRouter.get("/", async (req, res, next) => {
           FALSE AS is_current_season,
           'bundle'::text AS season_tag,
           '-'::text AS season_label,
-          '套餐'::text AS season_display,
+          '??'::text AS season_display,
           0 AS attack_value,
           0 AS hp_value,
           COALESCE(b.description, '') AS main_attrs,
@@ -186,7 +243,7 @@ productsRouter.get("/", async (req, res, next) => {
           b.status,
           b.created_at,
           b.updated_at,
-          jsonb_build_object('source', 'bundle', 'dominant_reason_label', '套餐固定价') AS pricing_meta,
+          jsonb_build_object('source', 'bundle', 'dominant_reason_label', '?????') AS pricing_meta,
           b.description,
           b.tags,
           b.code,
@@ -207,24 +264,30 @@ productsRouter.get("/", async (req, res, next) => {
 productsRouter.get("/recent-sales", async (req, res, next) => {
   try {
     const limit = normalizeRecentSalesLimit(req.query.limit);
+    const fetchLimit = Math.max(limit * 4, 16);
 
     if (useFileStore()) {
-      const orders = devStore
-        .listOrders({ status: "confirmed", limit: Math.max(limit * 2, 12) })
-        .filter((order) => Array.isArray(order.items) && order.items.length > 0)
-        .slice(0, limit)
-        .map(mapPublicRecentSale);
-      return res.json({ items: orders, total: orders.length });
+      const items = diversifyRecentSales(
+        devStore
+          .listOrders({ status: "confirmed", limit: fetchLimit })
+          .filter((order) => Array.isArray(order.items) && order.items.length > 0),
+        limit
+      ).map(mapPublicRecentSale);
+      return res.json({ items, total: items.length });
     }
 
     const result = await pool.query(
       `SELECT
         o.id,
+        o.user_id,
         o.total_quota,
         o.status,
         COALESCE(o.order_source, 'mall') AS order_source,
+        COALESCE(o.buyer_label, '') AS buyer_label,
         o.created_at,
         u.game_role_id,
+        COALESCE(u.game_role_name, '') AS game_role_name,
+        COALESCE(u.nickname, '') AS nickname,
         json_agg(
           json_build_object(
             'item_kind', oi.item_kind,
@@ -237,13 +300,13 @@ productsRouter.get("/recent-sales", async (req, res, next) => {
        LEFT JOIN users u ON u.id=o.user_id
        LEFT JOIN order_items oi ON oi.order_id=o.id
        WHERE o.status='confirmed'
-       GROUP BY o.id, u.game_role_id
+       GROUP BY o.id, o.user_id, o.buyer_label, u.game_role_id, u.game_role_name, u.nickname
        ORDER BY o.created_at DESC
        LIMIT $1`,
-      [limit]
+      [fetchLimit]
     );
 
-    const items = result.rows
+    const items = diversifyRecentSales(result.rows, limit)
       .map((row) => mapPublicRecentSale(row))
       .filter((row) => row.item_count > 0);
     return res.json({ items, total: items.length });
@@ -278,7 +341,7 @@ productsRouter.get("/:id", async (req, res, next) => {
           FALSE AS is_current_season,
           'bundle'::text AS season_tag,
           '-'::text AS season_label,
-          '套餐'::text AS season_display,
+          '??'::text AS season_display,
           0 AS attack_value,
           0 AS hp_value,
           COALESCE(description, '') AS main_attrs,
@@ -288,7 +351,7 @@ productsRouter.get("/:id", async (req, res, next) => {
           status,
           created_at,
           updated_at,
-          jsonb_build_object('source', 'bundle', 'dominant_reason_label', '套餐固定价') AS pricing_meta,
+          jsonb_build_object('source', 'bundle', 'dominant_reason_label', '?????') AS pricing_meta,
           description,
           tags,
           code,
