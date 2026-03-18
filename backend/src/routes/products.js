@@ -7,6 +7,73 @@ const { getRechargeConfig } = require("../config/recharge-config");
 
 const productsRouter = express.Router();
 
+function normalizeRecentSalesLimit(value) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit)) return 8;
+  return Math.min(Math.max(Math.floor(limit), 1), 20);
+}
+
+function maskPublicBuyerLabel(order) {
+  const gameRoleId = String(order?.game_role_id || "").trim();
+  if (gameRoleId) {
+    if (gameRoleId.length <= 4) return `${gameRoleId.slice(0, 1)}***`;
+    return `${gameRoleId.slice(0, 2)}***${gameRoleId.slice(-2)}`;
+  }
+  if (String(order?.order_source || "").trim() === "external") {
+    return "外部成交";
+  }
+  return "匿名用户";
+}
+
+function getPublicOrderSourceLabel(order) {
+  const source = String(order?.order_source || "mall").trim();
+  if (source === "external") return "站外成交";
+  if (source === "draw_service") return "代抽成交";
+  return "商城成交";
+}
+
+function buildRecentSalesSummary(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (items.length === 0) {
+    return {
+      item_title: String(order?.order_source || "").trim() === "draw_service" ? "代抽服务" : "已成交订单",
+      item_kind_label: String(order?.order_source || "").trim() === "draw_service" ? "代抽" : "商品",
+      item_count: 0,
+    };
+  }
+
+  const firstItem = items[0];
+  const firstName = String(firstItem?.product_name || "已成交商品").trim() || "已成交商品";
+  const isDrawService = String(order?.order_source || "").trim() === "draw_service";
+  const itemKindLabel =
+    isDrawService
+      ? "代抽"
+      : String(firstItem?.item_kind || "").trim() === "bundle"
+        ? "套餐"
+        : "商品";
+
+  return {
+    item_title: items.length === 1 ? firstName : `${firstName} 等 ${items.length} 项`,
+    item_kind_label: itemKindLabel,
+    item_count: items.length,
+  };
+}
+
+function mapPublicRecentSale(order) {
+  const summary = buildRecentSalesSummary(order);
+  return {
+    id: Number(order.id),
+    created_at: order.created_at,
+    total_quota: Number(order.total_quota || 0),
+    order_source: String(order?.order_source || "mall").trim() || "mall",
+    order_source_label: getPublicOrderSourceLabel(order),
+    buyer_label: maskPublicBuyerLabel(order),
+    item_title: summary.item_title,
+    item_kind_label: summary.item_kind_label,
+    item_count: summary.item_count,
+  };
+}
+
 productsRouter.get("/meta", async (req, res, next) => {
   try {
     const rechargeConfig = useFileStore()
@@ -132,6 +199,54 @@ productsRouter.get("/", async (req, res, next) => {
     );
 
     return res.json(result.rows);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+productsRouter.get("/recent-sales", async (req, res, next) => {
+  try {
+    const limit = normalizeRecentSalesLimit(req.query.limit);
+
+    if (useFileStore()) {
+      const orders = devStore
+        .listOrders({ status: "confirmed", limit: Math.max(limit * 2, 12) })
+        .filter((order) => Array.isArray(order.items) && order.items.length > 0)
+        .slice(0, limit)
+        .map(mapPublicRecentSale);
+      return res.json({ items: orders, total: orders.length });
+    }
+
+    const result = await pool.query(
+      `SELECT
+        o.id,
+        o.total_quota,
+        o.status,
+        COALESCE(o.order_source, 'mall') AS order_source,
+        o.created_at,
+        u.game_role_id,
+        json_agg(
+          json_build_object(
+            'item_kind', oi.item_kind,
+            'product_name', oi.product_name,
+            'price_quota', oi.price_quota
+          )
+          ORDER BY oi.id ASC
+        ) FILTER (WHERE oi.id IS NOT NULL) AS items
+       FROM orders o
+       LEFT JOIN users u ON u.id=o.user_id
+       LEFT JOIN order_items oi ON oi.order_id=o.id
+       WHERE o.status='confirmed'
+       GROUP BY o.id, u.game_role_id
+       ORDER BY o.created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+
+    const items = result.rows
+      .map((row) => mapPublicRecentSale(row))
+      .filter((row) => row.item_count > 0);
+    return res.json({ items, total: items.length });
   } catch (error) {
     return next(error);
   }

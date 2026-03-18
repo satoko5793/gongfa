@@ -56,6 +56,12 @@ const beginnerGuideSummary = document.getElementById("beginner-guide-summary");
 const beginnerGuideReward = document.getElementById("beginner-guide-reward");
 const beginnerGuideSteps = document.getElementById("beginner-guide-steps");
 const beginnerFlowSection = document.querySelector(".beginner-flow");
+const beginnerCarousel = document.getElementById("beginner-carousel");
+const beginnerCarouselTrack = document.getElementById("beginner-carousel-track");
+const beginnerGuideTabs = Array.from(document.querySelectorAll("[data-guide-page-target]"));
+const beginnerGuidePrevBtn = document.getElementById("beginner-guide-prev");
+const beginnerGuideNextBtn = document.getElementById("beginner-guide-next");
+const recentSalesList = document.getElementById("recent-sales-list");
 const authTabButtons = Array.from(document.querySelectorAll("[data-auth-tab]"));
 const authTabPanels = Array.from(document.querySelectorAll("[data-auth-panel]"));
 const accountTabButtons = Array.from(document.querySelectorAll("[data-account-tab]"));
@@ -108,6 +114,8 @@ let discountSearchTimer = null;
 let activeAuthTab = "register";
 let activeAccountTab = "overview";
 let activeDockTarget = "products";
+let activeGuidePage = "tutorial";
+let recentSalesItems = [];
 const productPaginationState = {
   page: 1,
   pageSize: 12,
@@ -1502,6 +1510,79 @@ function renderGuideGlyph(type) {
   `;
 }
 
+function formatRecentSaleTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const diff = Date.now() - date.getTime();
+  if (diff < 60 * 1000) return "刚刚";
+  if (diff < 60 * 60 * 1000) return `${Math.max(Math.floor(diff / (60 * 1000)), 1)} 分钟前`;
+  if (diff < 24 * 60 * 60 * 1000) {
+    return `${Math.max(Math.floor(diff / (60 * 60 * 1000)), 1)} 小时前`;
+  }
+  if (diff < 3 * 24 * 60 * 60 * 1000) {
+    return `${Math.max(Math.floor(diff / (24 * 60 * 60 * 1000)), 1)} 天前`;
+  }
+  return formatDate(value);
+}
+
+function setActiveGuidePage(page) {
+  activeGuidePage = page === "sales" ? "sales" : "tutorial";
+  if (beginnerCarouselTrack) {
+    beginnerCarouselTrack.style.transform =
+      activeGuidePage === "sales" ? "translateX(-100%)" : "translateX(0)";
+  }
+  beginnerGuideTabs.forEach((button) => {
+    const isActive = button.getAttribute("data-guide-page-target") === activeGuidePage;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  if (beginnerGuidePrevBtn) beginnerGuidePrevBtn.disabled = activeGuidePage === "tutorial";
+  if (beginnerGuideNextBtn) beginnerGuideNextBtn.disabled = activeGuidePage === "sales";
+}
+
+function renderRecentSales(items = []) {
+  if (!recentSalesList) return;
+  if (!Array.isArray(items) || items.length === 0) {
+    recentSalesList.innerHTML = `
+      <div class="recent-sales-empty">
+        <div class="panel-title">最近成交正在准备中</div>
+        <div class="muted">等第一批成交确认后，这里会自动展示匿名成交摘要。</div>
+      </div>
+    `;
+    return;
+  }
+
+  recentSalesList.innerHTML = items
+    .map(
+      (item) => `
+        <article class="recent-sale-item">
+          <div class="recent-sale-top">
+            <span class="chip subtle-chip">${escapeHtml(item.order_source_label || "商城成交")}</span>
+            <span class="recent-sale-time">${escapeHtml(formatRecentSaleTime(item.created_at))}</span>
+          </div>
+          <div class="recent-sale-title">${escapeHtml(item.item_title || "已成交商品")}</div>
+          <div class="recent-sale-meta">
+            <span>${escapeHtml(item.item_kind_label || "商品")} / ${escapeHtml(item.buyer_label || "匿名用户")}</span>
+            <span>${Number(item.total_quota || 0)} 额度</span>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
+async function loadRecentSales() {
+  try {
+    const result = await apiFetch("/products/recent-sales?limit=8");
+    recentSalesItems = Array.isArray(result?.items) ? result.items : [];
+    renderRecentSales(recentSalesItems);
+  } catch (error) {
+    console.error(error);
+    renderRecentSales([]);
+  }
+}
+
 function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
   if (!beginnerGuideSteps || !beginnerGuideSummary || !beginnerGuideReward) return;
 
@@ -1516,11 +1597,7 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
   const rewardEarned = Boolean(profile?.beginner_guide_reward_earned);
 
   if (beginnerFlowSection) {
-    beginnerFlowSection.classList.toggle("hidden", rewardEarned);
-  }
-  if (rewardEarned) {
-    beginnerGuideSteps.innerHTML = "";
-    return;
+    beginnerFlowSection.classList.remove("hidden");
   }
 
   const steps = [
@@ -1600,6 +1677,21 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
       `;
     })
     .join("");
+
+  if (rewardEarned) {
+    beginnerGuideSteps.innerHTML = `
+      <article class="tutorial-complete-card">
+        <div class="tutorial-step-icon">${renderGuideGlyph("order")}</div>
+        <div class="flow-step-index">GUIDE COMPLETE</div>
+        <div class="flow-step-title">新手奖励已经到账</div>
+        <div class="muted">你已经完成注册、获取额度和首单消费，后面可以直接逛商城，也可以切到“最近成交”查看公开成交摘要。</div>
+        <div class="actions">
+          <a class="ghost-link tutorial-link" href="#products">继续逛商城</a>
+          <a class="ghost-link tutorial-link" href="#account">查看我的信息</a>
+        </div>
+      </article>
+    `;
+  }
 }
 
 function renderProfile(profile, quota, orders) {
@@ -2597,6 +2689,37 @@ accountTabLinks.forEach((link) => {
     activateAccountTab(targetTab, { scroll: true });
   });
 });
+beginnerGuideTabs.forEach((button) => {
+  button.addEventListener("click", () => {
+    setActiveGuidePage(button.getAttribute("data-guide-page-target") || "tutorial");
+  });
+});
+beginnerGuidePrevBtn?.addEventListener("click", () => setActiveGuidePage("tutorial"));
+beginnerGuideNextBtn?.addEventListener("click", () => setActiveGuidePage("sales"));
+if (beginnerCarousel) {
+  let touchStartX = 0;
+  let touchDeltaX = 0;
+  beginnerCarousel.addEventListener(
+    "touchstart",
+    (event) => {
+      touchStartX = event.touches[0]?.clientX || 0;
+      touchDeltaX = 0;
+    },
+    { passive: true }
+  );
+  beginnerCarousel.addEventListener(
+    "touchmove",
+    (event) => {
+      const currentX = event.touches[0]?.clientX || touchStartX;
+      touchDeltaX = currentX - touchStartX;
+    },
+    { passive: true }
+  );
+  beginnerCarousel.addEventListener("touchend", () => {
+    if (Math.abs(touchDeltaX) < 48) return;
+    setActiveGuidePage(touchDeltaX < 0 ? "sales" : "tutorial");
+  });
+}
 pageDockItems.forEach((button) => {
   button.addEventListener("click", () => {
     navigateWithDock(button.getAttribute("data-dock-target") || "products");
@@ -2774,7 +2897,10 @@ activateAuthTab(activeAuthTab);
 activateAccountTab(activeAccountTab);
 syncAccountTabWithHash();
 syncDockWithViewport();
+setActiveGuidePage("tutorial");
 helperOriginInput.value = getHelperOrigin();
 renderBeginnerGuide(null, [], []);
+renderRecentSales([]);
 loadProducts().catch((error) => setNotice(`商品加载失败：${error.message}`, "error"));
+loadRecentSales();
 loadAccount();

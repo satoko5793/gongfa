@@ -400,6 +400,40 @@ body {
   align-items: center;
 }
 
+.beginner-flow-switch {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.beginner-carousel-tabs {
+  margin-bottom: 0;
+}
+
+.beginner-carousel-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.beginner-carousel {
+  overflow: hidden;
+}
+
+.beginner-carousel-track {
+  display: flex;
+  width: 100%;
+  transition: transform 240ms ease;
+  will-change: transform;
+}
+
+.beginner-carousel-page {
+  flex: 0 0 100%;
+  min-width: 100%;
+}
+
 .guide-reward-chip {
   display: inline-flex;
   align-items: center;
@@ -583,6 +617,60 @@ body {
   font-weight: 800;
   color: var(--accent-2);
   margin-bottom: 8px;
+}
+
+.tutorial-complete-card {
+  display: grid;
+  gap: 14px;
+  min-height: 240px;
+  padding: 22px;
+  border-radius: 22px;
+  border: 1px solid rgba(34, 100, 77, 0.18);
+  background: linear-gradient(180deg, rgba(241, 251, 246, 0.98), rgba(255, 255, 255, 0.88));
+}
+
+.recent-sales-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.7fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.recent-sales-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recent-sale-item,
+.recent-sales-empty {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(118, 93, 67, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.recent-sale-top,
+.recent-sale-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.recent-sale-time,
+.recent-sale-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.recent-sale-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .flow-step-index {
@@ -1865,6 +1953,14 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .recent-sales-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .recent-sales-list {
+    grid-template-columns: 1fr;
+  }
+
   .recharge-layout-split {
     grid-template-columns: 1fr;
   }
@@ -1969,6 +2065,15 @@ button {
     gap: 10px;
   }
 
+  .beginner-flow-switch {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .beginner-carousel-actions {
+    width: 100%;
+  }
+
   .recharge-layout-split {
     grid-template-columns: 1fr !important;
   }
@@ -1976,7 +2081,8 @@ button {
   .toolbar > *,
   .actions > *,
   .filters > *,
-  .section-tabs > * {
+  .section-tabs > *,
+  .beginner-carousel-actions > * {
     width: 100%;
     min-width: 0;
   }
