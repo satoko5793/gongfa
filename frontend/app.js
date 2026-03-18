@@ -1407,7 +1407,7 @@ function renderDrawServiceZone(profile, quota) {
         <span id="draw-service-quote-detail" class="muted"></span>
       </div>
       <div class="stack-item muted">
-        返还卡由管理员代抽后人工录入；如果你需要代抽视频，请去咨询群联系管理员索取。
+        返还卡由管理员代抽后人工录入；如需代抽视频确认真实性，请在“我的信息”里的“订单帮助”中，通过微信群联系管理员索取。
       </div>
       <div class="actions">
         <button class="primary" type="submit">提交代抽订单</button>

@@ -31,7 +31,8 @@ const DRAW_SERVICE_MILESTONE_QUOTA = 50000;
 const DRAW_SERVICE_FIRST_REBATE_QUOTA = 10000;
 const DRAW_SERVICE_REPEAT_REBATE_QUOTA = 5000;
 const DRAW_SERVICE_ATLAS_BONUS_LABEL = "一套带金高攻高血图鉴";
-const DRAW_SERVICE_VIDEO_NOTICE = "如需代抽视频，可在咨询群联系管理员索取。";
+const DRAW_SERVICE_VIDEO_NOTICE =
+  "如需代抽视频确认真实性，请在“我的信息”里的“订单帮助”中，通过微信群联系管理员索取。";
 const DRAW_SERVICE_RULE_SUMMARY =
   "返还所有双满紫、双满橙、双满红、双满金卡、>=2.5 单词条、双词条、珍。";
 const LEGACY_DISPLAY_NAME_BY_ID = {
