@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260318e" />
+    <link rel="stylesheet" href="styles.css?v=20260318f" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -114,7 +114,7 @@
         <div id="discount-product-grid" class="product-grid"></div>
       </section>
 
-      <section id="products" class="card">
+      <section id="products" class="card dock-target-section">
         <div class="section-head">
           <div>
             <div class="card-title">商品列表</div>
@@ -258,7 +258,7 @@
         <div id="bind-message" class="notice"></div>
       </section>
 
-      <section id="account" class="card">
+      <section id="account" class="card dock-target-section">
         <div class="card-title">我的账户</div>
         <div class="card-sub">把常用操作拆开后，查看余额、改资料、充值和查订单都会更直接。</div>
 
@@ -363,6 +363,38 @@
           </div>
         </div>
       </section>
+
+      <section id="auction-zone" class="card dock-target-section teaser-panel">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Coming Soon</div>
+            <div class="card-title">拍卖专区</div>
+            <div class="card-sub">后续会放拍卖型商品和限时竞价入口，这里先预留成单独面板。</div>
+          </div>
+          <span class="teaser-chip">筹备中</span>
+        </div>
+        <div class="teaser-body">
+          <div class="teaser-copy">
+            这里后面适合放限时拍卖、特殊品竞价、结束提醒和我的出价记录。现在先把入口固定住，后面继续加不会打断用户习惯。
+          </div>
+        </div>
+      </section>
+
+      <section id="draw-service-zone" class="card dock-target-section teaser-panel">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Coming Soon</div>
+            <div class="card-title">代抽专区</div>
+            <div class="card-sub">后续如果做代抽、套餐活动或限时服务，这里单独承接，不和普通商城混在一起。</div>
+          </div>
+          <span class="teaser-chip">预留中</span>
+        </div>
+        <div class="teaser-body">
+          <div class="teaser-copy">
+            先把这个区域作为固定导航入口保留下来，后续可以继续挂代抽说明、价格、排队状态和订单结果。
+          </div>
+        </div>
+      </section>
     </main>
 
     <div id="product-detail-modal" class="modal-backdrop hidden" aria-hidden="true">
@@ -385,6 +417,13 @@
     </div>
 
     <footer class="footer">当前先把网页商城主流程跑通，支付与更多自动化能力后续再补。</footer>
-    <script type="module" src="./app.js?v=20260318e"></script>
+
+    <nav class="page-dock" aria-label="页面快捷切换">
+      <button class="page-dock-item active" type="button" data-dock-target="products">商城</button>
+      <button class="page-dock-item" type="button" data-dock-target="account">我的信息</button>
+      <button class="page-dock-item" type="button" data-dock-target="auction-zone">拍卖</button>
+      <button class="page-dock-item" type="button" data-dock-target="draw-service-zone">代抽专区</button>
+    </nav>
+    <script type="module" src="./app.js?v=20260318f"></script>
   </body>
 </html>

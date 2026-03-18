@@ -26,6 +26,8 @@ const helperOriginInput = document.getElementById("helper-origin-input");
 const bindMessage = document.getElementById("bind-message");
 const bindSection = document.getElementById("bind");
 const accountSection = document.getElementById("account");
+const auctionZoneSection = document.getElementById("auction-zone");
+const drawServiceZoneSection = document.getElementById("draw-service-zone");
 const accountProfile = document.getElementById("account-profile");
 const quotaBalance = document.getElementById("quota-balance");
 const orderList = document.getElementById("order-list");
@@ -53,6 +55,7 @@ const accountTabButtons = Array.from(document.querySelectorAll("[data-account-ta
 const accountTabPanels = Array.from(document.querySelectorAll("[data-account-panel]"));
 const accountTabLinks = Array.from(document.querySelectorAll("[data-account-tab-target]"));
 const accountSecurityTabButton = document.querySelector('[data-account-tab="security"]');
+const pageDockItems = Array.from(document.querySelectorAll("[data-dock-target]"));
 
 const registerForm = document.getElementById("register-form");
 const registerRoleIdInput = document.getElementById("register-role-id");
@@ -89,6 +92,7 @@ let pendingDirectPurchaseContext = null;
 let productSearchTimer = null;
 let activeAuthTab = "register";
 let activeAccountTab = "overview";
+let activeDockTarget = "products";
 const productPaginationState = {
   page: 1,
   pageSize: 12,
@@ -281,6 +285,71 @@ function syncAccountTabWithHash() {
   };
   if (!hashMap[hash]) return;
   activateAccountTab(hashMap[hash]);
+}
+
+function getDockSections() {
+  return [
+    { key: "products", node: productsSection },
+    { key: "account", node: accountSection },
+    { key: "auction-zone", node: auctionZoneSection },
+    { key: "draw-service-zone", node: drawServiceZoneSection },
+  ].filter((entry) => entry.node);
+}
+
+function getScrollOffset() {
+  const headerHeight = document.querySelector(".app-header")?.offsetHeight || 0;
+  return headerHeight + 28;
+}
+
+function setActiveDockTarget(target) {
+  activeDockTarget = target;
+  pageDockItems.forEach((button) => {
+    button.classList.toggle("active", button.getAttribute("data-dock-target") === target);
+  });
+}
+
+function scrollSectionIntoView(section) {
+  if (!section) return;
+  const top = window.scrollY + section.getBoundingClientRect().top - getScrollOffset();
+  window.scrollTo({
+    top: Math.max(top, 0),
+    behavior: "smooth",
+  });
+}
+
+function navigateWithDock(target) {
+  if (target === "account") {
+    window.location.hash = "account";
+    activateAccountTab("overview");
+    scrollSectionIntoView(accountSection);
+    setActiveDockTarget(target);
+    return;
+  }
+  const section = document.getElementById(target);
+  if (!section) return;
+  if (target === "products") {
+    window.location.hash = "products";
+  } else {
+    window.location.hash = target;
+  }
+  scrollSectionIntoView(section);
+  setActiveDockTarget(target);
+}
+
+function syncDockWithViewport() {
+  const sections = getDockSections();
+  if (!sections.length) return;
+  const probe = window.scrollY + getScrollOffset() + Math.min(window.innerHeight * 0.22, 140);
+  let nextActive = sections[0].key;
+  sections.forEach((entry) => {
+    const top = window.scrollY + entry.node.getBoundingClientRect().top;
+    if (top <= probe) {
+      nextActive = entry.key;
+    }
+  });
+  if (nextActive !== activeDockTarget) {
+    setActiveDockTarget(nextActive);
+  }
 }
 
 function updateShellVisibility(profile) {
@@ -2157,6 +2226,11 @@ accountTabLinks.forEach((link) => {
     activateAccountTab(targetTab, { scroll: true });
   });
 });
+pageDockItems.forEach((button) => {
+  button.addEventListener("click", () => {
+    navigateWithDock(button.getAttribute("data-dock-target") || "products");
+  });
+});
 document.addEventListener("click", (event) => {
   const link = event.target.closest("[data-account-tab-target]");
   if (!link || accountTabLinks.includes(link)) return;
@@ -2287,10 +2361,13 @@ window.addEventListener("storage", (event) => {
   if (event.key === "gongfa_session_v1") loadAccount();
 });
 window.addEventListener("hashchange", syncAccountTabWithHash);
+window.addEventListener("scroll", syncDockWithViewport, { passive: true });
+window.addEventListener("resize", syncDockWithViewport);
 
 activateAuthTab(activeAuthTab);
 activateAccountTab(activeAccountTab);
 syncAccountTabWithHash();
+syncDockWithViewport();
 helperOriginInput.value = getHelperOrigin();
 renderBeginnerGuide(null, [], []);
 loadProducts().catch((error) => setNotice(`商品加载失败：${error.message}`, "error"));
