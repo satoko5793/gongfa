@@ -2201,11 +2201,12 @@ button {
   }
 
   .product-grid {
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 
   .product-card {
-    grid-template-columns: minmax(92px, 108px) minmax(0, 1fr);
+    grid-template-columns: minmax(102px, 118px) minmax(0, 1fr);
     grid-template-areas:
       "cover summary"
       "chips chips"
@@ -2218,7 +2219,7 @@ button {
   .product-cover {
     grid-area: cover;
     aspect-ratio: auto;
-    min-height: 132px;
+    min-height: 142px;
     height: 100%;
   }
 
@@ -2307,6 +2308,7 @@ button {
     min-height: 34px;
     font-size: 12px;
     padding: 7px 8px;
+    white-space: nowrap;
   }
 
   .page-dock {
