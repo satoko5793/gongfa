@@ -1,0 +1,9 @@
+gongfazhushou.cn {
+  encode zstd gzip
+  reverse_proxy web:8090
+}
+
+http://101.34.247.186 {
+  encode zstd gzip
+  reverse_proxy web:8090
+}
