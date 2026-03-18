@@ -11,6 +11,7 @@ import {
 
 const productGrid = document.getElementById("product-grid");
 const productCategoryTabs = document.getElementById("product-category-tabs");
+const productSubcategoryTabs = document.getElementById("product-subcategory-tabs");
 const productPagination = document.getElementById("product-pagination");
 const productsSection = document.getElementById("products");
 const keywordInput = document.getElementById("product-keyword-input");
@@ -75,6 +76,7 @@ let currentProducts = [];
 let activeItemId = null;
 let activeItemKind = "card";
 let activeCategory = "all";
+let activeGoldSubcategory = "all";
 let currentRechargeConfig = null;
 let publicRechargeConfig = null;
 let currentRechargeOrders = [];
@@ -434,6 +436,60 @@ function renderCategoryTabs(products) {
     .join("");
 }
 
+function getGoldSubcategory(product) {
+  if (getTierKey(product) !== "gold" || isBundle(product)) return "all";
+  const extStats = parseExtAttrStats(product?.ext_attrs);
+  if (extStats.fire > 0 && extStats.calm > 0) return "double_term";
+  if (extStats.fire > 0 || extStats.calm > 0) return "single_term";
+  return "no_term";
+}
+
+function buildGoldSubcategoryEntries(products) {
+  const labels = {
+    all: "全部金卡",
+    double_term: "双词条",
+    single_term: "单词条",
+    no_term: "无词条",
+  };
+  const goldProducts = (products || []).filter((product) => getTierKey(product) === "gold" && !isBundle(product));
+  const counts = { all: goldProducts.length };
+  for (const product of goldProducts) {
+    const key = getGoldSubcategory(product);
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return Object.entries(labels)
+    .filter(([key]) => key === "all" || counts[key] > 0)
+    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+}
+
+function renderGoldSubcategoryTabs(products) {
+  if (!productSubcategoryTabs) return;
+  if (activeCategory !== "gold") {
+    productSubcategoryTabs.classList.add("hidden");
+    productSubcategoryTabs.innerHTML = "";
+    return;
+  }
+
+  const entries = buildGoldSubcategoryEntries(products || []);
+  const validKeys = new Set(entries.map((entry) => entry.key));
+  if (!validKeys.has(activeGoldSubcategory)) activeGoldSubcategory = "all";
+  productSubcategoryTabs.classList.toggle("hidden", entries.length <= 1);
+  productSubcategoryTabs.innerHTML = entries
+    .map(
+      (entry) => `
+        <button
+          type="button"
+          class="subcategory-tab ${entry.key === activeGoldSubcategory ? "active" : ""}"
+          data-gold-subcategory="${entry.key}"
+        >
+          ${escapeHtml(entry.label)}
+          <span class="subcategory-count">${entry.count}</span>
+        </button>
+      `
+    )
+    .join("");
+}
+
 function resetProductPagination() {
   productPaginationState.page = 1;
 }
@@ -500,6 +556,12 @@ function renderProductPagination() {
 function filterProductsByCategory(products, category) {
   if (!category || category === "all") return products || [];
   return (products || []).filter((product) => getProductCategory(product) === category);
+}
+
+function filterGoldProductsBySubcategory(products, subcategory) {
+  if (activeCategory !== "gold") return products || [];
+  if (!subcategory || subcategory === "all") return products || [];
+  return (products || []).filter((product) => getGoldSubcategory(product) === subcategory);
 }
 
 function getTierOrder(product) {
@@ -820,9 +882,11 @@ function applyProductView(options = {}) {
   if (resetPage) {
     resetProductPagination();
   }
-  const filtered = filterProductsByCategory(allProducts, activeCategory);
+  const categoryFiltered = filterProductsByCategory(allProducts, activeCategory);
+  const filtered = filterGoldProductsBySubcategory(categoryFiltered, activeGoldSubcategory);
   currentProducts = sortProducts(filtered, sortSelect.value);
   renderCategoryTabs(allProducts);
+  renderGoldSubcategoryTabs(categoryFiltered);
   renderProducts(currentProducts);
 }
 
@@ -2023,6 +2087,12 @@ productCategoryTabs.addEventListener("click", (event) => {
   const button = event.target.closest("[data-category]");
   if (!button) return;
   activeCategory = button.getAttribute("data-category") || "all";
+  applyProductView({ resetPage: true });
+});
+productSubcategoryTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-gold-subcategory]");
+  if (!button) return;
+  activeGoldSubcategory = button.getAttribute("data-gold-subcategory") || "all";
   applyProductView({ resetPage: true });
 });
 productGrid.addEventListener("click", (event) => {
