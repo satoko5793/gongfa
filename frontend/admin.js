@@ -18,6 +18,7 @@ const adminLogoutBtn = document.getElementById("admin-logout-btn");
 const importJsonInput = document.getElementById("import-json-input");
 const importFileNameInput = document.getElementById("import-file-name");
 const productsRoot = document.getElementById("admin-products");
+const auctionsRoot = document.getElementById("admin-auctions");
 const bundlesRoot = document.getElementById("admin-bundles");
 const usersRoot = document.getElementById("admin-users");
 const ordersRoot = document.getElementById("admin-orders");
@@ -29,6 +30,10 @@ const discountedProductsChip = document.getElementById("discounted-products-chip
 const adminProductKeywordInput = document.getElementById("admin-product-keyword-input");
 const adminProductStatusFilter = document.getElementById("admin-product-status-filter");
 const adminProductDiscountFilter = document.getElementById("admin-product-discount-filter");
+const adminProductCategoryTabs = document.getElementById("admin-product-category-tabs");
+const adminProductSubcategoryTabs = document.getElementById("admin-product-subcategory-tabs");
+const adminProductDetailTabs = document.getElementById("admin-product-detail-tabs");
+const adminProductFullnessTabs = document.getElementById("admin-product-fullness-tabs");
 const adminUserKeywordInput = document.getElementById("admin-user-keyword-input");
 const adminRechargeKeywordInput = document.getElementById("admin-recharge-keyword-input");
 const adminRechargeStatusFilter = document.getElementById("admin-recharge-status-filter");
@@ -73,6 +78,22 @@ const bulkStockInput = document.getElementById("bulk-stock-input");
 const bulkDiscountRateInput = document.getElementById("bulk-discount-rate-input");
 const randomDiscountCountInput = document.getElementById("random-discount-count-input");
 const randomDiscountRateInput = document.getElementById("random-discount-rate-input");
+const exportPosterAutoCountInput = document.getElementById("export-poster-auto-count-input");
+const smartSelectHotProductsBtn = document.getElementById("smart-select-hot-products-btn");
+const smartSelectBudgetProductsBtn = document.getElementById("smart-select-budget-products-btn");
+const smartSelectMixedProductsBtn = document.getElementById("smart-select-mixed-products-btn");
+const exportPosterTitleInput = document.getElementById("export-poster-title-input");
+const exportPosterSubtitleInput = document.getElementById("export-poster-subtitle-input");
+const exportPosterFootnoteInput = document.getElementById("export-poster-footnote-input");
+const exportProductPosterBtn = document.getElementById("export-product-poster-btn");
+const selectedAuctionProductChip = document.getElementById("selected-auction-product-chip");
+const adminAuctionStartingPriceInput = document.getElementById("admin-auction-starting-price-input");
+const adminAuctionMinIncrementInput = document.getElementById("admin-auction-min-increment-input");
+const adminAuctionStartAtInput = document.getElementById("admin-auction-start-at-input");
+const adminAuctionEndAtInput = document.getElementById("admin-auction-end-at-input");
+const adminAuctionTitleInput = document.getElementById("admin-auction-title-input");
+const adminAuctionRemarkInput = document.getElementById("admin-auction-remark-input");
+const adminAuctionStatusFilter = document.getElementById("admin-auction-status-filter");
 const recalculatePricingBtn = document.getElementById("recalculate-pricing-btn");
 const importForm = document.getElementById("import-form");
 const importSubmitBtn = document.getElementById("import-submit-btn");
@@ -96,15 +117,52 @@ let allUsers = [];
 let currentRechargeConfig = null;
 let linkedOrderUser = null;
 let activeAdminPage = "imports";
+let activeAdminProductCategory = "all";
+let activeAdminProductSubcategory = "all";
+let activeAdminProductDetail = "all";
+let activeAdminProductFullness = "all";
 let currentOrderList = [];
 let currentRechargeOrderList = [];
+let currentAuctionList = [];
 let overviewCounts = {
   pendingOrderCount: 0,
   cancelReviewCount: 0,
   rechargeReviewCount: 0,
 };
+const POSTER_EXPORT_LIMIT = 60;
+const POSTER_WEBSITE = "gongfazhushou.cn";
+const ADMIN_READ_ROLES = new Set(["admin", "poster_admin"]);
+const ADMIN_WRITE_ROLES = new Set(["admin"]);
+const READ_ONLY_WRITE_CONTROL_IDS = [
+  "load-sample-json-btn",
+  "import-submit-btn",
+  "recalculate-pricing-btn",
+  "bulk-on-sale-btn",
+  "bulk-off-sale-btn",
+  "bulk-price-input",
+  "bulk-price-btn",
+  "bulk-stock-input",
+  "bulk-stock-btn",
+  "bulk-discount-rate-input",
+  "bulk-discount-btn",
+  "bulk-restore-discount-btn",
+  "filtered-restore-discount-btn",
+  "random-discount-count-input",
+  "random-discount-rate-input",
+  "random-select-products-btn",
+  "random-discount-btn",
+  "admin-auction-starting-price-input",
+  "admin-auction-min-increment-input",
+  "admin-auction-start-at-input",
+  "admin-auction-end-at-input",
+  "admin-auction-title-input",
+  "admin-auction-remark-input",
+  "admin-create-auction-btn",
+  "save-recharge-config-btn",
+];
 const loadedAdminPages = new Set();
 let alertPollTimer = null;
+let currentAdminProfile = null;
 const paginationState = {
   products: { page: 1, pageSize: 12, total: 0, totalPages: 0 },
   bundles: { page: 1, pageSize: 8, total: 0, totalPages: 0 },
@@ -153,6 +211,62 @@ function setMessage(text, type = "") {
   } else if (text) {
     markDebugError("none");
   }
+}
+
+function getAdminRoleValue(profile = currentAdminProfile) {
+  return String(profile?.role || "").trim();
+}
+
+function hasAdminReadAccess(profile = currentAdminProfile) {
+  return ADMIN_READ_ROLES.has(getAdminRoleValue(profile));
+}
+
+function hasAdminWriteAccess(profile = currentAdminProfile) {
+  return ADMIN_WRITE_ROLES.has(getAdminRoleValue(profile));
+}
+
+function isAdminReadOnlyMode(profile = currentAdminProfile) {
+  return hasAdminReadAccess(profile) && !hasAdminWriteAccess(profile);
+}
+
+function getAdminRoleLabel(role) {
+  switch (String(role || "").trim()) {
+    case "admin":
+      return "管理员";
+    case "poster_admin":
+      return "海报只读";
+    case "user":
+      return "普通用户";
+    default:
+      return role || "-";
+  }
+}
+
+function guardAdminWriteAccess(message = "当前账号是只读海报权限，不能修改后台数据。") {
+  if (hasAdminWriteAccess()) return true;
+  setMessage(message, "error");
+  return false;
+}
+
+function setElementDisabled(element, disabled) {
+  if (!element || typeof element.disabled === "undefined") return;
+  element.disabled = Boolean(disabled);
+}
+
+function applyAdminAccessMode() {
+  const readOnly = isAdminReadOnlyMode();
+  document.body.classList.toggle("admin-readonly-mode", readOnly);
+
+  READ_ONLY_WRITE_CONTROL_IDS.forEach((id) => {
+    setElementDisabled(document.getElementById(id), readOnly);
+  });
+
+  const importControls = importForm?.querySelectorAll("input, textarea, button") || [];
+  importControls.forEach((element) => setElementDisabled(element, readOnly));
+
+  const rechargeConfigControls =
+    adminRechargeConfigForm?.querySelectorAll("input, select, textarea, button") || [];
+  rechargeConfigControls.forEach((element) => setElementDisabled(element, readOnly));
 }
 
 function formatOrderStatusLabel(status) {
@@ -317,39 +431,47 @@ function getDrawServiceMeta(order) {
 
 function getOrderSourceLabel(order) {
   if (isDrawServiceOrder(order)) return "代抽专区";
+  if (order?.order_source === "guest_transfer") return "转账锁卡";
   if (order?.order_source === "external") return "外部交易";
+  if (order?.order_source === "auction") return "拍卖成交";
   return "商城下单";
 }
 
 function renderSession(profile) {
   const session = loadSession();
+  currentAdminProfile = profile || null;
 
   if (!session?.token) {
     markDebugSession("no_token");
     adminSession.innerHTML =
-      '<div class="stack-item">当前未登录。可直接在后台页输入管理员游戏 ID 和密码登录。</div>';
-    return false;
+      '<div class="stack-item">当前未登录。可直接在后台页输入管理员或海报只读账号的游戏 ID 和密码登录。</div>';
+    applyAdminAccessMode();
+    return { canRead: false, canWrite: false };
   }
 
   if (!profile) {
     markDebugSession("token_without_profile");
     adminSession.innerHTML = '<div class="stack-item">已检测到登录态，但当前无法读取管理员资料。</div>';
-    return false;
+    applyAdminAccessMode();
+    return { canRead: false, canWrite: false };
   }
 
   markDebugSession(`token role=${profile.role || "-"}`);
+  const canRead = hasAdminReadAccess(profile);
+  const canWrite = hasAdminWriteAccess(profile);
 
   adminSession.innerHTML = [
     `当前账号：${escapeHtml(profile.game_role_name || "-")}`,
     `游戏 ID：${escapeHtml(profile.game_role_id || "-")}`,
     `区服：${escapeHtml(profile.game_server || "-")}`,
-    `角色：${escapeHtml(profile.role || "-")}`,
+    `角色：${escapeHtml(getAdminRoleLabel(profile.role || "-"))}`,
     `当前额度：${Number(profile.quota_balance || 0)}`,
   ]
     .map((line) => `<div class="stack-item">${line}</div>`)
     .join("");
 
-  return profile.role === "admin";
+  applyAdminAccessMode();
+  return { canRead, canWrite };
 }
 
 function renderOverview() {
@@ -532,6 +654,7 @@ function renderRechargeConfig(config) {
   if (adminWechatQrPreview) {
     adminWechatQrPreview.src = config.wechat_qr_image_url || "/payment/wechat-qr.png";
   }
+  applyAdminAccessMode();
 }
 
 function activateAdminPage(page, { force = false } = {}) {
@@ -565,6 +688,7 @@ function setLinkedOrderUser(user) {
 
 function syncSelectedProducts() {
   selectedProductsChip.textContent = `已选 ${selectedProductIds.size}`;
+  renderSelectedAuctionProduct();
 }
 
 function isDiscountedProduct(product) {
@@ -579,6 +703,120 @@ function syncProductSummary(products = getFilteredProducts()) {
   if (discountedProductsChip) {
     discountedProductsChip.textContent = `打折中 ${products.filter(isDiscountedProduct).length}`;
   }
+}
+
+function getSelectedAuctionProduct() {
+  const selectedIds = [...selectedProductIds];
+  if (selectedIds.length !== 1) return null;
+  return allProducts.find((product) => Number(product.id) === Number(selectedIds[0])) || null;
+}
+
+function renderSelectedAuctionProduct() {
+  if (!selectedAuctionProductChip) return;
+  const product = getSelectedAuctionProduct();
+  if (!product) {
+    selectedAuctionProductChip.textContent = "当前未选择拍卖商品";
+    return;
+  }
+  const auctionHint =
+    product.auction_id && product.auction_status
+      ? ` / 当前拍卖 ${product.auction_status} #${product.auction_id}`
+      : "";
+  selectedAuctionProductChip.textContent = `当前拍卖商品：#${product.id} ${product.name}${auctionHint}`;
+}
+
+function formatAuctionStatusLabel(status) {
+  switch (String(status || "").trim()) {
+    case "live":
+      return "进行中";
+    case "scheduled":
+      return "即将开始";
+    case "ended":
+      return "等待结算";
+    case "settled":
+      return "已成交";
+    case "cancelled":
+      return "已流拍";
+    default:
+      return status || "-";
+  }
+}
+
+function renderAuctions(auctions) {
+  currentAuctionList = Array.isArray(auctions) ? auctions : [];
+  if (!auctionsRoot) return;
+  const canWrite = hasAdminWriteAccess();
+
+  if (!currentAuctionList.length) {
+    auctionsRoot.innerHTML = '<div class="stack-item">当前没有拍卖记录。</div>';
+    return;
+  }
+
+  auctionsRoot.innerHTML = currentAuctionList
+    .map((auction) => {
+      const item = auction?.item || {};
+      const bids = Array.isArray(auction?.bids) ? auction.bids : [];
+      const bidLines = bids.length
+        ? bids
+            .slice(0, 5)
+            .map(
+              (bid) =>
+                `<div class="stack-item">${escapeHtml(
+                  bid.game_role_name || bid.nickname || bid.game_role_id || "-"
+                )} / ${Number(bid.amount_quota || 0)} 额度 / ${formatDate(bid.created_at)}</div>`
+            )
+            .join("")
+        : '<div class="stack-item">还没有人出价。</div>';
+
+      return `
+        <div class="admin-card" data-auction-id="${auction.id}">
+          <div class="admin-card-head">
+            <div class="product-name">${escapeHtml(auction.title || item.name || `拍卖 #${auction.id}`)}</div>
+            <span class="chip">${escapeHtml(formatAuctionStatusLabel(auction.status))}</span>
+          </div>
+          <div class="product-meta">
+            <div>商品：#${Number(auction.product_id || 0)} / ${escapeHtml(item.name || "-")}</div>
+            <div>起拍价：${Number(auction.starting_price_quota || 0)} / 当前价：${Number(auction.current_price_quota || 0)} / 加价幅度：${Number(auction.min_increment_quota || 0)}</div>
+            <div>领先者：${escapeHtml(auction.current_bid_user_name || auction.leading_bidder_label || "暂无")} / 游戏ID：${escapeHtml(auction.current_bid_user_game_role_id || "-")} / 用户ID：${Number(auction.current_bid_user_id || 0) || "-"} / 共 ${Number(auction.bid_count || 0)} 次出价</div>
+            ${
+              auction.current_bid_user_name || auction.leading_bidder_label
+                ? `<div>领先者额度：${Number(auction.current_bid_user_quota_balance || 0)} / 成交价：${Number(auction.winning_amount_quota || auction.current_price_quota || 0)} / ${
+                    auction.can_direct_settle ? "可直接扣额度结算" : "额度不足，走线下结算"
+                  }</div>`
+                : ""
+            }
+            <div>开始：${formatDate(auction.starts_at)} / 截止：${formatDate(auction.ends_at)}</div>
+            ${auction.settled_order_id ? `<div>成交订单：#${Number(auction.settled_order_id)}</div>` : ""}
+            ${auction.cancelled_reason ? `<div>流拍原因：${escapeHtml(auction.cancelled_reason)}</div>` : ""}
+          </div>
+          <div class="stack-list">${bidLines}</div>
+          ${
+            canWrite
+              ? `
+                  <div class="inline-form">
+                    <input data-field="auction-remark" type="text" value="${escapeHtml(auction.remark || "")}" placeholder="结算或流拍备注，可选" />
+                    <input data-field="auction-reason" type="text" value="${escapeHtml(auction.cancelled_reason || "")}" placeholder="流拍原因，可选" />
+                  </div>
+                  <div class="actions">
+                    <button class="ghost reload-single-auction-btn" type="button">刷新</button>
+                    <button class="primary settle-auction-direct-btn" type="button" ${
+                      auction.status === "ended" && auction.can_direct_settle ? "" : "disabled"
+                    }>扣额度结算</button>
+                    <button class="ghost settle-auction-offline-btn" type="button" ${
+                      auction.status === "ended" ? "" : "disabled"
+                    }>联系管理员结算</button>
+                    <button class="danger cancel-auction-btn" type="button" ${["settled", "cancelled"].includes(String(auction.status || "")) ? "disabled" : ""}>流拍</button>
+                  </div>
+                `
+              : `
+                  <div class="muted">备注：${escapeHtml(auction.remark || "-")}</div>
+                  <div class="muted">流拍原因：${escapeHtml(auction.cancelled_reason || "-")}</div>
+                `
+          }
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function parseDiscountRateInputValue(value, fallback = null) {
@@ -748,7 +986,357 @@ function closeProductModal() {
   adminProductModalBody.innerHTML = "";
 }
 
-function getFilteredProducts() {
+function getAdminProductTierKey(product) {
+  const legacyId = Number(product?.legacy_id || 0);
+  if (legacyId >= 500) return "gold";
+  if (legacyId >= 400) return "red";
+  if (legacyId >= 300) return "orange";
+  if (legacyId >= 200) return "purple";
+  if (legacyId >= 100) return "blue";
+  return "green";
+}
+
+function getAdminProductTierLabelByKey(key) {
+  const mapping = {
+    bundle: "套餐",
+    gold: "金卡",
+    red: "红卡",
+    orange: "橙卡",
+    purple: "紫卡",
+    blue: "蓝卡",
+    green: "绿卡",
+  };
+  return mapping[key] || "商品";
+}
+
+function isAdminCurrentSeasonProduct(product) {
+  return Boolean(product?.is_current_season);
+}
+
+function isAdminSeasonCategory(category) {
+  return category === "current_season" || category === "legacy_season";
+}
+
+function getAdminTopCategoryKey(product) {
+  return isAdminCurrentSeasonProduct(product) ? "current_season" : "legacy_season";
+}
+
+function buildAdminProductCategoryEntries(products) {
+  const labels = {
+    all: "全部",
+    current_season: "本赛季",
+    legacy_season: "往赛季",
+    bundle: "套餐",
+  };
+  const counts = { all: Array.isArray(products) ? products.length : 0 };
+  for (const product of products || []) {
+    const key = getAdminTopCategoryKey(product);
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  counts.bundle = Array.isArray(allBundles) ? allBundles.length : 0;
+  return Object.entries(labels)
+    .filter(([key]) => key === "all" || counts[key] > 0)
+    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+}
+
+function renderAdminProductCategoryTabs(products) {
+  if (!adminProductCategoryTabs) return;
+  const entries = buildAdminProductCategoryEntries(products || []);
+  const validKeys = new Set(entries.map((entry) => entry.key));
+  if (!validKeys.has(activeAdminProductCategory)) {
+    activeAdminProductCategory = "all";
+  }
+  adminProductCategoryTabs.innerHTML = entries
+    .map(
+      (entry) => `
+        <button
+          type="button"
+          class="category-tab ${entry.key === activeAdminProductCategory ? "active" : ""}"
+          data-admin-product-category="${entry.key}"
+        >
+          <span class="tab-label">${escapeHtml(entry.label)}</span>
+          <span class="category-count">${entry.count}</span>
+        </button>
+      `
+    )
+    .join("");
+}
+
+function parseAdminExtAttrStats(extAttrs) {
+  const raw = String(extAttrs || "").trim();
+  if (!raw || raw === "无") {
+    return { fire: 0, calm: 0 };
+  }
+  const fireMatch = raw.match(/走火\s*([0-9.]+)/);
+  const calmMatch = raw.match(/气定\s*([0-9.]+)/);
+  return {
+    fire: fireMatch ? Number(fireMatch[1]) || 0 : 0,
+    calm: calmMatch ? Number(calmMatch[1]) || 0 : 0,
+  };
+}
+
+function getAdminGoldSubcategory(product) {
+  if (getAdminProductTierKey(product) !== "gold") return "all";
+  const legacyId = Number(product?.legacy_id || 0);
+  if (legacyId >= 600) return "rare";
+  const extStats = parseAdminExtAttrStats(product?.ext_attrs);
+  if (extStats.fire > 0 && extStats.calm > 0) return "double_term";
+  if (extStats.fire > 0) return "fire_only";
+  if (extStats.calm > 0) return "calm_only";
+  return "no_term";
+}
+
+function getAdminNameSubcategoryKey(product) {
+  const name = String(product?.name || "").trim();
+  return name ? `name:${name}` : "all";
+}
+
+function buildAdminProductSubcategoryEntries(products, category) {
+  if (!category || category === "bundle") return [];
+  const subset = products || [];
+  if (!subset.length) return [];
+
+  const labels = {
+    all:
+      category === "current_season"
+        ? "全部本赛季"
+        : category === "legacy_season"
+          ? "全部往赛季"
+          : "全部卡阶",
+    gold: "金卡",
+    red: "红卡",
+    orange: "橙卡",
+    purple: "紫卡",
+    blue: "蓝卡",
+    green: "绿卡",
+  };
+  const counts = { all: subset.length };
+  for (const product of subset) {
+    const key = getAdminProductTierKey(product);
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return Object.entries(labels)
+    .filter(([key]) => key === "all" || counts[key] > 0)
+    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+}
+
+function renderAdminProductSubcategoryTabs(products) {
+  if (!adminProductSubcategoryTabs) return;
+  if (!activeAdminProductCategory || activeAdminProductCategory === "bundle") {
+    adminProductSubcategoryTabs.classList.add("hidden");
+    adminProductSubcategoryTabs.innerHTML = "";
+    activeAdminProductSubcategory = "all";
+    return;
+  }
+
+  const entries = buildAdminProductSubcategoryEntries(products || [], activeAdminProductCategory);
+  const validKeys = new Set(entries.map((entry) => entry.key));
+  if (!validKeys.has(activeAdminProductSubcategory)) {
+    activeAdminProductSubcategory = "all";
+  }
+
+  adminProductSubcategoryTabs.classList.toggle("hidden", entries.length <= 1);
+  adminProductSubcategoryTabs.innerHTML = entries
+    .map(
+      (entry) => `
+        <button
+          type="button"
+          class="subcategory-tab ${entry.key === activeAdminProductSubcategory ? "active" : ""}"
+          data-admin-product-subcategory="${escapeHtml(entry.key)}"
+        >
+          <span class="tab-label">${escapeHtml(entry.label)}</span>
+          <span class="subcategory-count">${entry.count}</span>
+        </button>
+      `
+    )
+    .join("");
+}
+
+function buildAdminProductDetailEntries(products, tier) {
+  if (!tier || tier === "all" || tier === "bundle") return [];
+  const subset = (products || []).filter((product) => getAdminProductTierKey(product) === tier);
+  if (!subset.length) return [];
+
+  if (tier === "gold") {
+    const labels = {
+      all: "全部金卡",
+      rare: "珍卡",
+      double_term: "双词条",
+      fire_only: "走火",
+      calm_only: "气定",
+      no_term: "无词条",
+    };
+    const counts = { all: subset.length };
+    for (const product of subset) {
+      const key = getAdminGoldSubcategory(product);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return Object.entries(labels)
+      .filter(([key]) => key === "all" || counts[key] > 0)
+      .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+  }
+
+  const counts = new Map();
+  for (const product of subset) {
+    const key = getAdminNameSubcategoryKey(product);
+    counts.set(key, {
+      key,
+      label: String(product?.name || "未命名"),
+      count: (counts.get(key)?.count || 0) + 1,
+    });
+  }
+
+  return [
+    { key: "all", label: `全部${getAdminProductTierLabelByKey(tier)}`, count: subset.length },
+    ...Array.from(counts.values()).sort(
+      (a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label), "zh-Hans-CN")
+    ),
+  ];
+}
+
+function renderAdminProductDetailTabs(products) {
+  if (!adminProductDetailTabs) return;
+  const entries = buildAdminProductDetailEntries(products || [], activeAdminProductSubcategory);
+  if (entries.length <= 1) {
+    adminProductDetailTabs.classList.add("hidden");
+    adminProductDetailTabs.innerHTML = "";
+    activeAdminProductDetail = "all";
+    return;
+  }
+
+  const validKeys = new Set(entries.map((entry) => entry.key));
+  if (!validKeys.has(activeAdminProductDetail)) {
+    activeAdminProductDetail = "all";
+  }
+
+  adminProductDetailTabs.classList.remove("hidden");
+  adminProductDetailTabs.innerHTML = entries
+    .map(
+      (entry) => `
+        <button
+          type="button"
+          class="subcategory-tab ${entry.key === activeAdminProductDetail ? "active" : ""}"
+          data-admin-product-detail="${escapeHtml(entry.key)}"
+        >
+          <span class="tab-label">${escapeHtml(entry.label)}</span>
+          <span class="subcategory-count">${entry.count}</span>
+        </button>
+      `
+    )
+    .join("");
+}
+
+function getAdminProductFullnessKey(product) {
+  const attack = Number(product?.attack_value || 0);
+  const hp = Number(product?.hp_value || 0);
+  const caps = {
+    gold: { attack: 10000000, hp: 200000000 },
+    red: { attack: 8000000, hp: 160000000 },
+    orange: { attack: 5000000, hp: 100000000 },
+    purple: { attack: 2000000, hp: 40000000 },
+    blue: { attack: 1000000, hp: 20000000 },
+  };
+  const tierCaps = caps[getAdminProductTierKey(product)] || { attack: Number.MAX_SAFE_INTEGER, hp: Number.MAX_SAFE_INTEGER };
+  const attackFull = attack > 0 && attack >= tierCaps.attack;
+  const hpFull = hp > 0 && hp >= tierCaps.hp;
+  if (attackFull && hpFull) return "double_full";
+  if (attackFull) return "attack_full";
+  if (hpFull) return "hp_full";
+  return "none_full";
+}
+
+function buildAdminProductFullnessEntries(products, enabled) {
+  if (!enabled) return [];
+  const subset = products || [];
+  if (!subset.length) return [];
+
+  const labels = {
+    all: "全部",
+    double_full: "双满",
+    attack_full: "攻击满",
+    hp_full: "血量满",
+    none_full: "都不满",
+  };
+  const counts = { all: subset.length };
+  for (const product of subset) {
+    const key = getAdminProductFullnessKey(product);
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return Object.entries(labels)
+    .filter(([key]) => key === "all" || counts[key] > 0)
+    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+}
+
+function renderAdminProductFullnessTabs(products) {
+  if (!adminProductFullnessTabs) return;
+  const entries = buildAdminProductFullnessEntries(
+    products || [],
+    activeAdminProductCategory !== "bundle" && activeAdminProductSubcategory !== "all"
+  );
+  if (entries.length <= 1) {
+    adminProductFullnessTabs.classList.add("hidden");
+    adminProductFullnessTabs.innerHTML = "";
+    activeAdminProductFullness = "all";
+    return;
+  }
+
+  const validKeys = new Set(entries.map((entry) => entry.key));
+  if (!validKeys.has(activeAdminProductFullness)) {
+    activeAdminProductFullness = "all";
+  }
+
+  adminProductFullnessTabs.classList.remove("hidden");
+  adminProductFullnessTabs.innerHTML = entries
+    .map(
+      (entry) => `
+        <button
+          type="button"
+          class="subcategory-tab ${entry.key === activeAdminProductFullness ? "active" : ""}"
+          data-admin-product-fullness="${entry.key}"
+        >
+          <span class="tab-label">${escapeHtml(entry.label)}</span>
+          <span class="subcategory-count">${entry.count}</span>
+        </button>
+      `
+    )
+    .join("");
+}
+
+function filterAdminProductsByCategory(products, category) {
+  if (!category || category === "all") return products || [];
+  if (category === "current_season") {
+    return (products || []).filter((product) => isAdminCurrentSeasonProduct(product));
+  }
+  if (category === "legacy_season") {
+    return (products || []).filter((product) => !isAdminCurrentSeasonProduct(product));
+  }
+  if (category === "bundle") {
+    return [];
+  }
+  return (products || []).filter((product) => getAdminProductTierKey(product) === category);
+}
+
+function filterAdminProductsBySubcategory(products, category, subcategory) {
+  if (!category || category === "bundle") return products || [];
+  if (!subcategory || subcategory === "all") return products || [];
+  return (products || []).filter((product) => getAdminProductTierKey(product) === subcategory);
+}
+
+function filterAdminProductsByDetail(products, tier, detail) {
+  if (!tier || tier === "all" || tier === "bundle") return products || [];
+  if (!detail || detail === "all") return products || [];
+  if (tier === "gold") {
+    return (products || []).filter((product) => getAdminGoldSubcategory(product) === detail);
+  }
+  return (products || []).filter((product) => getAdminNameSubcategoryKey(product) === detail);
+}
+
+function filterAdminProductsByFullness(products, fullness) {
+  if (!fullness || fullness === "all") return products || [];
+  return (products || []).filter((product) => getAdminProductFullnessKey(product) === fullness);
+}
+
+function getAdminBaseFilteredProducts() {
   const keyword = String(adminProductKeywordInput.value || "").trim().toLowerCase();
   const status = adminProductStatusFilter.value;
   const discountFilter = adminProductDiscountFilter?.value || "all";
@@ -770,6 +1358,40 @@ function getFilteredProducts() {
   });
 }
 
+function syncAdminProductFilters(products = getAdminBaseFilteredProducts()) {
+  renderAdminProductCategoryTabs(products);
+  const categoryFiltered = filterAdminProductsByCategory(products, activeAdminProductCategory);
+  renderAdminProductSubcategoryTabs(categoryFiltered);
+  const subcategoryFiltered = filterAdminProductsBySubcategory(
+    categoryFiltered,
+    activeAdminProductCategory,
+    activeAdminProductSubcategory
+  );
+  renderAdminProductDetailTabs(subcategoryFiltered);
+  const detailFiltered = filterAdminProductsByDetail(
+    subcategoryFiltered,
+    activeAdminProductSubcategory,
+    activeAdminProductDetail
+  );
+  renderAdminProductFullnessTabs(detailFiltered);
+}
+
+function getFilteredProducts() {
+  const baseFiltered = getAdminBaseFilteredProducts();
+  const categoryFiltered = filterAdminProductsByCategory(baseFiltered, activeAdminProductCategory);
+  const subcategoryFiltered = filterAdminProductsBySubcategory(
+    categoryFiltered,
+    activeAdminProductCategory,
+    activeAdminProductSubcategory
+  );
+  const detailFiltered = filterAdminProductsByDetail(
+    subcategoryFiltered,
+    activeAdminProductSubcategory,
+    activeAdminProductDetail
+  );
+  return filterAdminProductsByFullness(detailFiltered, activeAdminProductFullness);
+}
+
 function getDiscountedFilteredProducts() {
   return getFilteredProducts().filter(isDiscountedProduct);
 }
@@ -778,6 +1400,674 @@ function getRandomDiscountCandidates() {
   return getFilteredProducts().filter(
     (product) => product.status === "on_sale" && Number(product.stock || 0) > 0
   );
+}
+
+function formatPosterCompactNumber(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "0";
+  const abs = Math.abs(numeric);
+
+  if (abs >= 100000000) {
+    const unitValue = abs / 100000000;
+    const digits = unitValue >= 100 ? 0 : unitValue >= 10 ? 1 : 2;
+    return `${numeric < 0 ? "-" : ""}${Number(unitValue.toFixed(digits))}亿`;
+  }
+
+  if (abs >= 10000) {
+    const unitValue = abs / 10000;
+    const digits = unitValue >= 100 ? 0 : unitValue >= 10 ? 1 : 2;
+    return `${numeric < 0 ? "-" : ""}${Number(unitValue.toFixed(digits))}万`;
+  }
+
+  return String(numeric);
+}
+
+function getPosterCashAmount(quotaAmount, rechargeConfig = currentRechargeConfig) {
+  const quota = Number(quotaAmount || 0);
+  const exchangeQuota = Number(rechargeConfig?.exchange_quota || 0);
+  const exchangeYuan = Number(rechargeConfig?.exchange_yuan || 0);
+  if (!Number.isFinite(quota) || quota <= 0 || exchangeQuota <= 0 || exchangeYuan <= 0) {
+    return null;
+  }
+  return (quota * exchangeYuan) / exchangeQuota;
+}
+
+function formatPosterCashAmount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "RMB 待定";
+  if (Math.abs(numeric - Math.round(numeric)) < 0.001) {
+    return `¥${Math.round(numeric)}`;
+  }
+  return `¥${numeric.toFixed(2)}`;
+}
+
+function getPosterSeasonLabel(product) {
+  const explicit = String(product?.season_display || "").trim();
+  if (explicit) return explicit;
+  const scheduleId = Number(product?.schedule_id || 0);
+  if (!scheduleId) return isAdminCurrentSeasonProduct(product) ? "当前赛季" : "往赛季";
+  return `${isAdminCurrentSeasonProduct(product) ? "S" + scheduleId + " 当前赛季" : "S" + scheduleId + " 老卡"}`;
+}
+
+function getPosterTermLabel(product) {
+  const extAttrs = String(product?.ext_attrs || "").trim();
+  if (extAttrs && extAttrs !== "无") {
+    return extAttrs.replace(/\s+/g, " ");
+  }
+  const mainAttrs = String(product?.main_attrs || "").trim();
+  return mainAttrs || "无额外词条";
+}
+
+function getPosterExportProducts() {
+  const selected = allProducts.filter((product) => selectedProductIds.has(Number(product.id)));
+  const fallbackCount = getPosterAutoPickCount();
+  const source = selected.length > 0 ? selected : getFilteredProducts().slice(0, fallbackCount);
+  return [...source]
+    .sort(
+      (a, b) =>
+        Number(b?.effective_price_quota || b?.price_quota || 0) -
+        Number(a?.effective_price_quota || a?.price_quota || 0)
+    )
+    .slice(0, selected.length > 0 ? POSTER_EXPORT_LIMIT : fallbackCount);
+}
+
+function getPosterAutoPickCount() {
+  const raw = Number(exportPosterAutoCountInput?.value || 12);
+  if (!Number.isInteger(raw)) return 12;
+  return Math.min(Math.max(raw, 4), POSTER_EXPORT_LIMIT);
+}
+
+async function fetchRecentConfirmedProductStats() {
+  const maxPages = 3;
+  const pageSize = 100;
+  const stats = new Map();
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const response = normalizePaginatedResponse(
+      await apiFetch(`/admin/orders?status=confirmed&page=${page}&page_size=${pageSize}`)
+    );
+    const orders = Array.isArray(response.items) ? response.items : [];
+
+    orders.forEach((order) => {
+      const createdAt = String(order?.created_at || "");
+      const items = Array.isArray(order?.items) ? order.items : [];
+      items.forEach((item) => {
+        if (String(item?.item_kind || "card") !== "card") return;
+        const productId = Number(item?.product_id || 0);
+        if (!productId) return;
+        const current = stats.get(productId) || {
+          count: 0,
+          lastSoldAt: "",
+        };
+        current.count += 1;
+        if (!current.lastSoldAt || createdAt.localeCompare(current.lastSoldAt) > 0) {
+          current.lastSoldAt = createdAt;
+        }
+        stats.set(productId, current);
+      });
+    });
+
+    if (!response.has_more) break;
+  }
+
+  return stats;
+}
+
+function rankPosterCandidates(candidates, stats, mode) {
+  return [...candidates].sort((a, b) => {
+    const aStats = stats.get(Number(a.id)) || { count: 0, lastSoldAt: "" };
+    const bStats = stats.get(Number(b.id)) || { count: 0, lastSoldAt: "" };
+
+    if (mode === "hot") {
+      const countDiff = bStats.count - aStats.count;
+      if (countDiff !== 0) return countDiff;
+      const soldDiff = String(bStats.lastSoldAt || "").localeCompare(String(aStats.lastSoldAt || ""));
+      if (soldDiff !== 0) return soldDiff;
+      return (
+        Number(b.effective_price_quota || b.price_quota || 0) -
+        Number(a.effective_price_quota || a.price_quota || 0)
+      );
+    }
+
+    const aUnsold = aStats.count === 0 ? 1 : 0;
+    const bUnsold = bStats.count === 0 ? 1 : 0;
+    if (bUnsold !== aUnsold) return bUnsold - aUnsold;
+    const staleDiff = String(aStats.lastSoldAt || "").localeCompare(String(bStats.lastSoldAt || ""));
+    if (staleDiff !== 0) return staleDiff;
+    const priceDiff =
+      Number(a.effective_price_quota || a.price_quota || 0) -
+      Number(b.effective_price_quota || b.price_quota || 0);
+    if (priceDiff !== 0) return priceDiff;
+    return Number(b.stock || 0) - Number(a.stock || 0);
+  });
+}
+
+function applyPosterSelection(products) {
+  selectedProductIds.clear();
+  products.forEach((product) => selectedProductIds.add(Number(product.id)));
+  renderProducts(getFilteredProducts());
+}
+
+async function autoSelectPosterProducts(mode) {
+  const candidates = getFilteredProducts().filter(
+    (product) => product.status === "on_sale" && Number(product.stock || 0) > 0
+  );
+  if (!candidates.length) {
+    setMessage("当前筛选下没有可自动挑选的在售商品。", "error");
+    return;
+  }
+
+  const pickCount = Math.min(getPosterAutoPickCount(), candidates.length);
+  setMessage(mode === "hot" ? "正在分析最近热卖商品..." : "正在筛选冷门低价商品...");
+
+  try {
+    const stats = await fetchRecentConfirmedProductStats();
+    const ranked = rankPosterCandidates(candidates, stats, mode);
+
+    const picked = ranked.slice(0, pickCount);
+    applyPosterSelection(picked);
+    setMessage(
+      mode === "hot"
+        ? `已按最近已确认订单自动选中 ${picked.length} 件热卖商品。`
+        : `已按近期少成交且价格较低的规则自动选中 ${picked.length} 件商品。`,
+      "success"
+    );
+  } catch (error) {
+    setMessage(`自动选品失败：${pickErrorMessage(error, "请稍后再试")}`, "error");
+  }
+}
+
+async function autoSelectMixedPosterProducts() {
+  const candidates = getFilteredProducts().filter(
+    (product) => product.status === "on_sale" && Number(product.stock || 0) > 0
+  );
+  if (!candidates.length) {
+    setMessage("当前筛选下没有可自动挑选的在售商品。", "error");
+    return;
+  }
+
+  setMessage("正在组合热卖和冷门商品...");
+
+  try {
+    const pickCount = Math.min(getPosterAutoPickCount(), candidates.length);
+    const hotCount = Math.ceil(pickCount / 2);
+    const budgetCount = Math.floor(pickCount / 2);
+    const stats = await fetchRecentConfirmedProductStats();
+    const hotRanked = rankPosterCandidates(candidates, stats, "hot");
+    const budgetRanked = rankPosterCandidates(candidates, stats, "budget");
+    const picked = [];
+    const used = new Set();
+
+    hotRanked.forEach((product) => {
+      if (picked.length >= hotCount) return;
+      if (used.has(Number(product.id))) return;
+      used.add(Number(product.id));
+      picked.push(product);
+    });
+
+    budgetRanked.forEach((product) => {
+      if (picked.length >= hotCount + budgetCount) return;
+      if (used.has(Number(product.id))) return;
+      used.add(Number(product.id));
+      picked.push(product);
+    });
+
+    const fallbackRanked = hotRanked.concat(budgetRanked);
+    fallbackRanked.forEach((product) => {
+      if (picked.length >= pickCount) return;
+      if (used.has(Number(product.id))) return;
+      used.add(Number(product.id));
+      picked.push(product);
+    });
+
+    applyPosterSelection(picked);
+    setMessage(
+      `已自动选中 ${picked.length} 件商品，按半热卖半冷门混合推荐。`,
+      "success"
+    );
+  } catch (error) {
+    setMessage(`混合选品失败：${pickErrorMessage(error, "请稍后再试")}`, "error");
+  }
+}
+
+function createRoundedRectPath(ctx, x, y, width, height, radius) {
+  const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + safeRadius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, safeRadius);
+  ctx.arcTo(x + width, y + height, x, y + height, safeRadius);
+  ctx.arcTo(x, y + height, x, y, safeRadius);
+  ctx.arcTo(x, y, x + width, y, safeRadius);
+  ctx.closePath();
+}
+
+function fillRoundedRect(ctx, x, y, width, height, radius, fillStyle) {
+  createRoundedRectPath(ctx, x, y, width, height, radius);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+}
+
+function strokeRoundedRect(ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) {
+  createRoundedRectPath(ctx, x, y, width, height, radius);
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+}
+
+function clipRoundedRect(ctx, x, y, width, height, radius) {
+  createRoundedRectPath(ctx, x, y, width, height, radius);
+  ctx.clip();
+}
+
+function fitTextToWidth(ctx, text, maxWidth) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (ctx.measureText(raw).width <= maxWidth) return raw;
+  let output = raw;
+  while (output.length > 1 && ctx.measureText(`${output}...`).width > maxWidth) {
+    output = output.slice(0, -1);
+  }
+  return `${output}...`;
+}
+
+function drawTextLine(ctx, text, x, y, maxWidth) {
+  ctx.fillText(fitTextToWidth(ctx, text, maxWidth), x, y);
+}
+
+function measurePillWidth(ctx, text, horizontalPadding, minWidth, maxWidth) {
+  const safeMaxWidth = Number.isFinite(maxWidth) ? Math.max(minWidth, maxWidth) : maxWidth;
+  const fittedText = fitTextToWidth(ctx, text, safeMaxWidth - horizontalPadding * 2);
+  const measuredWidth = Math.ceil(ctx.measureText(fittedText).width + horizontalPadding * 2);
+  if (!Number.isFinite(safeMaxWidth)) return Math.max(minWidth, measuredWidth);
+  return Math.max(minWidth, Math.min(safeMaxWidth, measuredWidth));
+}
+
+function drawShadowCard(ctx, x, y, width, height, radius, fillStyle, shadow = {}) {
+  ctx.save();
+  ctx.shadowColor = shadow.color || "rgba(84, 55, 28, 0.12)";
+  ctx.shadowBlur = shadow.blur ?? 22;
+  ctx.shadowOffsetX = shadow.offsetX ?? 0;
+  ctx.shadowOffsetY = shadow.offsetY ?? 8;
+  fillRoundedRect(ctx, x, y, width, height, radius, fillStyle);
+  ctx.restore();
+}
+
+function setPosterFont(ctx, weight, size) {
+  ctx.font = `${weight} ${size}px 'IBM Plex Sans', 'Segoe UI', sans-serif`;
+}
+
+function drawFittedText(ctx, text, x, y, maxWidth, options = {}) {
+  const {
+    weight = 700,
+    size = 32,
+    minSize = 18,
+  } = options;
+  let currentSize = size;
+  while (currentSize > minSize) {
+    setPosterFont(ctx, weight, currentSize);
+    if (ctx.measureText(String(text || "").trim()).width <= maxWidth) break;
+    currentSize -= 1;
+  }
+  drawTextLine(ctx, text, x, y, maxWidth);
+  return currentSize;
+}
+
+function drawCoverImage(ctx, image, x, y, width, height) {
+  const sourceWidth = Number(image?.naturalWidth || image?.width || 0);
+  const sourceHeight = Number(image?.naturalHeight || image?.height || 0);
+  if (!sourceWidth || !sourceHeight) return;
+  const scale = Math.max(width / sourceWidth, height / sourceHeight);
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
+function loadPosterImage(src) {
+  const url = String(src || "").trim();
+  if (!url) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
+}
+
+async function exportSelectedProductsPoster() {
+  const products = getPosterExportProducts();
+  if (!products.length) {
+    setMessage("请先勾选想导出的特色商品，或先筛出一批商品。", "error");
+    return;
+  }
+
+  if (exportProductPosterBtn) exportProductPosterBtn.disabled = true;
+  setMessage("正在生成报价图，请稍候...");
+
+  try {
+    const title = String(exportPosterTitleInput?.value || "").trim() || "繁星功法商城 精选报价";
+    const subtitle =
+      String(exportPosterSubtitleInput?.value || "").trim() ||
+      "热门好卡一图看清 | 残卷在上 RMB 在下";
+    const footnote =
+      String(exportPosterFootnoteInput?.value || "").trim() ||
+      "更多商品都在繁星功法商城中，购买请进商城下单";
+
+    const images = await Promise.all(products.map((product) => loadPosterImage(product.image_url)));
+    const columns =
+      products.length >= 36 ? 5 : products.length >= 16 ? 4 : products.length >= 7 ? 3 : 2;
+    const canvasWidth = columns >= 5 ? 1600 : columns === 4 ? 1440 : columns === 3 ? 1280 : 1080;
+    const outerPadding = 38;
+    const gap = 20;
+    const headerHeight = 266;
+    const footerHeight = 116;
+    const cardWidth = Math.floor(
+      (canvasWidth - outerPadding * 2 - gap * (columns - 1)) / columns
+    );
+    const imageHeight = Math.round(cardWidth * 1.03);
+    const contentHeight = 132;
+    const priceHeight = 108;
+    const cardHeight = imageHeight + contentHeight + priceHeight + 28;
+    const rows = Math.ceil(products.length / columns);
+    const canvasHeight =
+      headerHeight + rows * cardHeight + Math.max(0, rows - 1) * gap + footerHeight;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("浏览器不支持 canvas");
+
+    const bgGradient = ctx.createLinearGradient(0, 0, canvasWidth, canvasHeight);
+    bgGradient.addColorStop(0, "#fff7ef");
+    bgGradient.addColorStop(0.5, "#f7ebdc");
+    bgGradient.addColorStop(1, "#efe3d1");
+    ctx.fillStyle = bgGradient;
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    ctx.strokeStyle = "rgba(134, 105, 79, 0.06)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < canvasWidth; x += 72) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvasHeight);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(196, 85, 45, 0.08)";
+    ctx.beginPath();
+    ctx.arc(canvasWidth - 140, 88, 110, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(114, canvasHeight - 96, 132, 0, Math.PI * 2);
+    ctx.fill();
+
+    const headerPanelX = outerPadding;
+    const headerPanelY = 26;
+    const headerPanelWidth = canvasWidth - outerPadding * 2;
+    const headerPanelHeight = 194;
+    drawShadowCard(ctx, headerPanelX, headerPanelY, headerPanelWidth, headerPanelHeight, 32, "rgba(255, 251, 246, 0.9)");
+    strokeRoundedRect(ctx, headerPanelX, headerPanelY, headerPanelWidth, headerPanelHeight, 32, "rgba(125, 93, 67, 0.14)");
+
+    const brandIconX = headerPanelX + 26;
+    const brandIconY = headerPanelY + 24;
+    const brandIconSize = 48;
+    const brandIconGradient = ctx.createLinearGradient(
+      brandIconX,
+      brandIconY,
+      brandIconX + brandIconSize,
+      brandIconY + brandIconSize
+    );
+    brandIconGradient.addColorStop(0, "#1f3235");
+    brandIconGradient.addColorStop(1, "#2f666d");
+    drawShadowCard(ctx, brandIconX, brandIconY, brandIconSize, brandIconSize, 18, brandIconGradient, {
+      color: "rgba(22, 45, 48, 0.18)",
+      blur: 18,
+      offsetY: 6,
+    });
+    ctx.strokeStyle = "rgba(255, 240, 229, 0.18)";
+    ctx.lineWidth = 1;
+    createRoundedRectPath(ctx, brandIconX + 3, brandIconY + 3, brandIconSize - 6, brandIconSize - 6, 15);
+    ctx.stroke();
+    ctx.fillStyle = "#fff3e6";
+    ctx.beginPath();
+    ctx.moveTo(brandIconX + 24, brandIconY + 11);
+    ctx.lineTo(brandIconX + 29, brandIconY + 21);
+    ctx.lineTo(brandIconX + 39, brandIconY + 24);
+    ctx.lineTo(brandIconX + 29, brandIconY + 27);
+    ctx.lineTo(brandIconX + 24, brandIconY + 37);
+    ctx.lineTo(brandIconX + 19, brandIconY + 27);
+    ctx.lineTo(brandIconX + 9, brandIconY + 24);
+    ctx.lineTo(brandIconX + 19, brandIconY + 21);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#ffd6b8";
+    ctx.beginPath();
+    ctx.arc(brandIconX + 33, brandIconY + 15, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    const promoWidth = 316;
+    const promoHeight = 126;
+    const promoX = headerPanelX + headerPanelWidth - promoWidth - 24;
+    const promoY = headerPanelY + 26;
+    const headerTextX = brandIconX + brandIconSize + 16;
+    const headerTextWidth = promoX - headerTextX - 24;
+    ctx.fillStyle = "#1f1a16";
+    drawFittedText(ctx, title, headerTextX, headerPanelY + 104, headerTextWidth, {
+      weight: 700,
+      size: 58,
+      minSize: 42,
+    });
+    ctx.fillStyle = "#6b5d51";
+    drawFittedText(ctx, subtitle, headerTextX, headerPanelY + 144, headerTextWidth, {
+      weight: 500,
+      size: 25,
+      minSize: 20,
+    });
+    setPosterFont(ctx, 600, 20);
+    drawTextLine(
+      ctx,
+      `导出 ${products.length} 件${selectedProductIds.size > 0 ? "已选商品" : "当前筛选商品"} | ${new Date().toLocaleString("zh-CN")}`,
+      headerTextX,
+      headerPanelY + 176,
+      headerTextWidth
+    );
+    const promoGradient = ctx.createLinearGradient(promoX, promoY, promoX + promoWidth, promoY + promoHeight);
+    promoGradient.addColorStop(0, "#1f3235");
+    promoGradient.addColorStop(1, "#2f666d");
+    drawShadowCard(ctx, promoX, promoY, promoWidth, promoHeight, 28, promoGradient, {
+      color: "rgba(22, 45, 48, 0.22)",
+      blur: 28,
+      offsetY: 10,
+    });
+    fillRoundedRect(ctx, promoX + 18, promoY + 18, 108, 30, 15, "rgba(255, 255, 255, 0.12)");
+    ctx.fillStyle = "#fff8ef";
+    ctx.font = "700 17px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+    ctx.fillText("购买请进商城下单", promoX + 28, promoY + 39);
+    ctx.fillStyle = "#fff8ef";
+    drawFittedText(ctx, POSTER_WEBSITE, promoX + 24, promoY + 82, promoWidth - 48, {
+      weight: 700,
+      size: 30,
+      minSize: 22,
+    });
+    ctx.fillStyle = "rgba(255, 240, 229, 0.88)";
+    setPosterFont(ctx, 600, 18);
+    ctx.fillText("支持转账锁卡 / 残卷下单", promoX + 24, promoY + 110);
+
+    for (const [index, product] of products.entries()) {
+      const row = Math.floor(index / columns);
+      const column = index % columns;
+      const cardX = outerPadding + column * (cardWidth + gap);
+      const cardY = headerHeight + row * (cardHeight + gap);
+      const image = images[index];
+      const tierLabel = getAdminProductTierLabelByKey(getAdminProductTierKey(product));
+      const seasonLabel = getPosterSeasonLabel(product);
+      const attackLabel = formatPosterCompactNumber(product.attack_value || 0);
+      const hpLabel = formatPosterCompactNumber(product.hp_value || 0);
+      const priceQuota = Number(product.effective_price_quota || product.price_quota || 0);
+      const cashLabel = formatPosterCashAmount(getPosterCashAmount(priceQuota));
+      const termLabel = getPosterTermLabel(product);
+
+      drawShadowCard(ctx, cardX, cardY, cardWidth, cardHeight, 28, "rgba(255, 255, 255, 0.92)");
+      strokeRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 28, "rgba(125, 93, 67, 0.14)");
+
+      const imageX = cardX + 14;
+      const imageY = cardY + 14;
+      const imageWidth = cardWidth - 28;
+      fillRoundedRect(ctx, imageX, imageY, imageWidth, imageHeight, 22, "#f2e3cd");
+
+      if (image) {
+        ctx.save();
+        clipRoundedRect(ctx, imageX, imageY, imageWidth, imageHeight, 22);
+        drawCoverImage(ctx, image, imageX, imageY, imageWidth, imageHeight);
+        ctx.restore();
+      } else {
+        const placeholderGradient = ctx.createLinearGradient(
+          imageX,
+          imageY,
+          imageX + imageWidth,
+          imageY + imageHeight
+        );
+        placeholderGradient.addColorStop(0, "#d8b178");
+        placeholderGradient.addColorStop(1, "#596c6c");
+        fillRoundedRect(ctx, imageX, imageY, imageWidth, imageHeight, 22, placeholderGradient);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
+        ctx.font = "700 54px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+        ctx.fillText(String(product.name || "?").slice(0, 1), imageX + 22, imageY + 72);
+      }
+
+      const topInset = 12;
+      const topGap = 8;
+      const topPillY = imageY + topInset;
+      const hasDiscount = Number(product.discount_rate || 100) < 100;
+      const discountPillWidth = hasDiscount ? 106 : 0;
+
+      ctx.font = "700 20px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+      const tierPillWidth = measurePillWidth(ctx, tierLabel, 18, 92);
+      const tierPillX = imageX + topInset;
+
+      ctx.font = "700 18px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+      const seasonPillX = tierPillX + tierPillWidth + topGap;
+      const seasonAvailableWidth =
+        imageWidth - topInset * 2 - tierPillWidth - topGap - (hasDiscount ? discountPillWidth + topGap : 0);
+      const seasonPillWidth = measurePillWidth(ctx, seasonLabel, 18, 112, seasonAvailableWidth);
+
+      fillRoundedRect(ctx, tierPillX, topPillY, tierPillWidth, 36, 18, "rgba(31, 26, 22, 0.78)");
+      fillRoundedRect(ctx, seasonPillX, topPillY, seasonPillWidth, 36, 18, "rgba(255, 247, 239, 0.88)");
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 20px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+      ctx.fillText(tierLabel, tierPillX + 16, imageY + 36);
+      ctx.fillStyle = "#224e52";
+      ctx.font = "700 18px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+      drawTextLine(ctx, seasonLabel, seasonPillX + 16, imageY + 35, seasonPillWidth - 32);
+
+      if (hasDiscount) {
+        fillRoundedRect(
+          ctx,
+          imageX + imageWidth - 118,
+          imageY + 12,
+          106,
+          36,
+          18,
+          "rgba(196, 85, 45, 0.88)"
+        );
+        ctx.fillStyle = "#fff";
+        ctx.font = "700 18px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+        ctx.fillText(getDiscountLabel(product.discount_rate), imageX + imageWidth - 92, imageY + 36);
+      }
+
+      const contentX = cardX + 18;
+      const contentY = imageY + imageHeight + 32;
+      ctx.fillStyle = "#1f1a16";
+      drawFittedText(ctx, product.name || "-", contentX, contentY, cardWidth - 36, {
+        weight: 700,
+        size: 32,
+        minSize: 24,
+      });
+      ctx.fillStyle = "#6b5d51";
+      setPosterFont(ctx, 600, 21);
+      drawTextLine(
+        ctx,
+        `攻击 ${attackLabel} | 血量 ${hpLabel}`,
+        contentX,
+        contentY + 38,
+        cardWidth - 36
+      );
+      fillRoundedRect(ctx, contentX, contentY + 48, Math.min(cardWidth - 36, 180), 34, 17, "rgba(239, 232, 221, 0.92)");
+      ctx.fillStyle = "#5f5549";
+      setPosterFont(ctx, 600, 18);
+      drawTextLine(ctx, termLabel, contentX + 14, contentY + 71, cardWidth - 66);
+
+      const priceBoxY = cardY + cardHeight - priceHeight - 14;
+      fillRoundedRect(ctx, cardX + 14, priceBoxY, cardWidth - 28, priceHeight, 24, "#204246");
+      fillRoundedRect(ctx, cardX + 18, priceBoxY + 52, cardWidth - 36, 42, 18, "rgba(255, 255, 255, 0.08)");
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.74)";
+      setPosterFont(ctx, 700, 16);
+      ctx.fillText("残卷价", cardX + 28, priceBoxY + 26);
+      ctx.fillText("RMB", cardX + 28, priceBoxY + 80);
+      ctx.fillStyle = "#fff8ef";
+      drawFittedText(
+        ctx,
+        `${formatPosterCompactNumber(priceQuota)} 残卷`,
+        cardX + 102,
+        priceBoxY + 34,
+        cardWidth - 144,
+        {
+          weight: 700,
+          size: 34,
+          minSize: 24,
+        }
+      );
+      ctx.fillStyle = "#ffd1b8";
+      drawFittedText(ctx, cashLabel, cardX + 102, priceBoxY + 83, cardWidth - 144, {
+        weight: 700,
+        size: 32,
+        minSize: 24,
+      });
+    }
+
+    const footerBarY = canvasHeight - 84;
+    const footerBarHeight = 52;
+    drawShadowCard(ctx, outerPadding, footerBarY, canvasWidth - outerPadding * 2, footerBarHeight, 26, "rgba(255, 250, 244, 0.92)", {
+      color: "rgba(84, 55, 28, 0.08)",
+      blur: 20,
+      offsetY: 6,
+    });
+    strokeRoundedRect(ctx, outerPadding, footerBarY, canvasWidth - outerPadding * 2, footerBarHeight, 26, "rgba(125, 93, 67, 0.12)");
+    ctx.fillStyle = "#6b5d51";
+    setPosterFont(ctx, 500, 20);
+    drawTextLine(ctx, footnote, outerPadding + 24, footerBarY + 33, canvasWidth - outerPadding * 2 - 400);
+    const footerWebsiteText = `商城网址：${POSTER_WEBSITE}`;
+    setPosterFont(ctx, 700, 20);
+    const websiteBadgeWidth = Math.max(314, Math.ceil(ctx.measureText(footerWebsiteText).width + 44));
+    const websiteBadgeX = canvasWidth - outerPadding - websiteBadgeWidth - 12;
+    fillRoundedRect(ctx, websiteBadgeX, footerBarY + 8, websiteBadgeWidth, 36, 18, "#1f3235");
+    ctx.fillStyle = "#fff6eb";
+    drawFittedText(ctx, footerWebsiteText, websiteBadgeX + 20, footerBarY + 32, websiteBadgeWidth - 40, {
+      weight: 700,
+      size: 20,
+      minSize: 16,
+    });
+
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = `gongfa-poster-${Date.now()}.png`;
+    link.click();
+    const selectedCount = allProducts.filter((product) => selectedProductIds.has(Number(product.id))).length;
+    const suffix =
+      selectedCount > POSTER_EXPORT_LIMIT
+        ? `，已按上限导出前 ${POSTER_EXPORT_LIMIT} 件`
+        : "";
+    setMessage(`报价图已导出，共 ${products.length} 件商品${suffix}。`, "success");
+  } catch (error) {
+    setMessage(`报价图导出失败：${pickErrorMessage(error, "请稍后再试")}`, "error");
+  } finally {
+    if (exportProductPosterBtn) exportProductPosterBtn.disabled = false;
+  }
 }
 
 function getFilteredUsers() {
@@ -800,9 +2090,13 @@ function getFilteredUsers() {
 
 function renderProducts(products) {
   const pagedProducts = sliceLocalPage(products, "products");
+  const canWrite = hasAdminWriteAccess();
 
   if (!products.length) {
-    productsRoot.innerHTML = '<div class="stack-item">当前筛选条件下没有商品。</div>';
+    productsRoot.innerHTML =
+      activeAdminProductCategory === "bundle"
+        ? '<div class="stack-item">套餐请在下方“套餐 SKU”模块里管理，这里只展示单卡商品。</div>'
+        : '<div class="stack-item">当前筛选条件下没有商品。</div>';
     renderPagination(productsPaginationRoot, "products", paginationState.products);
     syncProductSummary(products);
     return;
@@ -846,6 +2140,7 @@ function renderProducts(products) {
                 <div>Terms: ${escapeHtml(product.ext_attrs || "none")}</div>
                 <div>Stock: ${Number(product.stock || 0)} / Base price: ${basePrice}</div>
                 <div>Discount: ${escapeHtml(getDiscountLabel(discountRate))} / Final: ${effectivePrice}</div>
+                <div>Auction: ${product.auction_id ? `#${Number(product.auction_id)} / ${escapeHtml(product.auction_status || "-")} / ${escapeHtml(formatDate(product.auction_ends_at || ""))}` : "none"}</div>
                 <div>Pricing: ${pricingLabel} / Reason: ${escapeHtml(dominantLabel)}</div>
                 <div>Floor: ${floorPrice} / Auto: ${autoPrice} / Manual: ${manualPrice}</div>
                 <div>Market factor: ${marketFactor}</div>
@@ -853,31 +2148,41 @@ function renderProducts(products) {
               ${renderPricingSummary(product, pricingMeta)}
             </div>
           </div>
-          <div class="inline-form">
-            <input data-field="name" value="${escapeHtml(product.name)}" />
-            <input data-field="price_quota" type="number" value="${Number(product.price_quota || 0)}" />
-            <input data-field="discount_rate" type="number" min="1" max="100" value="${discountRate}" placeholder="折扣率" />
-            <input data-field="stock" type="number" value="${Number(product.stock || 0)}" />
-            <select data-field="status">
-              ${["draft", "on_sale", "off_sale", "sold"]
-                .map(
-                  (status) =>
-                    `<option value="${status}" ${product.status === status ? "selected" : ""}>${status}</option>`
-                )
-                .join("")}
-            </select>
-          </div>
-          <div class="inline-form">
-            <input data-field="external-buyer-label" type="text" placeholder="外部交易对象，例如微信直卖 / 熟人代拍" />
-            <input data-field="external-order-remark" type="text" placeholder="外部成交备注，可选" />
-            <button class="danger create-external-order-btn" type="button">记外部成交</button>
-          </div>
-          <div class="actions">
-            <button class="ghost view-product-detail-btn" type="button">查看详情</button>
-            <button class="primary save-product-btn" type="button">保存商品</button>
-            <button class="ghost save-status-btn" type="button">仅更新状态</button>
-            <button class="ghost clear-manual-price-btn" type="button">恢复自动价</button>
-          </div>
+          ${
+            canWrite
+              ? `
+                  <div class="inline-form">
+                    <input data-field="name" value="${escapeHtml(product.name)}" />
+                    <input data-field="price_quota" type="number" value="${Number(product.price_quota || 0)}" />
+                    <input data-field="discount_rate" type="number" min="1" max="100" value="${discountRate}" placeholder="折扣率" />
+                    <input data-field="stock" type="number" value="${Number(product.stock || 0)}" />
+                    <select data-field="status">
+                      ${["draft", "on_sale", "off_sale", "sold"]
+                        .map(
+                          (status) =>
+                            `<option value="${status}" ${product.status === status ? "selected" : ""}>${status}</option>`
+                        )
+                        .join("")}
+                    </select>
+                  </div>
+                  <div class="inline-form">
+                    <input data-field="external-buyer-label" type="text" placeholder="外部交易对象，例如微信直卖 / 熟人代拍" />
+                    <input data-field="external-order-remark" type="text" placeholder="外部成交备注，可选" />
+                    <button class="danger create-external-order-btn" type="button">记外部成交</button>
+                  </div>
+                  <div class="actions">
+                    <button class="ghost view-product-detail-btn" type="button">查看详情</button>
+                    <button class="primary save-product-btn" type="button">保存商品</button>
+                    <button class="ghost save-status-btn" type="button">仅更新状态</button>
+                    <button class="ghost clear-manual-price-btn" type="button">恢复自动价</button>
+                  </div>
+                `
+              : `
+                  <div class="actions">
+                    <button class="ghost view-product-detail-btn" type="button">查看详情</button>
+                  </div>
+                `
+          }
         </div>
       `;
     })
@@ -889,6 +2194,7 @@ function renderProducts(products) {
 
 function renderUsers(users) {
   const pagedUsers = sliceLocalPage(users, "users");
+  const canWrite = hasAdminWriteAccess();
 
   if (!users.length) {
     usersRoot.innerHTML = '<div class="stack-item">没有匹配到用户。</div>';
@@ -910,22 +2216,32 @@ function renderUsers(users) {
             <div>账号状态：${escapeHtml(user.status || "-")}</div>
             <div>昵称：${escapeHtml(user.nickname || "-")}</div>
           </div>
-          <div class="inline-form">
-            <input data-field="change_amount" type="number" placeholder="额度增减，可填负数" />
-            <input data-field="remark" type="text" placeholder="备注" />
-          </div>
-          <div class="actions tight">
-            <button class="ghost quick-quota-btn" type="button" data-amount="1000">+1000</button>
-            <button class="ghost quick-quota-btn" type="button" data-amount="5000">+5000</button>
-            <button class="ghost quick-quota-btn" type="button" data-amount="10000">+10000</button>
-            <button class="ghost view-user-orders-btn" type="button">查看订单</button>
-          </div>
-          <div class="actions">
-            <button class="primary save-quota-btn" type="button">调整额度</button>
-            <button class="ghost toggle-status-btn" type="button">${
-              user.status === "active" ? "禁用" : "启用"
-            }</button>
-          </div>
+          ${
+            canWrite
+              ? `
+                  <div class="inline-form">
+                    <input data-field="change_amount" type="number" placeholder="额度增减，可填负数" />
+                    <input data-field="remark" type="text" placeholder="备注" />
+                  </div>
+                  <div class="actions tight">
+                    <button class="ghost quick-quota-btn" type="button" data-amount="1000">+1000</button>
+                    <button class="ghost quick-quota-btn" type="button" data-amount="5000">+5000</button>
+                    <button class="ghost quick-quota-btn" type="button" data-amount="10000">+10000</button>
+                    <button class="ghost view-user-orders-btn" type="button">查看订单</button>
+                  </div>
+                  <div class="actions">
+                    <button class="primary save-quota-btn" type="button">调整额度</button>
+                    <button class="ghost toggle-status-btn" type="button">${
+                      user.status === "active" ? "禁用" : "启用"
+                    }</button>
+                  </div>
+                `
+              : `
+                  <div class="actions">
+                    <button class="ghost view-user-orders-btn" type="button">查看订单</button>
+                  </div>
+                `
+          }
         </div>
       `
     )
@@ -936,6 +2252,7 @@ function renderUsers(users) {
 
 function renderBundles(bundles) {
   const pagedBundles = sliceLocalPage(bundles, "bundles");
+  const canWrite = hasAdminWriteAccess();
 
   if (!bundles.length) {
     bundlesRoot.innerHTML = '<div class="stack-item">暂无套餐 SKU。</div>';
@@ -960,40 +2277,46 @@ function renderBundles(bundles) {
             }</div>
             <div>显示顺序：${Number(bundle.display_rank || 999)}</div>
           </div>
-          <div class="inline-form">
-            <input data-field="name" value="${escapeHtml(bundle.name)}" />
-            <input data-field="description" value="${escapeHtml(bundle.description || "")}" />
-            <input
-              data-field="tags"
-              value="${escapeHtml((bundle.tags || []).join(", "))}"
-              placeholder="标签，逗号分隔"
-            />
-            <input data-field="price_quota" type="number" value="${Number(bundle.price_quota || 0)}" />
-            <input
-              data-field="stock"
-              type="text"
-              value="${bundle.stock === null || bundle.stock === undefined ? "" : Number(bundle.stock)}"
-              placeholder="留空表示不限量"
-            />
-            <input
-              data-field="display_rank"
-              type="number"
-              value="${Number(bundle.display_rank || 999)}"
-              placeholder="排序"
-            />
-            <select data-field="status">
-              ${["on_sale", "off_sale", "sold"]
-                .map(
-                  (status) =>
-                    `<option value="${status}" ${bundle.status === status ? "selected" : ""}>${status}</option>`
-                )
-                .join("")}
-            </select>
-          </div>
-          <div class="actions">
-            <button class="primary save-bundle-btn" type="button">保存套餐</button>
-            <button class="ghost save-bundle-status-btn" type="button">仅更新状态</button>
-          </div>
+          ${
+            canWrite
+              ? `
+                  <div class="inline-form">
+                    <input data-field="name" value="${escapeHtml(bundle.name)}" />
+                    <input data-field="description" value="${escapeHtml(bundle.description || "")}" />
+                    <input
+                      data-field="tags"
+                      value="${escapeHtml((bundle.tags || []).join(", "))}"
+                      placeholder="标签，逗号分隔"
+                    />
+                    <input data-field="price_quota" type="number" value="${Number(bundle.price_quota || 0)}" />
+                    <input
+                      data-field="stock"
+                      type="text"
+                      value="${bundle.stock === null || bundle.stock === undefined ? "" : Number(bundle.stock)}"
+                      placeholder="留空表示不限量"
+                    />
+                    <input
+                      data-field="display_rank"
+                      type="number"
+                      value="${Number(bundle.display_rank || 999)}"
+                      placeholder="排序"
+                    />
+                    <select data-field="status">
+                      ${["on_sale", "off_sale", "sold"]
+                        .map(
+                          (status) =>
+                            `<option value="${status}" ${bundle.status === status ? "selected" : ""}>${status}</option>`
+                        )
+                        .join("")}
+                    </select>
+                  </div>
+                  <div class="actions">
+                    <button class="primary save-bundle-btn" type="button">保存套餐</button>
+                    <button class="ghost save-bundle-status-btn" type="button">仅更新状态</button>
+                  </div>
+                `
+              : ""
+          }
         </div>
       `
     )
@@ -1035,6 +2358,7 @@ function formatRechargeChannelLabel(channel) {
 function renderRechargeOrders(orders) {
   currentRechargeOrderList = orders;
   renderOverview();
+  const canWrite = hasAdminWriteAccess();
 
   if (!adminRechargeOrdersRoot) return;
   if (!orders.length) {
@@ -1067,21 +2391,33 @@ function renderRechargeOrders(orders) {
           </div>
           ${order.payer_note ? `<div class="muted">用户备注：${escapeHtml(order.payer_note)}</div>` : ""}
           ${order.admin_remark ? `<div class="muted">管理员备注：${escapeHtml(order.admin_remark)}</div>` : ""}
-          <div class="inline-form order-toolbar">
-            <input
-              data-field="admin_remark"
-              type="text"
-              value="${escapeHtml(order.admin_remark || "")}"
-              placeholder="填写审核备注，例如已核对付款截图"
-            />
-          </div>
+          ${
+            canWrite
+              ? `
+                  <div class="inline-form order-toolbar">
+                    <input
+                      data-field="admin_remark"
+                      type="text"
+                      value="${escapeHtml(order.admin_remark || "")}"
+                      placeholder="填写审核备注，例如已核对付款截图"
+                    />
+                  </div>
+                `
+              : ""
+          }
           ${statusHint}
-          <div class="actions">
-            ${order.status === "pending_review" ? `
-              <button class="primary approve-recharge-order-btn" type="button">审核通过并加额度</button>
-              <button class="danger reject-recharge-order-btn" type="button">驳回申请</button>
-            ` : '<button class="ghost" type="button" disabled>已处理</button>'}
-          </div>
+          ${
+            canWrite
+              ? `
+                  <div class="actions">
+                    ${order.status === "pending_review" ? `
+                      <button class="primary approve-recharge-order-btn" type="button">审核通过并加额度</button>
+                      <button class="danger reject-recharge-order-btn" type="button">驳回申请</button>
+                    ` : '<button class="ghost" type="button" disabled>已处理</button>'}
+                  </div>
+                `
+              : ""
+          }
         </div>
       `;
     })
@@ -1210,6 +2546,7 @@ function renderQuotaLogs(logs) {
 function renderOrders(orders) {
   currentOrderList = Array.isArray(orders) ? orders : [];
   renderOverview();
+  const canWrite = hasAdminWriteAccess();
 
   if (!ordersRoot) return;
   if (!currentOrderList.length) {
@@ -1244,7 +2581,7 @@ function renderOrders(orders) {
         isDrawServiceOrder(order) && drawMeta
           ? `
               ${
-                order.status === "pending"
+                order.status === "pending" && canWrite
                   ? `
                       <div class="inline-form order-toolbar">
                         <textarea
@@ -1312,6 +2649,13 @@ function renderOrders(orders) {
             <div>用户：${escapeHtml(order.game_role_name || "-")} / ${escapeHtml(order.game_server || "-")} / ${escapeHtml(order.game_role_id || "-")}</div>
             <div>来源：${escapeHtml(getOrderSourceLabel(order))}${order.buyer_label ? ` / 对象：${escapeHtml(order.buyer_label)}` : ""}</div>
             <div>订单总额：${Number(order.total_quota || 0)} 额度</div>
+            ${
+              order.order_source === "guest_transfer"
+                ? String(order.payment_channel || "") === "game_residual_transfer"
+                  ? `<div>转赠数量：${Number(order.transfer_amount || 0)} ${escapeHtml(order.transfer_unit || "残卷")} / 目标：${escapeHtml(order.transfer_target_role_name || "admin残卷")} / ${escapeHtml(order.transfer_target_role_id || "-")} / 转赠时间：${escapeHtml(order.payment_reference || "-")}</div>`
+                  : `<div>转账金额：${Number(order.payment_amount_yuan || 0)} 元 / 方式：${escapeHtml(formatRechargeChannelLabel(order.payment_channel || "alipay_qr"))} / 付款时间：${escapeHtml(order.payment_reference || "-")}</div>`
+                : ""
+            }
             <div>创建时间：${formatDate(order.created_at)}</div>
             ${
               isDrawServiceOrder(order) && drawMeta
@@ -1321,18 +2665,22 @@ function renderOrders(orders) {
           </div>
           ${order.cancel_reason ? `<div class="muted">取消原因：${escapeHtml(order.cancel_reason)}</div>` : ""}
           <div class="order-item-list">${itemLines}</div>
-          <div class="inline-form order-toolbar">
-            <input
-              data-field="remark"
-              type="text"
-              value="${escapeHtml(order.remark || "")}"
-              placeholder="填写后台备注或处理说明"
-            />
-          </div>
+          ${
+            canWrite
+              ? `
+                  <div class="inline-form order-toolbar">
+                    <input
+                      data-field="remark"
+                      type="text"
+                      value="${escapeHtml(order.remark || "")}"
+                      placeholder="填写后台备注或处理说明"
+                    />
+                  </div>
+                `
+              : `<div class="muted">后台备注：${escapeHtml(order.remark || "-")}</div>`
+          }
           ${drawFields}
-          <div class="actions">
-            ${actionButtons}
-          </div>
+          ${canWrite ? `<div class="actions">${actionButtons}</div>` : ""}
         </div>
       `;
     })
@@ -1404,6 +2752,26 @@ async function loadRechargeConfig() {
   renderRechargeConfig(config);
 }
 
+async function loadAuctions() {
+  const status = adminAuctionStatusFilter?.value || "all";
+  const query = new URLSearchParams();
+  if (status && status !== "all") {
+    query.set("status", status);
+  }
+  const suffix = query.toString();
+  try {
+    const auctions = await apiFetch(`/admin/auctions${suffix ? `?${suffix}` : ""}`);
+    renderAuctions(Array.isArray(auctions) ? auctions : []);
+  } catch (error) {
+    if (pickErrorMessage(error) === "Not Found") {
+      currentAuctionList = [];
+      renderAuctions([]);
+      return;
+    }
+    throw error;
+  }
+}
+
 async function loadOverviewCounts() {
   try {
     const [pendingOrders, cancelOrders, rechargeReviewOrders] = await Promise.all([
@@ -1429,10 +2797,10 @@ async function loadOverviewCounts() {
 
 async function loadBaseAdminData() {
   const profile = await apiFetch("/auth/me");
-  const isAdmin = renderSession(profile);
-  if (!isAdmin) {
+  const access = renderSession(profile);
+  if (!access.canRead) {
     clearAdminAlerts();
-    setMessage("当前账号不是 admin，后台接口会返回 403。", "error");
+    setMessage("当前账号没有后台查看权限。", "error");
     adminOverview.innerHTML = "";
     return false;
   }
@@ -1449,7 +2817,9 @@ async function loadBaseAdminData() {
   allUsers = users;
   currentRechargeConfig = rechargeConfig;
 
+  syncAdminProductFilters();
   renderProducts(getFilteredProducts());
+  await loadAuctions();
   renderBundles(allBundles);
   renderUsers(getFilteredUsers());
   renderRechargeConfig(rechargeConfig);
@@ -1458,6 +2828,9 @@ async function loadBaseAdminData() {
   markPageLoaded("imports");
   markPageLoaded("catalog");
   markPageLoaded("users");
+  if (isAdminReadOnlyMode(profile)) {
+    setMessage("当前账号为只读海报权限，可查看后台信息并导出广告图。", "success");
+  }
   return true;
 }
 
@@ -1488,11 +2861,22 @@ async function loadAdminPage(page, { force = false } = {}) {
 async function reloadAll() {
   try {
     loadedAdminPages.clear();
-    const isAdmin = await loadBaseAdminData();
-    if (!isAdmin) return;
+    const canRead = await loadBaseAdminData();
+    if (!canRead) return;
     await activateAdminPage(activeAdminPage, { force: true });
-    setMessage("后台数据已刷新。", "success");
+    setMessage(
+      isAdminReadOnlyMode()
+        ? "后台数据已刷新。当前账号为只读海报权限。"
+        : "后台数据已刷新。",
+      "success"
+    );
   } catch (error) {
+    if (pickErrorMessage(error) === "missing_token") {
+      renderSession(null);
+      adminOverview.innerHTML = "";
+      setMessage("", "");
+      return;
+    }
     renderSession(null);
     adminOverview.innerHTML = "";
     setMessage(`后台加载失败：${pickErrorMessage(error, "加载失败")}`, "error");
@@ -1536,6 +2920,7 @@ function logoutAdmin() {
 
 async function submitImport(event) {
   event.preventDefault();
+  if (!guardAdminWriteAccess()) return;
   markDebugAction("import_click");
   if (importSubmitBtn) {
     importSubmitBtn.disabled = true;
@@ -1580,6 +2965,7 @@ async function loadSampleJson() {
 }
 
 async function bulkUpdateSelectedProducts(status) {
+  if (!guardAdminWriteAccess()) return;
   const productIds = [...selectedProductIds];
   if (productIds.length === 0) {
     setMessage("请先选择商品。", "error");
@@ -1602,6 +2988,7 @@ async function bulkUpdateSelectedProducts(status) {
 }
 
 async function bulkPatchSelectedProducts(patch) {
+  if (!guardAdminWriteAccess()) return;
   const productIds = [...selectedProductIds];
   if (productIds.length === 0) {
     setMessage("请先选择商品。", "error");
@@ -1624,6 +3011,7 @@ async function bulkPatchSelectedProducts(patch) {
 }
 
 async function restoreDiscountForProducts(products) {
+  if (!guardAdminWriteAccess()) return;
   const productIds = [...new Set((products || []).map((product) => Number(product.id)).filter(Boolean))];
   if (productIds.length === 0) {
     setMessage("当前没有可恢复原价的商品。", "error");
@@ -1667,6 +3055,7 @@ function applyRandomSelection() {
 }
 
 async function applyRandomDiscount() {
+  if (!guardAdminWriteAccess()) return;
   const discountRate = parseDiscountRateInputValue(randomDiscountRateInput?.value);
   if (!discountRate) {
     setMessage("随机折扣率必须是 1 到 100 之间的整数。", "error");
@@ -1692,6 +3081,7 @@ productsRoot.addEventListener("click", async (event) => {
       openProductModal(product);
       return;
     }
+    if (!guardAdminWriteAccess()) return;
 
     if (event.target.closest(".save-product-btn")) {
       await apiFetch(`/admin/products/${productId}`, {
@@ -1762,9 +3152,61 @@ productsRoot.addEventListener("change", (event) => {
   syncProductSummary(getFilteredProducts());
 });
 
+auctionsRoot?.addEventListener("click", async (event) => {
+  const card = event.target.closest("[data-auction-id]");
+  if (!card) return;
+  if (!guardAdminWriteAccess()) return;
+  const auctionId = Number(card.getAttribute("data-auction-id") || 0);
+  const remark = card.querySelector('[data-field="auction-remark"]')?.value?.trim() || "";
+  const reason = card.querySelector('[data-field="auction-reason"]')?.value?.trim() || "";
+
+  try {
+    if (event.target.closest(".reload-single-auction-btn")) {
+      await loadAuctions();
+      setMessage(`拍卖 #${auctionId} 已刷新。`, "success");
+      return;
+    }
+
+    if (event.target.closest(".settle-auction-direct-btn")) {
+      await apiFetch(`/admin/auctions/${auctionId}/settle`, {
+        method: "POST",
+        body: JSON.stringify({ remark: remark || null, settlement_mode: "direct_quota" }),
+      });
+      setMessage(`拍卖 #${auctionId} 已扣额度并结算。`, "success");
+      await reloadAll();
+      return;
+    }
+
+    if (event.target.closest(".settle-auction-offline-btn")) {
+      await apiFetch(`/admin/auctions/${auctionId}/settle`, {
+        method: "POST",
+        body: JSON.stringify({ remark: remark || null, settlement_mode: "offline" }),
+      });
+      setMessage(`拍卖 #${auctionId} 已按线下支付方式结算。`, "success");
+      await reloadAll();
+      return;
+    }
+
+    if (event.target.closest(".cancel-auction-btn")) {
+      await apiFetch(`/admin/auctions/${auctionId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({
+          reason: reason || null,
+          remark: remark || null,
+        }),
+      });
+      setMessage(`拍卖 #${auctionId} 已流拍。`, "success");
+      await reloadAll();
+    }
+  } catch (error) {
+    setMessage(`拍卖操作失败：${pickErrorMessage(error, "操作失败")}`, "error");
+  }
+});
+
 bundlesRoot.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-bundle-id]");
   if (!card) return;
+  if (!guardAdminWriteAccess()) return;
   const bundleId = Number(card.getAttribute("data-bundle-id"));
 
   try {
@@ -1827,6 +3269,7 @@ usersRoot.addEventListener("click", async (event) => {
       setMessage(`已切换到用户 ${user?.game_role_name || userId} 的订单视图。`, "success");
       return;
     }
+    if (!guardAdminWriteAccess()) return;
 
     if (event.target.closest(".quick-quota-btn")) {
       const amount = Number(event.target.closest(".quick-quota-btn").dataset.amount || 0);
@@ -1872,6 +3315,7 @@ usersRoot.addEventListener("click", async (event) => {
 adminRechargeOrdersRoot?.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-recharge-order-id]");
   if (!card) return;
+  if (!guardAdminWriteAccess()) return;
   const rechargeOrderId = Number(card.getAttribute("data-recharge-order-id"));
   const adminRemark = card.querySelector('[data-field="admin_remark"]')?.value?.trim() || "";
 
@@ -1914,6 +3358,7 @@ adminWechatQrImageUrlInput?.addEventListener("input", () => {
 
 adminRechargeConfigForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!guardAdminWriteAccess()) return;
 
   const presetAmounts = String(adminRechargePresetsInput.value || "")
     .split(",")
@@ -1972,6 +3417,7 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
 ordersRoot.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-order-id]");
   if (!card) return;
+  if (!guardAdminWriteAccess()) return;
   const orderId = Number(card.getAttribute("data-order-id"));
   const remark = card.querySelector('[data-field="remark"]').value.trim();
   const returnedCardsText =
@@ -2128,8 +3574,59 @@ document.getElementById("random-select-products-btn")?.addEventListener("click",
 document.getElementById("random-discount-btn")?.addEventListener("click", () => {
   applyRandomDiscount();
 });
+smartSelectHotProductsBtn?.addEventListener("click", () => {
+  autoSelectPosterProducts("hot");
+});
+smartSelectBudgetProductsBtn?.addEventListener("click", () => {
+  autoSelectPosterProducts("budget");
+});
+smartSelectMixedProductsBtn?.addEventListener("click", () => {
+  autoSelectMixedPosterProducts();
+});
+exportProductPosterBtn?.addEventListener("click", () => {
+  exportSelectedProductsPoster();
+});
+document.getElementById("reload-auctions-btn")?.addEventListener("click", () => {
+  loadAuctions().catch((error) => setMessage(`拍卖加载失败：${pickErrorMessage(error)}`, "error"));
+});
+document.getElementById("admin-create-auction-btn")?.addEventListener("click", async () => {
+  if (!guardAdminWriteAccess()) return;
+  const product = getSelectedAuctionProduct();
+  if (!product) {
+    setMessage("开拍前请先只选中一张商品。", "error");
+    return;
+  }
+  if (product.auction_id) {
+    setMessage("这张卡已经在拍卖流程里了。", "error");
+    return;
+  }
+
+  try {
+    await apiFetch("/admin/auctions", {
+      method: "POST",
+      body: JSON.stringify({
+        product_id: Number(product.id),
+        title: adminAuctionTitleInput?.value?.trim() || null,
+        starting_price_quota: Number(adminAuctionStartingPriceInput?.value),
+        min_increment_quota: Number(adminAuctionMinIncrementInput?.value),
+        starts_at: adminAuctionStartAtInput?.value
+          ? new Date(adminAuctionStartAtInput.value).toISOString()
+          : null,
+        ends_at: adminAuctionEndAtInput?.value
+          ? new Date(adminAuctionEndAtInput.value).toISOString()
+          : null,
+        remark: adminAuctionRemarkInput?.value?.trim() || null,
+      }),
+    });
+    setMessage(`商品 #${product.id} 已开拍。`, "success");
+    await reloadAll();
+  } catch (error) {
+    setMessage(`开拍失败：${pickErrorMessage(error, "开拍失败")}`, "error");
+  }
+});
 
 recalculatePricingBtn?.addEventListener("click", async () => {
+  if (!guardAdminWriteAccess()) return;
   try {
     const result = await apiFetch("/admin/pricing/recalculate", { method: "POST" });
     setMessage(`定价已重算，共处理 ${result.product_count} 个商品。`, "success");
@@ -2140,14 +3637,60 @@ recalculatePricingBtn?.addEventListener("click", async () => {
 });
 
 adminProductKeywordInput?.addEventListener("input", () => {
+  syncAdminProductFilters();
   resetPagedState("products");
   renderProducts(getFilteredProducts());
 });
 adminProductStatusFilter?.addEventListener("change", () => {
+  syncAdminProductFilters();
   resetPagedState("products");
   renderProducts(getFilteredProducts());
 });
 adminProductDiscountFilter?.addEventListener("change", () => {
+  syncAdminProductFilters();
+  resetPagedState("products");
+  renderProducts(getFilteredProducts());
+});
+adminProductCategoryTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-admin-product-category]");
+  if (!button) return;
+  activeAdminProductCategory = button.getAttribute("data-admin-product-category") || "all";
+  activeAdminProductSubcategory = "all";
+  activeAdminProductDetail = "all";
+  activeAdminProductFullness = "all";
+  syncAdminProductFilters();
+  resetPagedState("products");
+  renderProducts(getFilteredProducts());
+  if (activeAdminProductCategory === "bundle") {
+    document.getElementById("bundles")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setMessage("套餐入口在下方的套餐 SKU 模块。", "success");
+  }
+});
+adminProductSubcategoryTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-admin-product-subcategory]");
+  if (!button) return;
+  activeAdminProductSubcategory =
+    button.getAttribute("data-admin-product-subcategory") || "all";
+  activeAdminProductDetail = "all";
+  activeAdminProductFullness = "all";
+  syncAdminProductFilters();
+  resetPagedState("products");
+  renderProducts(getFilteredProducts());
+});
+adminProductDetailTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-admin-product-detail]");
+  if (!button) return;
+  activeAdminProductDetail = button.getAttribute("data-admin-product-detail") || "all";
+  activeAdminProductFullness = "all";
+  syncAdminProductFilters();
+  resetPagedState("products");
+  renderProducts(getFilteredProducts());
+});
+adminProductFullnessTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-admin-product-fullness]");
+  if (!button) return;
+  activeAdminProductFullness =
+    button.getAttribute("data-admin-product-fullness") || "all";
   resetPagedState("products");
   renderProducts(getFilteredProducts());
 });
@@ -2323,7 +3866,7 @@ document.addEventListener("click", (event) => {
   }
 });
 
-markDebugAction("page_loaded_v20260317m");
+markDebugAction("page_loaded_v20260320a");
 markDebugSession(loadSession()?.token ? "token_present" : "no_token");
 markDebugError("none");
 window.__adminModuleReady = true;

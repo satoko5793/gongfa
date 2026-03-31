@@ -15,8 +15,12 @@ const discountProductGrid = document.getElementById("discount-product-grid");
 const discountProductPagination = document.getElementById("discount-product-pagination");
 const productCategoryTabs = document.getElementById("product-category-tabs");
 const productSubcategoryTabs = document.getElementById("product-subcategory-tabs");
+const productDetailTabs = document.getElementById("product-detail-tabs");
+const productFullnessTabs = document.getElementById("product-fullness-tabs");
 const discountCategoryTabs = document.getElementById("discount-category-tabs");
 const discountSubcategoryTabs = document.getElementById("discount-subcategory-tabs");
+const discountDetailTabs = document.getElementById("discount-detail-tabs");
+const discountFullnessTabs = document.getElementById("discount-fullness-tabs");
 const productPagination = document.getElementById("product-pagination");
 const productsSection = document.getElementById("products");
 const keywordInput = document.getElementById("product-keyword-input");
@@ -32,6 +36,9 @@ const bindMessage = document.getElementById("bind-message");
 const bindSection = document.getElementById("bind");
 const accountSection = document.getElementById("account");
 const auctionZoneSection = document.getElementById("auction-zone");
+const auctionStatusTabs = document.getElementById("auction-status-tabs");
+const auctionBody = document.getElementById("auction-body");
+const auctionMessage = document.getElementById("auction-message");
 const drawServiceZoneSection = document.getElementById("draw-service-zone");
 const drawServiceBody = document.getElementById("draw-service-body");
 const drawServiceMessage = document.getElementById("draw-service-message");
@@ -97,8 +104,12 @@ let activeItemId = null;
 let activeItemKind = "card";
 let activeCategory = "all";
 let activeSubcategory = "all";
+let activeDetail = "all";
+let activeFullness = "all";
 let activeDiscountCategory = "all";
 let activeDiscountSubcategory = "all";
+let activeDiscountDetail = "all";
+let activeDiscountFullness = "all";
 let currentRechargeConfig = null;
 let publicRechargeConfig = null;
 let currentRechargeOrders = [];
@@ -107,6 +118,7 @@ let currentQuota = null;
 let selectedRechargeAmount = null;
 let selectedRechargeOrderType = "normal";
 let selectedRechargePaymentChannel = "alipay_qr";
+let selectedGuestTransferPaymentChannel = "alipay_qr";
 let pendingDirectPurchaseContext = null;
 let selectedDrawServiceAmount = 200;
 let productSearchTimer = null;
@@ -116,6 +128,9 @@ let activeAccountTab = "overview";
 let activeDockTarget = "products";
 let activeGuidePage = "tutorial";
 let recentSalesItems = [];
+let currentAuctions = [];
+let currentAuctionBidSummaries = [];
+let activeAuctionStatus = "live";
 const productPaginationState = {
   page: 1,
   pageSize: 12,
@@ -134,6 +149,7 @@ const DRAW_SERVICE_STEP_QUOTA = 200;
 const DRAW_SERVICE_MILESTONE_QUOTA = 50000;
 const DRAW_SERVICE_FIRST_REBATE_QUOTA = 10000;
 const DRAW_SERVICE_REPEAT_REBATE_QUOTA = 5000;
+const AUCTION_COUNTDOWN_TICK_MS = 1000;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -399,7 +415,7 @@ function syncDockWithViewport() {
 
 function updateShellVisibility(profile) {
   const loggedIn = Boolean(profile);
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = profile?.role === "admin" || profile?.role === "poster_admin";
   const canChangePassword = loggedIn && profile?.auth_provider === "password";
   navBindLink?.classList.toggle("hidden", loggedIn);
   navAdminLink?.classList.toggle("hidden", !isAdmin);
@@ -462,7 +478,13 @@ function renderSessionSummary(profile) {
   sessionSummary.textContent = profile.game_role_name || "已登录";
   const authLabel = profile.auth_provider === "password" ? "密码登录" : "绑定登录";
   const serverText = profile.game_server || "未填写区服";
-  sessionRole.textContent = `${serverText} / ${profile.role} / ${authLabel}`;
+  const roleLabel =
+    profile.role === "admin"
+      ? "管理员"
+      : profile.role === "poster_admin"
+        ? "海报后台"
+        : profile.role || "用户";
+  sessionRole.textContent = `${serverText} / ${roleLabel} / ${authLabel}`;
   fillAccountForms(profile);
 }
 
@@ -481,7 +503,7 @@ function getTierKey(product) {
   return "green";
 }
 
-function getTierLabel(product) {
+function getTierLabelByKey(key) {
   const mapping = {
     bundle: "套餐",
     gold: "金卡",
@@ -491,7 +513,11 @@ function getTierLabel(product) {
     blue: "蓝卡",
     green: "绿卡",
   };
-  return mapping[getTierKey(product)] || "商品";
+  return mapping[key] || "商品";
+}
+
+function getTierLabel(product) {
+  return getTierLabelByKey(getTierKey(product));
 }
 
 function isCurrentSeasonProduct(product) {
@@ -511,20 +537,25 @@ function getProductCategory(product) {
   return getTierKey(product);
 }
 
+function isSeasonCategory(category) {
+  return category === "current_season" || category === "legacy_season";
+}
+
+function getTopCategoryKey(product) {
+  if (isBundle(product)) return "bundle";
+  return isCurrentSeasonProduct(product) ? "current_season" : "legacy_season";
+}
+
 function buildCategoryEntries(products) {
   const labels = {
     all: "全部",
+    current_season: "本赛季",
+    legacy_season: "往赛季",
     bundle: "套餐",
-    gold: "金卡",
-    red: "红卡",
-    orange: "橙卡",
-    purple: "紫卡",
-    blue: "蓝卡",
-    green: "绿卡",
   };
   const counts = { all: Array.isArray(products) ? products.length : 0 };
   for (const product of products || []) {
-    const key = getProductCategory(product);
+    const key = getTopCategoryKey(product);
     counts[key] = (counts[key] || 0) + 1;
   }
   return Object.entries(labels)
@@ -556,6 +587,8 @@ function renderCategoryTabs(container, products, activeKey, dataAttr = "category
 
 function getGoldSubcategory(product) {
   if (getTierKey(product) !== "gold" || isBundle(product)) return "all";
+  const legacyId = Number(product?.legacy_id || 0);
+  if (legacyId >= 600) return "rare";
   const extStats = parseExtAttrStats(product?.ext_attrs);
   if (extStats.fire > 0 && extStats.calm > 0) return "double_term";
   if (extStats.fire > 0) return "fire_only";
@@ -569,12 +602,72 @@ function getNameSubcategoryKey(product) {
 }
 
 function buildSubcategoryEntries(products, category) {
-  const subset = (products || []).filter((product) => getProductCategory(product) === category && !isBundle(product));
+  if (category === "bundle") return [];
+  const subset = (products || []).filter((product) => !isBundle(product));
   if (!subset.length) return [];
 
-  if (category === "gold") {
+  const labels = {
+    all:
+      category === "current_season"
+        ? "全部本赛季"
+        : category === "legacy_season"
+          ? "全部往赛季"
+          : "全部卡阶",
+    gold: "金卡",
+    red: "红卡",
+    orange: "橙卡",
+    purple: "紫卡",
+    blue: "蓝卡",
+    green: "绿卡",
+  };
+  const counts = { all: subset.length };
+  for (const product of subset) {
+    const key = getTierKey(product);
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return Object.entries(labels)
+    .filter(([key]) => key === "all" || counts[key] > 0)
+    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+}
+
+function renderSubcategoryTabs(container, products, category, activeKey, dataAttr = "subcategory") {
+  if (!container) return activeKey;
+  if (!category || category === "bundle") {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return "all";
+  }
+
+  const entries = buildSubcategoryEntries(products || [], category);
+  const validKeys = new Set(entries.map((entry) => entry.key));
+  const nextActiveKey = validKeys.has(activeKey) ? activeKey : "all";
+  container.classList.toggle("hidden", entries.length <= 1);
+  container.innerHTML = entries
+    .map(
+      (entry) => `
+        <button
+          type="button"
+          class="subcategory-tab ${entry.key === nextActiveKey ? "active" : ""}"
+          data-${dataAttr}="${escapeHtml(entry.key)}"
+        >
+          <span class="tab-label">${escapeHtml(entry.label)}</span>
+          <span class="subcategory-count">${entry.count}</span>
+        </button>
+      `
+    )
+    .join("");
+  return nextActiveKey;
+}
+
+function buildDetailEntries(products, tier) {
+  if (!tier || tier === "all" || tier === "bundle") return [];
+  const subset = (products || []).filter((product) => !isBundle(product) && getTierKey(product) === tier);
+  if (!subset.length) return [];
+
+  if (tier === "gold") {
     const labels = {
       all: "全部金卡",
+      rare: "珍卡",
       double_term: "双词条",
       fire_only: "走火",
       calm_only: "气定",
@@ -599,26 +692,88 @@ function buildSubcategoryEntries(products, category) {
       count: (counts.get(key)?.count || 0) + 1,
     });
   }
+
   return [
-    { key: "all", label: `全部${getTierLabel(subset[0])}`, count: subset.length },
+    { key: "all", label: `全部${getTierLabelByKey(tier)}`, count: subset.length },
     ...Array.from(counts.values()).sort(
       (a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label), "zh-Hans-CN")
     ),
   ];
 }
 
-function renderSubcategoryTabs(container, products, category, activeKey, dataAttr = "subcategory") {
+function renderDetailTabs(container, products, tier, activeKey, dataAttr = "detail") {
   if (!container) return activeKey;
-  if (!category || category === "all" || category === "bundle") {
+  const entries = buildDetailEntries(products || [], tier);
+  if (entries.length <= 1) {
     container.classList.add("hidden");
     container.innerHTML = "";
     return "all";
   }
 
-  const entries = buildSubcategoryEntries(products || [], category);
   const validKeys = new Set(entries.map((entry) => entry.key));
   const nextActiveKey = validKeys.has(activeKey) ? activeKey : "all";
-  container.classList.toggle("hidden", entries.length <= 1);
+  container.classList.remove("hidden");
+  container.innerHTML = entries
+    .map(
+      (entry) => `
+        <button
+          type="button"
+          class="subcategory-tab ${entry.key === nextActiveKey ? "active" : ""}"
+          data-${dataAttr}="${escapeHtml(entry.key)}"
+        >
+          <span class="tab-label">${escapeHtml(entry.label)}</span>
+          <span class="subcategory-count">${entry.count}</span>
+        </button>
+      `
+    )
+    .join("");
+  return nextActiveKey;
+}
+
+function getFullnessKey(product) {
+  const attackFull = isAttackFull(product);
+  const hpFull = isHpFull(product);
+  if (attackFull && hpFull) return "double_full";
+  if (attackFull) return "attack_full";
+  if (hpFull) return "hp_full";
+  return "none_full";
+}
+
+function buildFullnessEntries(products, enabled) {
+  if (!enabled) return [];
+  const subset = (products || []).filter((product) => !isBundle(product));
+  if (!subset.length) return [];
+
+  const labels = {
+    all: "全部",
+    double_full: "双满",
+    attack_full: "攻击满",
+    hp_full: "血量满",
+    none_full: "都不满",
+  };
+  const counts = { all: subset.length };
+  for (const product of subset) {
+    const key = getFullnessKey(product);
+    counts[key] = (counts[key] || 0) + 1;
+  }
+
+  return Object.entries(labels)
+    .filter(([key]) => key === "all" || counts[key] > 0)
+    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
+}
+
+function renderFullnessTabs(container, products, enabled, activeKey, dataAttr = "fullness") {
+  if (!container) return activeKey;
+  const entries = buildFullnessEntries(products || [], enabled);
+  if (entries.length <= 1) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return "all";
+  }
+
+  const validKeys = new Set(entries.map((entry) => entry.key));
+  const nextActiveKey = validKeys.has(activeKey) ? activeKey : "all";
+  container.classList.remove("hidden");
   container.innerHTML = entries
     .map(
       (entry) => `
@@ -726,6 +881,12 @@ function renderProductPagination() {
 
 function filterProductsByCategory(products, category) {
   if (!category || category === "all") return products || [];
+  if (category === "current_season") {
+    return (products || []).filter((product) => !isBundle(product) && isCurrentSeasonProduct(product));
+  }
+  if (category === "legacy_season") {
+    return (products || []).filter((product) => !isBundle(product) && !isCurrentSeasonProduct(product));
+  }
   return (products || []).filter((product) => getProductCategory(product) === category);
 }
 
@@ -753,12 +914,23 @@ function filterProductsByKeyword(products, keyword) {
 }
 
 function filterProductsBySubcategory(products, category, subcategory) {
-  if (!category || category === "all" || category === "bundle") return products || [];
+  if (!category || category === "bundle") return products || [];
   if (!subcategory || subcategory === "all") return products || [];
-  if (category === "gold") {
-    return (products || []).filter((product) => getGoldSubcategory(product) === subcategory);
+  return (products || []).filter((product) => getTierKey(product) === subcategory);
+}
+
+function filterProductsByDetail(products, tier, detail) {
+  if (!tier || tier === "all" || tier === "bundle") return products || [];
+  if (!detail || detail === "all") return products || [];
+  if (tier === "gold") {
+    return (products || []).filter((product) => getGoldSubcategory(product) === detail);
   }
-  return (products || []).filter((product) => getNameSubcategoryKey(product) === subcategory);
+  return (products || []).filter((product) => getNameSubcategoryKey(product) === detail);
+}
+
+function filterProductsByFullness(products, fullness) {
+  if (!fullness || fullness === "all") return products || [];
+  return (products || []).filter((product) => getFullnessKey(product) === fullness);
 }
 
 function getTierOrder(product) {
@@ -856,7 +1028,10 @@ function sortProducts(products, sortMode) {
     shop_default: compareShopDefault,
     price_asc: (a, b) => Number(a.price_quota || 0) - Number(b.price_quota || 0) || compareShopDefault(a, b),
     price_desc: (a, b) => Number(b.price_quota || 0) - Number(a.price_quota || 0) || compareShopDefault(a, b),
+    attack_desc: (a, b) =>
+      Number(b.attack_value || 0) - Number(a.attack_value || 0) || compareShopDefault(a, b),
     attack_asc: (a, b) => Number(a.attack_value || 0) - Number(b.attack_value || 0) || compareShopDefault(a, b),
+    hp_desc: (a, b) => Number(b.hp_value || 0) - Number(a.hp_value || 0) || compareShopDefault(a, b),
     hp_asc: (a, b) => Number(a.hp_value || 0) - Number(b.hp_value || 0) || compareShopDefault(a, b),
   };
   list.sort(sorters[sortMode] || sorters.shop_default);
@@ -959,6 +1134,12 @@ function getDirectPurchaseAmountYuan(product, rechargeConfig = getEffectiveRecha
   return Number(cashAmount.toFixed(2));
 }
 
+function getQuotaCashText(quotaAmount, rechargeConfig = getEffectiveRechargeConfig()) {
+  const cashAmount = getQuotaCashAmount(quotaAmount, rechargeConfig);
+  if (cashAmount === null) return "RMB 待定";
+  return formatCashAmount(cashAmount);
+}
+
 function buildDirectPurchaseContext(product, rechargeConfig = getEffectiveRechargeConfig()) {
   const amountYuan = getDirectPurchaseAmountYuan(product, rechargeConfig);
   if (!product || amountYuan === null) return null;
@@ -994,6 +1175,17 @@ function getRechargePaymentMethods(rechargeConfig = getEffectiveRechargeConfig()
   return methods;
 }
 
+function getGuestPurchaseMethods(rechargeConfig = getEffectiveRechargeConfig()) {
+  const methods = [...getRechargePaymentMethods(rechargeConfig)];
+  if (rechargeConfig?.residual_transfer_enabled) {
+    methods.push({
+      key: "game_residual_transfer",
+      label: rechargeConfig?.residual_unit_label || "残卷转赠",
+    });
+  }
+  return methods;
+}
+
 function ensureRechargePaymentChannel(rechargeConfig = getEffectiveRechargeConfig()) {
   const methods = getRechargePaymentMethods(rechargeConfig);
   if (!methods.length) {
@@ -1004,6 +1196,26 @@ function ensureRechargePaymentChannel(rechargeConfig = getEffectiveRechargeConfi
     selectedRechargePaymentChannel = methods[0].key;
   }
   return methods.find((item) => item.key === selectedRechargePaymentChannel) || methods[0];
+}
+
+function ensureGuestTransferPaymentChannel(rechargeConfig = getEffectiveRechargeConfig()) {
+  const methods = getGuestPurchaseMethods(rechargeConfig);
+  if (!methods.length) {
+    selectedGuestTransferPaymentChannel = "alipay_qr";
+    return null;
+  }
+  if (!methods.some((item) => item.key === selectedGuestTransferPaymentChannel)) {
+    selectedGuestTransferPaymentChannel = methods[0].key;
+  }
+  return (
+    methods.find((item) => item.key === selectedGuestTransferPaymentChannel) || methods[0]
+  );
+}
+
+function getDirectResidualAmount(product, rechargeConfig = getEffectiveRechargeConfig()) {
+  const quotaPerUnit = Math.max(Number(rechargeConfig?.residual_quota_per_unit || 0), 0);
+  if (!product || quotaPerUnit <= 0) return null;
+  return Math.ceil(Number(product?.price_quota || 0) / quotaPerUnit);
 }
 
 function formatRechargeChannelLabel(channel) {
@@ -1182,7 +1394,7 @@ function renderProductCard(product) {
       </div>
       <div class="actions">
         <button class="ghost detail-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">详情</button>
-        <button class="ghost direct-buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">转账购买</button>
+        <button class="ghost direct-buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">转账锁卡</button>
         <button class="primary buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">购买</button>
       </div>
     </article>
@@ -1236,7 +1448,31 @@ function applyProductView(options = {}) {
     activeSubcategory,
     "subcategory"
   );
-  const filtered = filterProductsBySubcategory(categoryFiltered, activeCategory, activeSubcategory);
+  const subcategoryFiltered = filterProductsBySubcategory(
+    categoryFiltered,
+    activeCategory,
+    activeSubcategory
+  );
+  activeDetail = renderDetailTabs(
+    productDetailTabs,
+    categoryFiltered,
+    activeSubcategory,
+    activeDetail,
+    "detail"
+  );
+  const detailFiltered = filterProductsByDetail(
+    subcategoryFiltered,
+    activeSubcategory,
+    activeDetail
+  );
+  activeFullness = renderFullnessTabs(
+    productFullnessTabs,
+    detailFiltered,
+    activeCategory !== "bundle" && activeSubcategory !== "all",
+    activeFullness,
+    "fullness"
+  );
+  const filtered = filterProductsByFullness(detailFiltered, activeFullness);
   currentProducts = sortProducts(filtered, sortSelect?.value || "shop_default");
   renderProducts(currentProducts);
 }
@@ -1263,11 +1499,31 @@ function applyDiscountView(options = {}) {
     activeDiscountSubcategory,
     "discount-subcategory"
   );
-  const filtered = filterProductsBySubcategory(
+  const subcategoryFiltered = filterProductsBySubcategory(
     categoryFiltered,
     activeDiscountCategory,
     activeDiscountSubcategory
   );
+  activeDiscountDetail = renderDetailTabs(
+    discountDetailTabs,
+    categoryFiltered,
+    activeDiscountSubcategory,
+    activeDiscountDetail,
+    "discount-detail"
+  );
+  const detailFiltered = filterProductsByDetail(
+    subcategoryFiltered,
+    activeDiscountSubcategory,
+    activeDiscountDetail
+  );
+  activeDiscountFullness = renderFullnessTabs(
+    discountFullnessTabs,
+    detailFiltered,
+    activeDiscountCategory !== "bundle" && activeDiscountSubcategory !== "all",
+    activeDiscountFullness,
+    "discount-fullness"
+  );
+  const filtered = filterProductsByFullness(detailFiltered, activeDiscountFullness);
   currentDiscountProducts = sortProducts(filtered, discountSortSelect?.value || "shop_default");
   renderDiscountProducts(currentDiscountProducts);
 }
@@ -1324,9 +1580,9 @@ function getDrawServiceMeta(order) {
 
 function normalizeDrawServiceAmount(value) {
   const amount = Number(value);
-  if (!Number.isInteger(amount) || amount < DRAW_SERVICE_MIN_QUOTA) return null;
-  if (amount % DRAW_SERVICE_STEP_QUOTA !== 0) return null;
-  return amount;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const roundedAmount = Math.ceil(amount / DRAW_SERVICE_STEP_QUOTA) * DRAW_SERVICE_STEP_QUOTA;
+  return Math.max(DRAW_SERVICE_MIN_QUOTA, roundedAmount);
 }
 
 function setDrawServiceMessage(text, type = "") {
@@ -1345,17 +1601,19 @@ function updateDrawServiceQuote() {
   const balance = Number(currentQuota?.balance ?? currentProfile?.quota_balance ?? 0);
 
   if (!normalizedAmount) {
-    valueNode.textContent = "请输入合法额度";
-    detailNode.textContent = "最低 200，且必须是 200 的倍数。";
+    valueNode.textContent = "请输入代抽额度";
+    detailNode.textContent = "最低 200，不是 200 的倍数会在提交时自动补齐。";
     return;
   }
 
   const milestoneCount = Math.floor(normalizedAmount / DRAW_SERVICE_MILESTONE_QUOTA);
+  const rawAmount = Number(amountInput.value || 0);
+  const autoAdjusted = Number.isFinite(rawAmount) && rawAmount > 0 && rawAmount !== normalizedAmount;
   valueNode.textContent = `本次代抽 ${normalizedAmount} 额度`;
   detailNode.textContent =
     milestoneCount > 0
-      ? `本单已覆盖 ${milestoneCount} 个 5w 档位；当前可用额度 ${balance}`
-      : `当前可用额度 ${balance}，累计满 5w 才会触发赛季返利。`;
+      ? `${autoAdjusted ? `输入值会自动补齐到 ${normalizedAmount}；` : ""}本单已覆盖 ${milestoneCount} 个 5w 档位；当前可用额度 ${balance}`
+      : `${autoAdjusted ? `输入值会自动补齐到 ${normalizedAmount}；` : ""}当前可用额度 ${balance}，累计满 5w 才会触发赛季返利。`;
 }
 
 function renderDrawServiceZone(profile, quota) {
@@ -1380,7 +1638,7 @@ function renderDrawServiceZone(profile, quota) {
   }
 
   drawServiceBody.innerHTML = `
-    <form id="draw-service-form" class="form-grid">
+    <form id="draw-service-form" class="form-grid" novalidate>
       <div class="draw-service-balance-card">
         <strong>当前可用额度 ${balance}</strong>
         <span class="muted">代抽单提交后会立即扣额度，管理员确认完成后按规则返还卡和阶段奖励。</span>
@@ -1458,11 +1716,20 @@ async function submitDrawServiceOrder(event) {
     return;
   }
   if (!normalizedAmount) {
-    setDrawServiceMessage("代抽额度最低 200，且必须是 200 的倍数。", "error");
+    setDrawServiceMessage("代抽额度最低 200。", "error");
     return;
   }
+  const rawAmount = Number(amountInput?.value || selectedDrawServiceAmount);
+  if (amountInput) {
+    amountInput.value = String(normalizedAmount);
+  }
+  selectedDrawServiceAmount = normalizedAmount;
   if (normalizedAmount > balance) {
-    setDrawServiceMessage("当前额度不足，先去获取额度再来提交。", "error");
+    const adjustedText =
+      Number.isFinite(rawAmount) && rawAmount > 0 && rawAmount !== normalizedAmount
+        ? `已按 ${normalizedAmount} 额度补齐；`
+        : "";
+    setDrawServiceMessage(`${adjustedText}当前额度不足，先去获取额度再来提交。`, "error");
     return;
   }
 
@@ -1471,15 +1738,352 @@ async function submitDrawServiceOrder(event) {
       method: "POST",
       body: JSON.stringify({ amount_quota: normalizedAmount }),
     });
-    selectedDrawServiceAmount = normalizedAmount;
+    const adjustedText =
+      Number.isFinite(rawAmount) && rawAmount > 0 && rawAmount !== normalizedAmount
+        ? `已自动补齐到 ${normalizedAmount} 额度。`
+        : "";
     setDrawServiceMessage(
-      `代抽单 #${order.id} 已提交，管理员代抽后会返还符合规则的卡，并在确认时录入返还结果。`,
+      `${adjustedText}代抽单 #${order.id} 已提交，管理员代抽后会返还符合规则的卡，并在确认时录入返还结果。`,
       "success"
     );
     await loadAccount();
   } catch (error) {
     setDrawServiceMessage(`代抽提交失败：${error.message}`, "error");
   }
+}
+
+function setAuctionMessage(text, type = "") {
+  if (!auctionMessage) return;
+  auctionMessage.textContent = text || "";
+  auctionMessage.className = type ? `notice ${type}` : "notice";
+}
+
+function formatAuctionStatusLabel(status) {
+  switch (String(status || "").trim()) {
+    case "live":
+      return "进行中";
+    case "scheduled":
+      return "即将开始";
+    case "ended":
+      return "等待结算";
+    case "settled":
+      return "已成交";
+    case "cancelled":
+      return "已流拍";
+    default:
+      return status || "-";
+  }
+}
+
+function formatAuctionTimeLabel(auction) {
+  const status = String(auction?.status || "").trim();
+  if (status === "scheduled") {
+    return `开始时间：${formatDate(auction?.starts_at || "")}`;
+  }
+  if (status === "settled") {
+    return `成交时间：${formatDate(auction?.settled_at || auction?.updated_at || "")}`;
+  }
+  if (status === "cancelled") {
+    return `流拍时间：${formatDate(auction?.cancelled_at || auction?.updated_at || "")}`;
+  }
+  return `截止时间：${formatDate(auction?.ends_at || "")}`;
+}
+
+function formatAuctionCountdownDuration(targetTimeMs, nowMs = Date.now()) {
+  const diff = Math.max(0, Number(targetTimeMs || 0) - Number(nowMs || 0));
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}天 ${String(hours).padStart(2, "0")}时`;
+  if (hours > 0) return `${hours}时 ${String(minutes).padStart(2, "0")}分`;
+  if (minutes > 0) return `${minutes}分 ${String(seconds).padStart(2, "0")}秒`;
+  return `${seconds}秒`;
+}
+
+function getAuctionCountdownMeta(auction, nowMs = Date.now()) {
+  const status = String(auction?.status || "").trim();
+  const startMs = new Date(auction?.starts_at || "").getTime();
+  const endMs = new Date(auction?.ends_at || "").getTime();
+  if (status === "scheduled") {
+    if (Number.isFinite(startMs) && startMs > nowMs) {
+      return {
+        tone: "scheduled",
+        label: "距开始",
+        value: formatAuctionCountdownDuration(startMs, nowMs),
+      };
+    }
+    return { tone: "scheduled", label: "即将开始", value: "请稍后刷新" };
+  }
+  if (status === "live") {
+    if (Number.isFinite(endMs) && endMs > nowMs) {
+      const remaining = endMs - nowMs;
+      return {
+        tone: remaining <= 10 * 60 * 1000 ? "urgent" : remaining <= 60 * 60 * 1000 ? "soon" : "live",
+        label: "距结束",
+        value: formatAuctionCountdownDuration(endMs, nowMs),
+      };
+    }
+    return { tone: "ended", label: "已结束", value: "等待管理员结算" };
+  }
+  if (status === "ended") return { tone: "ended", label: "已结束", value: "等待管理员结算" };
+  if (status === "settled") return { tone: "settled", label: "拍卖结果", value: "已成交" };
+  if (status === "cancelled") return { tone: "cancelled", label: "拍卖结果", value: "已流拍" };
+  return { tone: "default", label: "拍卖状态", value: formatAuctionStatusLabel(status) };
+}
+
+function renderAuctionCountdown(auction) {
+  const meta = getAuctionCountdownMeta(auction);
+  return `
+    <div class="auction-countdown ${escapeHtml(meta.tone)}" data-auction-countdown-id="${auction.id}">
+      <span class="auction-countdown-label">${escapeHtml(meta.label)}</span>
+      <strong class="auction-countdown-value">${escapeHtml(meta.value)}</strong>
+    </div>
+  `;
+}
+
+function renderAuctionBidQuickChips(nextMinBid) {
+  const options = [
+    { label: "最低价", amount: nextMinBid },
+    { label: "+500", amount: nextMinBid + 500 },
+    { label: "+1000", amount: nextMinBid + 1000 },
+    { label: "+2000", amount: nextMinBid + 2000 },
+    { label: "+5000", amount: nextMinBid + 5000 },
+  ];
+  return `
+    <div class="auction-bid-quick-list">
+      ${options
+        .map(
+          (option) => `
+            <button
+              class="ghost auction-bid-quick-btn"
+              type="button"
+              data-auction-bid-target="${Number(option.amount || 0)}"
+            >${escapeHtml(option.label)}</button>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function getAuctionBidSummary(auctionId) {
+  return (
+    currentAuctionBidSummaries.find(
+      (item) => Number(item.auction_id || 0) === Number(auctionId || 0)
+    ) || null
+  );
+}
+
+function renderAuctionZone(profile) {
+  if (!auctionBody) return;
+
+  if (auctionStatusTabs) {
+    auctionStatusTabs.querySelectorAll("[data-auction-status]").forEach((button) => {
+      button.classList.toggle(
+        "active",
+        String(button.getAttribute("data-auction-status") || "") === activeAuctionStatus
+      );
+    });
+  }
+
+  const filteredAuctions = currentAuctions.filter(
+    (auction) => String(auction?.status || "").trim() === activeAuctionStatus
+  );
+
+  if (!filteredAuctions.length) {
+    auctionBody.innerHTML = `<div class="stack-item">当前这个分组里还没有拍卖商品。</div>`;
+    return;
+  }
+
+  auctionBody.innerHTML = filteredAuctions
+    .map((auction) => {
+      const item = auction?.item || {};
+      const termBadges = parseTermBadges(item?.ext_attrs, item);
+      const myBid = getAuctionBidSummary(auction.id);
+      const canBid = profile && String(auction?.status || "").trim() === "live";
+      const suggestedBid = Number(auction?.next_min_bid_quota || auction?.starting_price_quota || 0);
+      const currentPrice = Number(auction.current_price_quota || 0);
+      const startingPrice = Number(auction.starting_price_quota || 0);
+      const minIncrement = Number(auction.min_increment_quota || 0);
+      const itemSubtitle = isBundle(item)
+        ? `${getTierLabel(item)} / ${escapeHtml(item.uid || "")}`
+        : `${getTierLabel(item)} / ID ${item.legacy_id || "-"} / ${escapeHtml(getSeasonDisplayText(item))}`;
+      const recommendedBid =
+        myBid && !myBid.is_leading
+          ? Math.max(suggestedBid, Number(myBid.highest_bid_amount || 0) + minIncrement)
+          : suggestedBid;
+      const myStatus = myBid
+        ? myBid.is_leading
+          ? "你当前领先"
+          : `你出过价，最高 ${Number(myBid.highest_bid_amount || 0)}`
+        : profile
+          ? "你还没有出价"
+          : "登录后才能出价";
+
+      return `
+        <article class="admin-card auction-card" data-auction-id="${auction.id}">
+          <div class="admin-card-head">
+            <div class="product-name">${escapeHtml(auction.title || item.name || `拍卖 #${auction.id}`)}</div>
+            <span class="chip">${escapeHtml(formatAuctionStatusLabel(auction.status))}</span>
+          </div>
+          ${renderAuctionCountdown(auction)}
+          <div class="auction-card-layout">
+            <div class="auction-card-visual">
+              ${item && item.name ? renderProductVisual(item, "grid") : '<div class="product-visual fallback">拍卖商品</div>'}
+            </div>
+            <div class="auction-card-main">
+              <div class="auction-card-headline">
+                <div class="product-name">${escapeHtml(item.name || "-")}</div>
+                <div class="product-type-chip">${itemSubtitle}</div>
+              </div>
+              ${
+                isBundle(item)
+                  ? `<div class="product-meta">${escapeHtml(item.description || item.main_attrs || "套餐商品")}</div>`
+                  : `
+                    <div class="product-stats-grid compact">
+                      ${renderStatBlock("攻击", item.attack_value, isAttackFull(item), true)}
+                      ${renderStatBlock("血量", item.hp_value, isHpFull(item), true)}
+                    </div>
+                    <div class="term-row compact">
+                      ${
+                        termBadges.length > 0
+                          ? termBadges.map((badge) => renderTermBadge(badge)).join("")
+                          : '<span class="term-empty">无词条</span>'
+                      }
+                    </div>
+                  `
+              }
+              <div class="auction-summary-grid">
+                <div class="auction-summary-card primary">
+                  <span class="label">当前最高价</span>
+                  <strong>${currentPrice}</strong>
+                  <span class="cash">${escapeHtml(getQuotaCashText(currentPrice))}</span>
+                </div>
+                <div class="auction-summary-card">
+                  <span class="label">出价人</span>
+                  <strong>${escapeHtml(auction.leading_bidder_label || "无")}</strong>
+                  <span class="muted">共 ${Number(auction.bid_count || 0)} 次出价</span>
+                </div>
+              </div>
+              <div class="auction-meta-row">
+                <span>起拍 ${startingPrice}</span>
+                <span>最低加价 ${minIncrement}</span>
+                <span>下次最低 ${suggestedBid}</span>
+              </div>
+              <div class="auction-meta-note">${escapeHtml(myStatus)}</div>
+            </div>
+          </div>
+          ${
+            canBid
+              ? `
+                <div class="auction-bid-box">
+                  ${renderAuctionBidQuickChips(suggestedBid)}
+                  <div class="inline-form auction-bid-form">
+                    <div class="auction-bid-input-wrap">
+                      <div class="auction-bid-input-row">
+                        <input
+                          data-field="auction-bid-amount"
+                          type="number"
+                          min="${suggestedBid}"
+                          step="1"
+                          inputmode="numeric"
+                          value="${recommendedBid}"
+                        />
+                        <button class="primary submit-auction-bid-btn" type="button">提交出价</button>
+                      </div>
+                      <div class="auction-bid-hint">
+                        你可以直接输入更高价格，不必只加最低档；拍卖成功后请加管理员微信 18930468426 沟通支付。
+                      </div>
+                      <div class="auction-bid-preview muted" data-field="auction-bid-preview">
+                        本次出价约 ${escapeHtml(getQuotaCashText(recommendedBid))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `
+              : `<div class="stack-item muted">${
+                  profile
+                    ? "这个拍卖当前不能继续出价，可以等管理员结算或切到其它分组。"
+                    : "登录后可参与拍卖出价。"
+                }</div>`
+          }
+        </article>
+      `;
+    })
+    .join("");
+}
+
+async function loadAuctions() {
+  try {
+    const [auctionResult, myBidResult] = await Promise.all([
+      apiFetch("/products/auctions"),
+      currentProfile ? apiFetch("/orders/auctions/mine").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+    ]);
+    currentAuctions = Array.isArray(auctionResult?.items) ? auctionResult.items : [];
+    currentAuctionBidSummaries = Array.isArray(myBidResult?.items) ? myBidResult.items : [];
+    renderAuctionZone(currentProfile);
+  } catch (error) {
+    currentAuctions = [];
+    currentAuctionBidSummaries = [];
+    renderAuctionZone(currentProfile);
+    setAuctionMessage(`拍卖列表加载失败：${pickErrorMessage(error, "加载失败")}`, "error");
+  }
+}
+
+async function submitAuctionBid(auctionId, amountQuota) {
+  try {
+    const result = await apiFetch(`/orders/auctions/${auctionId}/bids`, {
+      method: "POST",
+      body: JSON.stringify({ amount_quota: Number(amountQuota) }),
+    });
+    setAuctionMessage(
+      `拍卖 #${auctionId} 出价成功，当前价格 ${Number(result.current_price_quota || 0)} 额度。`,
+      "success"
+    );
+    await Promise.all([loadAuctions(), loadAccount()]);
+  } catch (error) {
+    setAuctionMessage(`出价失败：${pickErrorMessage(error, "出价失败")}`, "error");
+  }
+}
+
+function updateAuctionBidPreview(card) {
+  if (!card) return;
+  const amountInput = card.querySelector('[data-field="auction-bid-amount"]');
+  const previewNode = card.querySelector('[data-field="auction-bid-preview"]');
+  if (!amountInput || !previewNode) return;
+  const auctionId = Number(card.getAttribute("data-auction-id") || 0);
+  const auction = currentAuctions.find((item) => Number(item?.id || 0) === auctionId) || null;
+  const nextMinBid = Number(auction?.next_min_bid_quota || auction?.starting_price_quota || 0);
+  const enteredAmount = Number(amountInput.value || 0);
+  if (!Number.isFinite(enteredAmount) || enteredAmount <= 0) {
+    previewNode.textContent = `最低可出 ${nextMinBid} 额度，约 ${getQuotaCashText(nextMinBid)}。`;
+    return;
+  }
+  if (enteredAmount < nextMinBid) {
+    previewNode.textContent = `当前输入 ${enteredAmount} 额度，低于最低可出 ${nextMinBid} 额度。`;
+    return;
+  }
+  previewNode.textContent = `本次出价 ${enteredAmount} 额度，约 ${getQuotaCashText(enteredAmount)}。`;
+}
+
+function updateAuctionCountdowns() {
+  if (!auctionBody) return;
+  const nodes = auctionBody.querySelectorAll("[data-auction-countdown-id]");
+  if (!nodes.length) return;
+  const nowMs = Date.now();
+  nodes.forEach((node) => {
+    const auctionId = Number(node.getAttribute("data-auction-countdown-id") || 0);
+    const auction = currentAuctions.find((item) => Number(item?.id || 0) === auctionId);
+    if (!auction) return;
+    const meta = getAuctionCountdownMeta(auction, nowMs);
+    node.className = `auction-countdown ${meta.tone}`;
+    const labelNode = node.querySelector(".auction-countdown-label");
+    const valueNode = node.querySelector(".auction-countdown-value");
+    if (labelNode) labelNode.textContent = meta.label;
+    if (valueNode) valueNode.textContent = meta.value;
+  });
 }
 
 
@@ -2125,6 +2729,14 @@ function openProductModal(itemId, itemKind) {
 
   const termBadges = parseTermBadges(product.ext_attrs, product);
   const session = loadSession();
+  const sessionProfile = session?.profile || null;
+  const rechargeConfig = getEffectiveRechargeConfig();
+  const directPurchaseContext = buildDirectPurchaseContext(product, rechargeConfig);
+  const directResidualAmount = getDirectResidualAmount(product, rechargeConfig);
+  const guestPaymentMethods = getGuestPurchaseMethods(rechargeConfig);
+  const activeGuestPaymentMethod = ensureGuestTransferPaymentChannel(rechargeConfig);
+  const isResidualGuestPurchase =
+    String(activeGuestPaymentMethod?.key || "") === "game_residual_transfer";
   const stockLabel = product.stock === null || product.stock === undefined ? "不限量" : `${Number(product.stock)} 件`;
   const attackIsFull = isAttackFull(product);
   const hpIsFull = isHpFull(product);
@@ -2145,25 +2757,131 @@ function openProductModal(itemId, itemKind) {
       `;
 
   productDetailBody.innerHTML = `
-    <div class="product-detail-layout">
-      <div class="product-detail-cover">${renderProductVisual(product, "detail")}</div>
-      <div class="product-detail-main">
-        <div class="product-headline">
-          <div class="product-name">${escapeHtml(product.name)}</div>
-          <div class="product-type-chip">${escapeHtml(getTierLabel(product))} / ${escapeHtml(product.uid || "-")}</div>
+    <div class="product-detail-shell">
+      <div class="product-detail-layout">
+        <div class="product-detail-cover">${renderProductVisual(product, "detail")}</div>
+        <div class="product-detail-main">
+          <div class="product-headline">
+            <div class="product-name">${escapeHtml(product.name)}</div>
+            <div class="product-type-chip">${escapeHtml(getTierLabel(product))} / ${escapeHtml(product.uid || "-")}</div>
+          </div>
+          ${isBundle(product) ? `<div class="product-meta">${escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>` : ""}
+          <div class="term-row">${termBadges.length > 0 ? termBadges.map((badge) => renderTermBadge(badge)).join("") : '<span class="term-empty">无额外词条</span>'}</div>
+          <div class="detail-list">
+            <div class="detail-row"><strong>价格</strong><span>${discounted ? `原价 ${originalPriceQuota} / ` : ""}${Number(product.price_quota || 0)} 额度${cashPriceText ? ` / ${escapeHtml(cashPriceText)}` : ""}${discounted ? ` / ${escapeHtml(product.discount_label || "折扣")}` : ""}</span></div>
+            ${detailRows}
+            <div class="detail-row"><strong>额度购买账号</strong><span>${escapeHtml(sessionProfile?.game_role_name || "未登录")}</span></div>
+          </div>
+          <div class="product-detail-actions">
+            <button class="ghost" type="button" id="modal-close-btn">返回</button>
+            <button class="ghost" type="button" id="direct-buy-btn">转账锁卡</button>
+            <button class="primary" type="button" id="confirm-buy-btn">确认购买</button>
+          </div>
         </div>
-        ${isBundle(product) ? `<div class="product-meta">${escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>` : ""}
-        <div class="term-row">${termBadges.length > 0 ? termBadges.map((badge) => renderTermBadge(badge)).join("") : '<span class="term-empty">无额外词条</span>'}</div>
-        <div class="detail-list">
-          <div class="detail-row"><strong>价格</strong><span>${discounted ? `原价 ${originalPriceQuota} / ` : ""}${Number(product.price_quota || 0)} 额度${cashPriceText ? ` / ${escapeHtml(cashPriceText)}` : ""}${discounted ? ` / ${escapeHtml(product.discount_label || "折扣")}` : ""}</span></div>
-          ${detailRows}
-          <div class="detail-row"><strong>购买账号</strong><span>${escapeHtml(session?.profile?.game_role_name || "未登录")}</span></div>
-        </div>
-        <div class="actions">
-          <button class="ghost" type="button" id="modal-close-btn">返回</button>
-          <button class="ghost" type="button" id="direct-buy-btn">转账购买</button>
-          <button class="primary" type="button" id="confirm-buy-btn">确认购买</button>
-        </div>
+      </div>
+      <div id="guest-transfer-panel" class="guest-transfer-panel hidden">
+        ${
+          directPurchaseContext && activeGuestPaymentMethod
+            ? `
+                <div class="guest-transfer-grid">
+                  <div class="recharge-qr-card guest-transfer-card">
+                    ${
+                      guestPaymentMethods.length > 1
+                        ? `
+                            <div class="preset-list guest-transfer-methods">
+                              ${guestPaymentMethods
+                                .map(
+                                  (method) => `
+                                    <button
+                                      class="preset-chip ${selectedGuestTransferPaymentChannel === method.key ? "active" : ""}"
+                                      type="button"
+                                      data-guest-payment-channel="${method.key}"
+                                    >${escapeHtml(method.label)}</button>
+                                  `
+                                )
+                                .join("")}
+                            </div>
+                          `
+                        : ""
+                    }
+                    ${
+                      isResidualGuestPurchase
+                        ? `
+                            <div class="guest-transfer-card-title"><strong>${escapeHtml(rechargeConfig?.residual_admin_role_name || "admin残卷")}</strong></div>
+                            <div class="muted">游戏名称：${escapeHtml(rechargeConfig?.residual_admin_game_name || "-")}</div>
+                            <div class="muted">游戏 ID：${escapeHtml(rechargeConfig?.residual_admin_role_id || "-")}</div>
+                            <div class="muted">兑换比例：1 ${escapeHtml(rechargeConfig?.residual_unit_label || "残卷")} = ${Number(rechargeConfig?.residual_quota_per_unit || 1)} 额度</div>
+                          `
+                        : `
+                            <img class="recharge-qr-image" src="${escapeHtml(activeGuestPaymentMethod.imageUrl || "")}" alt="${escapeHtml(activeGuestPaymentMethod.name || "收款码")}" />
+                            <div class="guest-transfer-card-title"><strong>${escapeHtml(activeGuestPaymentMethod.name || "收款码")}</strong></div>
+                            <div class="muted">${escapeHtml(activeGuestPaymentMethod.hint || "转账后填写付款时间提交")}</div>
+                          `
+                    }
+                    <div class="stack-list">
+                      ${(
+                        isResidualGuestPurchase
+                          ? Array.isArray(rechargeConfig?.residual_instructions)
+                            ? rechargeConfig.residual_instructions
+                            : []
+                          : Array.isArray(rechargeConfig?.instructions)
+                            ? rechargeConfig.instructions
+                            : []
+                      )
+                        .map((line) => `<div class="stack-item">${escapeHtml(line)}</div>`)
+                        .join("")}
+                    </div>
+                  </div>
+                  <form id="guest-transfer-form" class="guest-transfer-form" novalidate>
+                    <div class="guest-transfer-summary">
+                      <div class="recharge-rate-banner">
+                        <strong>${isResidualGuestPurchase ? "残卷锁卡" : "转账锁卡"}</strong>
+                        <span>订单提交后会先锁定这张卡，等待管理员核对${isResidualGuestPurchase ? "转赠" : "收款"}后确认。</span>
+                      </div>
+                      <div class="recharge-quote">
+                        <span class="muted">${isResidualGuestPurchase ? "本单需要转赠" : "本单金额"}</span>
+                        <strong>${escapeHtml(
+                          isResidualGuestPurchase
+                            ? `${Number(directResidualAmount || 0)} ${rechargeConfig?.residual_unit_label || "残卷"}`
+                            : formatCashAmount(directPurchaseContext.amountYuan)
+                        )}</strong>
+                        <span class="muted">${Number(directPurchaseContext.quotaAmount)} 额度，商品会先锁定</span>
+                      </div>
+                    </div>
+                    <div class="guest-transfer-fields">
+                      <label>游戏 ID
+                        <input id="guest-transfer-role-id" type="text" maxlength="60" value="${escapeHtml(sessionProfile?.game_role_id || "")}" placeholder="例如 584967604" required />
+                      </label>
+                      <label>角色名
+                        <input id="guest-transfer-role-name" type="text" maxlength="60" value="${escapeHtml(sessionProfile?.game_role_name || "")}" placeholder="例如 繁星秋" required />
+                      </label>
+                      <label>昵称（可选）
+                        <input id="guest-transfer-nickname" type="text" maxlength="60" value="${escapeHtml(sessionProfile?.nickname || "")}" placeholder="方便你这边识别即可" />
+                      </label>
+                      <label>${isResidualGuestPurchase ? "转赠时间" : "付款时间"}
+                        <input id="guest-transfer-reference" type="text" maxlength="100" placeholder="${escapeHtml(isResidualGuestPurchase ? "例如 19:42 已转残卷" : "例如 19:42 支付宝已转")}" required />
+                      </label>
+                      <label class="guest-transfer-field-span">补充说明（可选）
+                        <textarea id="guest-transfer-note" rows="3" placeholder="${escapeHtml(
+                          isResidualGuestPurchase
+                            ? `例如：已向 ${rechargeConfig?.residual_admin_role_id || "584967604"} 转了 ${Number(directResidualAmount || 0)} ${rechargeConfig?.residual_unit_label || "残卷"}`
+                            : "例如：尾号 5218，已按订单金额转账"
+                        )}"></textarea>
+                      </label>
+                    </div>
+                    <div class="guest-transfer-form-actions">
+                      <button class="ghost" type="button" data-guest-transfer-cancel="1">收起</button>
+                      <button class="primary" type="submit">${isResidualGuestPurchase ? "已转赠，提交锁卡订单" : "已转账，提交锁卡订单"}</button>
+                    </div>
+                  </form>
+                </div>
+              `
+            : `
+                <div class="stack-item">
+                  当前还没拿到收款配置，请稍后刷新页面再试，或先联系管理员手动处理。
+                </div>
+              `
+        }
       </div>
     </div>
   `;
@@ -2176,6 +2894,18 @@ function openProductModal(itemId, itemKind) {
     .getElementById("direct-buy-btn")
     .addEventListener("click", () => startDirectPurchase(product.item_id, product.item_kind || "card"));
   document.getElementById("confirm-buy-btn").addEventListener("click", confirmPurchase);
+  document.getElementById("guest-transfer-form")?.addEventListener("submit", submitGuestTransferOrder);
+  productDetailBody.querySelectorAll("[data-guest-payment-channel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedGuestTransferPaymentChannel =
+        button.getAttribute("data-guest-payment-channel") || "alipay_qr";
+      openProductModal(product.item_id, product.item_kind || "card");
+      toggleGuestTransferPanel(true);
+    });
+  });
+  productDetailBody
+    .querySelector('[data-guest-transfer-cancel="1"]')
+    ?.addEventListener("click", () => toggleGuestTransferPanel(false));
 }
 
 function closeProductModal() {
@@ -2187,43 +2917,104 @@ function closeProductModal() {
   setProductDetailMessage("");
 }
 
+function toggleGuestTransferPanel(visible) {
+  const panel = document.getElementById("guest-transfer-panel");
+  if (!panel) return;
+  panel.classList.toggle("hidden", !visible);
+  if (visible) {
+    window.requestAnimationFrame(() => {
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+}
+
+async function submitGuestTransferOrder(event) {
+  event.preventDefault();
+  const product = findProduct(activeItemId, activeItemKind);
+  if (!product) {
+    setProductDetailMessage("当前商品不存在或已下架。", "error");
+    return;
+  }
+
+  const directPurchaseContext = buildDirectPurchaseContext(product, getEffectiveRechargeConfig());
+  if (!directPurchaseContext) {
+    setProductDetailMessage("当前还没拿到金额换算配置，请稍后再试。", "error");
+    return;
+  }
+  const isResidualGuestPurchase = selectedGuestTransferPaymentChannel === "game_residual_transfer";
+  const directResidualAmount = getDirectResidualAmount(product, getEffectiveRechargeConfig());
+
+  const roleId = document.getElementById("guest-transfer-role-id")?.value.trim() || "";
+  const roleName = document.getElementById("guest-transfer-role-name")?.value.trim() || "";
+  const nickname = document.getElementById("guest-transfer-nickname")?.value.trim() || "";
+  const paymentReference =
+    document.getElementById("guest-transfer-reference")?.value.trim() || "";
+  const payerNote = document.getElementById("guest-transfer-note")?.value.trim() || "";
+
+  if (!roleId) {
+    setProductDetailMessage("请填写游戏 ID。", "error");
+    return;
+  }
+  if (!roleName) {
+    setProductDetailMessage("请填写角色名。", "error");
+    return;
+  }
+  if (!paymentReference) {
+    setProductDetailMessage("请填写付款时间或付款备注。", "error");
+    return;
+  }
+
+  try {
+    const order = await apiFetch("/orders/guest-transfer", {
+      method: "POST",
+      body: JSON.stringify({
+        item_id: Number(product.item_id),
+        item_kind: product.item_kind || "card",
+        game_role_id: roleId,
+        game_role_name: roleName,
+        nickname: nickname || undefined,
+        amount_yuan: isResidualGuestPurchase ? undefined : directPurchaseContext.amountYuan,
+        transfer_amount: isResidualGuestPurchase ? Number(directResidualAmount || 0) : undefined,
+        payment_channel: selectedGuestTransferPaymentChannel,
+        payment_reference: paymentReference,
+        payer_note: payerNote || undefined,
+      }),
+    });
+    closeProductModal();
+    const paymentLabel = isResidualGuestPurchase
+      ? "残卷转赠"
+      : formatRechargeChannelLabel(selectedGuestTransferPaymentChannel);
+    setNotice(
+      `锁卡订单 #${order.id} 已提交，${product.name} 已先为你保留，等待管理员核对${paymentLabel}${isResidualGuestPurchase ? "" : "收款"}。`,
+      "success"
+    );
+    await loadProducts({ resetPage: false });
+  } catch (error) {
+    const expectedAmount = Number(error?.payload?.expected_amount_yuan || 0);
+    const expectedTransferAmount = Number(error?.payload?.expected_transfer_amount || 0);
+    const transferUnit = String(error?.payload?.transfer_unit || "残卷");
+    const customMessage =
+      pickErrorMessage(error, "提交失败") === "amount_yuan_mismatch" && expectedAmount > 0
+        ? `订单金额已变化，请按最新金额 ${formatCashAmount(expectedAmount)} 重新提交。`
+        : pickErrorMessage(error, "提交失败") === "transfer_amount_mismatch" &&
+            expectedTransferAmount > 0
+          ? `订单所需转赠数量已变化，请按最新数量 ${expectedTransferAmount} ${transferUnit} 重新提交。`
+        : pickErrorMessage(error, "提交失败");
+    setProductDetailMessage(`锁卡提交失败：${customMessage}`, "error");
+  }
+}
+
 function startDirectPurchase(itemId, itemKind = "card") {
   const product = findProduct(itemId, itemKind);
   if (!product) return;
-
-  const session = loadSession();
-  if (!session?.token) {
-    closeProductModal();
-    setNotice("请先登录账号，再用转账购买功能。", "error");
-    window.location.hash = "bind";
-    return;
+  if (Number(activeItemId) !== Number(product.item_id) || String(activeItemKind) !== String(product.item_kind || "card")) {
+    openProductModal(product.item_id, product.item_kind || "card");
   }
-
-  const rechargeConfig = getEffectiveRechargeConfig();
-  const directPurchaseContext = buildDirectPurchaseContext(product, rechargeConfig);
-  if (!rechargeConfig || !directPurchaseContext) {
-    setNotice("当前还没拿到充值比例，请稍后再试。", "error");
-    return;
-  }
-
-  pendingDirectPurchaseContext = directPurchaseContext;
-  selectedRechargeOrderType = "normal";
-  selectedRechargeAmount = directPurchaseContext.amountYuan;
-  closeProductModal();
-  window.location.hash = "recharge-panel";
-  activateAccountTab("recharge", { scroll: true });
-  if (currentRechargeConfig) {
-    renderRechargeSection(session.profile || null, currentRechargeConfig, currentRechargeOrders);
-  } else {
-    loadAccount().catch((error) => setNotice(`账户信息加载失败：${error.message}`, "error"));
-  }
-  setAccountMessage(
-    `已切到转账购买，${product.name} 会按精确金额 ${formatCashAmount(directPurchaseContext.amountYuan)} 处理。到账后可直接回来购买。`,
-    "success"
-  );
+  toggleGuestTransferPanel(true);
 }
 
-async function loadProducts() {
+async function loadProducts(options = {}) {
+  const { resetPage = false } = options;
   try {
     const meta = await apiFetch("/products/meta");
     publicRechargeConfig = meta?.recharge_config || publicRechargeConfig;
@@ -2232,8 +3023,8 @@ async function loadProducts() {
   }
   const products = await apiFetch("/products");
   allProducts = products;
-  applyProductView({ resetPage: true });
-  applyDiscountView({ resetPage: true });
+  applyProductView({ resetPage });
+  applyDiscountView({ resetPage });
 }
 
 async function loadAccount() {
@@ -2250,6 +3041,8 @@ async function loadAccount() {
     renderBeginnerGuide(null, [], []);
     renderRechargeSection(null, null, []);
     renderDrawServiceZone(null, null);
+    currentAuctionBidSummaries = [];
+    renderAuctionZone(null);
     return;
   }
 
@@ -2272,6 +3065,7 @@ async function loadAccount() {
     renderBeginnerGuide(profile, orders || [], rechargeOrders || []);
     renderRechargeSection(profile, rechargeConfig, rechargeOrders || []);
     renderDrawServiceZone(profile, quota);
+    await loadAuctions();
     setNotice("");
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
@@ -2287,6 +3081,8 @@ async function loadAccount() {
       renderBeginnerGuide(null, [], []);
       renderRechargeSection(null, null, []);
       renderDrawServiceZone(null, null);
+      currentAuctionBidSummaries = [];
+      renderAuctionZone(null);
       setNotice("登录状态已失效，请重新登录。", "error");
       return;
     }
@@ -2646,6 +3442,45 @@ document.getElementById("reload-products-btn").addEventListener("click", () => {
   loadProducts().catch((error) => setNotice(`商品刷新失败：${error.message}`, "error"));
 });
 
+auctionStatusTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-auction-status]");
+  if (!button) return;
+  activeAuctionStatus = String(button.getAttribute("data-auction-status") || "live").trim() || "live";
+  renderAuctionZone(currentProfile);
+});
+
+auctionBody?.addEventListener("click", (event) => {
+  const quickButton = event.target.closest("[data-auction-bid-target]");
+  if (quickButton) {
+    const card = event.target.closest("[data-auction-id]");
+    const amountInput = card?.querySelector('[data-field="auction-bid-amount"]');
+    if (card && amountInput) {
+      amountInput.value = String(Number(quickButton.getAttribute("data-auction-bid-target") || 0));
+      updateAuctionBidPreview(card);
+      amountInput.focus();
+      amountInput.select?.();
+    }
+    return;
+  }
+  const button = event.target.closest(".submit-auction-bid-btn");
+  if (!button) return;
+  const card = event.target.closest("[data-auction-id]");
+  if (!card) return;
+  if (!currentProfile) {
+    setAuctionMessage("请先登录后再参与拍卖。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  const auctionId = Number(card.getAttribute("data-auction-id") || 0);
+  const amountInput = card.querySelector('[data-field="auction-bid-amount"]');
+  submitAuctionBid(auctionId, Number(amountInput?.value || 0));
+});
+auctionBody?.addEventListener("input", (event) => {
+  if (event.target?.getAttribute("data-field") !== "auction-bid-amount") return;
+  const card = event.target.closest("[data-auction-id]");
+  updateAuctionBidPreview(card);
+});
+
 document.getElementById("save-helper-origin-btn").addEventListener("click", () => {
   setHelperOrigin(helperOriginInput.value.trim());
   setNotice("helper 地址已保存。", "success");
@@ -2747,12 +3582,29 @@ productCategoryTabs.addEventListener("click", (event) => {
   if (!button) return;
   activeCategory = button.getAttribute("data-category") || "all";
   activeSubcategory = "all";
+  activeDetail = "all";
+  activeFullness = "all";
   applyProductView({ resetPage: true });
 });
 productSubcategoryTabs?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-subcategory]");
   if (!button) return;
   activeSubcategory = button.getAttribute("data-subcategory") || "all";
+  activeDetail = "all";
+  activeFullness = "all";
+  applyProductView({ resetPage: true });
+});
+productDetailTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-detail]");
+  if (!button) return;
+  activeDetail = button.getAttribute("data-detail") || "all";
+  activeFullness = "all";
+  applyProductView({ resetPage: true });
+});
+productFullnessTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-fullness]");
+  if (!button) return;
+  activeFullness = button.getAttribute("data-fullness") || "all";
   applyProductView({ resetPage: true });
 });
 discountKeywordInput?.addEventListener("input", () => {
@@ -2770,12 +3622,29 @@ discountCategoryTabs?.addEventListener("click", (event) => {
   if (!button) return;
   activeDiscountCategory = button.getAttribute("data-discount-category") || "all";
   activeDiscountSubcategory = "all";
+  activeDiscountDetail = "all";
+  activeDiscountFullness = "all";
   applyDiscountView({ resetPage: true });
 });
 discountSubcategoryTabs?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-discount-subcategory]");
   if (!button) return;
   activeDiscountSubcategory = button.getAttribute("data-discount-subcategory") || "all";
+  activeDiscountDetail = "all";
+  activeDiscountFullness = "all";
+  applyDiscountView({ resetPage: true });
+});
+discountDetailTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-discount-detail]");
+  if (!button) return;
+  activeDiscountDetail = button.getAttribute("data-discount-detail") || "all";
+  activeDiscountFullness = "all";
+  applyDiscountView({ resetPage: true });
+});
+discountFullnessTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-discount-fullness]");
+  if (!button) return;
+  activeDiscountFullness = button.getAttribute("data-discount-fullness") || "all";
   applyDiscountView({ resetPage: true });
 });
 function handleProductGridClick(event) {
@@ -2900,5 +3769,7 @@ helperOriginInput.value = getHelperOrigin();
 renderBeginnerGuide(null, [], []);
 renderRecentSales([]);
 loadProducts().catch((error) => setNotice(`商品加载失败：${error.message}`, "error"));
+loadAuctions();
 loadRecentSales();
 loadAccount();
+window.setInterval(updateAuctionCountdowns, AUCTION_COUNTDOWN_TICK_MS);

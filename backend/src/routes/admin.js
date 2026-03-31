@@ -1,6 +1,6 @@
 const express = require("express");
 const { pool } = require("../db/pool");
-const { authRequired, adminOnly } = require("../middlewares/auth");
+const { authRequired, adminReadOnly, adminWriteOnly } = require("../middlewares/auth");
 const { useFileStore } = require("../services/runtime");
 const devStore = require("../services/dev-store");
 const {
@@ -13,6 +13,8 @@ const {
   validateExternalOrderCreate,
   validateRechargeReviewInput,
   validateRechargeConfigUpdateInput,
+  validateAuctionCreate,
+  validateAuctionCancelInput,
 } = require("../services/validate");
 const { parseLegacyProducts } = require("../services/legacy-parser");
 const { applyQuotaChange, ensureQuotaAccount } = require("../services/quota");
@@ -23,7 +25,7 @@ const { ensureBundleSeeds } = require("../services/bundle-catalog");
 const { getRechargeConfig } = require("../config/recharge-config");
 
 const adminRouter = express.Router();
-adminRouter.use(authRequired, adminOnly);
+adminRouter.use(authRequired, adminReadOnly);
 
 function unwrapRawJson(rawValue) {
   let value = rawValue;
@@ -70,7 +72,7 @@ function buildPaginatedResponse(items, total, page, pageSize) {
   };
 }
 
-adminRouter.post("/imports/cards-json", async (req, res, next) => {
+adminRouter.post("/imports/cards-json", adminWriteOnly, async (req, res, next) => {
   if (useFileStore()) {
     try {
       const body = req.body || {};
@@ -228,7 +230,7 @@ adminRouter.get("/products", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/products/bulk-status", async (req, res, next) => {
+adminRouter.patch("/products/bulk-status", adminWriteOnly, async (req, res, next) => {
   try {
     const { product_ids: productIds, status } = req.body || {};
     if (!Array.isArray(productIds) || productIds.length === 0) {
@@ -269,7 +271,7 @@ adminRouter.patch("/products/bulk-status", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/products/bulk-update", async (req, res, next) => {
+adminRouter.patch("/products/bulk-update", adminWriteOnly, async (req, res, next) => {
   try {
     const { product_ids: productIds, ...body } = req.body || {};
     if (!Array.isArray(productIds) || productIds.length === 0) {
@@ -366,7 +368,7 @@ adminRouter.patch("/products/bulk-update", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/products/:id", async (req, res, next) => {
+adminRouter.patch("/products/:id", adminWriteOnly, async (req, res, next) => {
   try {
     const body = req.body || {};
     const errors = validateProductUpdate(body);
@@ -451,7 +453,7 @@ adminRouter.patch("/products/:id", async (req, res, next) => {
   }
 });
 
-adminRouter.delete("/products/:id/manual-price", async (req, res, next) => {
+adminRouter.delete("/products/:id/manual-price", adminWriteOnly, async (req, res, next) => {
   try {
     if (useFileStore()) {
       const updated = devStore.clearProductManualPrice(req.params.id, req.user.id);
@@ -489,7 +491,7 @@ adminRouter.delete("/products/:id/manual-price", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/products/:id/status", async (req, res, next) => {
+adminRouter.patch("/products/:id/status", adminWriteOnly, async (req, res, next) => {
   try {
     const { status } = req.body || {};
     if (!validateProductStatus(status)) {
@@ -543,7 +545,7 @@ adminRouter.get("/bundles", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/bundles/:id", async (req, res, next) => {
+adminRouter.patch("/bundles/:id", adminWriteOnly, async (req, res, next) => {
   try {
     const body = req.body || {};
     const errors = validateBundleUpdate(body);
@@ -604,7 +606,7 @@ adminRouter.patch("/bundles/:id", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/bundles/:id/status", async (req, res, next) => {
+adminRouter.patch("/bundles/:id/status", adminWriteOnly, async (req, res, next) => {
   try {
     const { status } = req.body || {};
     if (!["on_sale", "off_sale", "sold"].includes(status)) {
@@ -674,7 +676,7 @@ adminRouter.get("/users", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/users/:id/quota", async (req, res, next) => {
+adminRouter.patch("/users/:id/quota", adminWriteOnly, async (req, res, next) => {
   if (useFileStore()) {
     try {
       const body = req.body || {};
@@ -743,7 +745,7 @@ adminRouter.patch("/users/:id/quota", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/users/:id/status", async (req, res, next) => {
+adminRouter.patch("/users/:id/status", adminWriteOnly, async (req, res, next) => {
   try {
     const { status } = req.body || {};
     if (!["active", "disabled"].includes(status)) {
@@ -816,7 +818,7 @@ adminRouter.get("/recharge-config", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/recharge-config", async (req, res, next) => {
+adminRouter.patch("/recharge-config", adminWriteOnly, async (req, res, next) => {
   try {
     const body = req.body || {};
     const errors = validateRechargeConfigUpdateInput(body);
@@ -885,7 +887,7 @@ adminRouter.get("/recharge-orders", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/recharge-orders/:id/review", async (req, res, next) => {
+adminRouter.patch("/recharge-orders/:id/review", adminWriteOnly, async (req, res, next) => {
   try {
     const body = req.body || {};
     const errors = validateRechargeReviewInput(body);
@@ -988,7 +990,7 @@ adminRouter.get("/quota-logs", async (req, res, next) => {
   }
 });
 
-adminRouter.post("/pricing/recalculate", async (req, res, next) => {
+adminRouter.post("/pricing/recalculate", adminWriteOnly, async (req, res, next) => {
   try {
     if (useFileStore()) {
       const products = devStore.recalculatePricing(req.user.id);
@@ -1009,7 +1011,7 @@ adminRouter.post("/pricing/recalculate", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/orders/:id/status", async (req, res, next) => {
+adminRouter.patch("/orders/:id/status", adminWriteOnly, async (req, res, next) => {
   if (useFileStore()) {
     try {
       const { status, remark, returned_cards_text, best_gold_card } = req.body || {};
@@ -1142,7 +1144,7 @@ adminRouter.patch("/orders/:id/status", async (req, res, next) => {
   }
 });
 
-adminRouter.post("/orders/external", async (req, res, next) => {
+adminRouter.post("/orders/external", adminWriteOnly, async (req, res, next) => {
   try {
     const body = req.body || {};
     const errors = validateExternalOrderCreate(body);
@@ -1169,7 +1171,7 @@ adminRouter.post("/orders/external", async (req, res, next) => {
   }
 });
 
-adminRouter.patch("/orders/:id/remark", async (req, res, next) => {
+adminRouter.patch("/orders/:id/remark", adminWriteOnly, async (req, res, next) => {
   if (useFileStore()) {
     try {
       const { remark } = req.body || {};
@@ -1227,6 +1229,109 @@ adminRouter.patch("/orders/:id/remark", async (req, res, next) => {
     return next(error);
   } finally {
     client.release();
+  }
+});
+
+adminRouter.get("/auctions", async (req, res, next) => {
+  try {
+    const status = String(req.query.status || "all").trim() || "all";
+    if (useFileStore()) {
+      return res.json(devStore.listAuctions({ status }));
+    }
+
+    return res.status(501).json({ error: "auction_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.post("/auctions", adminWriteOnly, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateAuctionCreate(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    if (useFileStore()) {
+      return res.json(
+        devStore.createAuction(
+          Number(body.product_id),
+          {
+            title: body.title || null,
+            startingPriceQuota: Number(body.starting_price_quota),
+            minIncrementQuota: Number(body.min_increment_quota),
+            startsAt: body.starts_at || null,
+            endsAt: body.ends_at,
+            remark: body.remark || null,
+          },
+          req.user.id
+        )
+      );
+    }
+
+    return res.status(501).json({ error: "auction_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.post("/auctions/:id/settle", adminWriteOnly, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    if (body.remark !== undefined && body.remark !== null && typeof body.remark !== "string") {
+      return res.status(400).json({ error: "remark_invalid" });
+    }
+    if (
+      body.settlement_mode !== undefined &&
+      !["offline", "direct_quota"].includes(String(body.settlement_mode || "").trim())
+    ) {
+      return res.status(400).json({ error: "settlement_mode_invalid" });
+    }
+
+    if (useFileStore()) {
+      return res.json(
+        devStore.settleAuction(
+          req.params.id,
+          {
+            remark: body.remark || null,
+            settlementMode: body.settlement_mode || "offline",
+          },
+          req.user.id
+        )
+      );
+    }
+
+    return res.status(501).json({ error: "auction_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.post("/auctions/:id/cancel", adminWriteOnly, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateAuctionCancelInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    if (useFileStore()) {
+      return res.json(
+        devStore.cancelAuction(
+          req.params.id,
+          {
+            reason: body.reason || null,
+            remark: body.remark || null,
+          },
+          req.user.id
+        )
+      );
+    }
+
+    return res.status(501).json({ error: "auction_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
   }
 });
 

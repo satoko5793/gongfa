@@ -1,7 +1,7 @@
 const { LEGACY_CAPS } = require("../config/catalog-config");
 
 const PRICE_CONFIG = {
-  version: "pricing_v4",
+  version: "pricing_v11",
   marketFactor: {
     min: 0.5,
     max: 4.0,
@@ -72,6 +72,12 @@ const PRICE_CONFIG = {
   },
 };
 
+const RMB_ANCHOR_BY_LEGACY_ID = {
+  601: { yuan: 390, label: "rare_yunqijue" },
+  602: { yuan: 440, label: "rare_lianhuanmahopao" },
+  603: { yuan: 520, label: "rare_qiankunyizhi" },
+};
+
 function clamp(value, min, max) {
   return Math.min(Math.max(Number(value) || 0, min), max);
 }
@@ -80,6 +86,34 @@ function roundPrice(value) {
   const num = Math.max(0, Number(value) || 0);
   if (num < 1000) return Math.round(num / 50) * 50;
   return Math.round(num / 100) * 100;
+}
+
+function getQuotaPerYuan(rechargeConfig = {}) {
+  const direct = Number(rechargeConfig?.quota_per_yuan);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const exchangeQuota = Number(rechargeConfig?.exchange_quota);
+  const exchangeYuan = Number(rechargeConfig?.exchange_yuan);
+  if (Number.isFinite(exchangeQuota) && exchangeQuota > 0 && Number.isFinite(exchangeYuan) && exchangeYuan > 0) {
+    return exchangeQuota / exchangeYuan;
+  }
+
+  return 10000 / 12;
+}
+
+function getRmbAnchorForLegacy(legacyId, rechargeConfig = {}) {
+  const anchor = RMB_ANCHOR_BY_LEGACY_ID[Number(legacyId)];
+  if (!anchor) return null;
+
+  const quotaPerYuan = getQuotaPerYuan(rechargeConfig);
+  const quotaAnchor = roundPrice(anchor.yuan * quotaPerYuan);
+  return {
+    legacy_id: Number(legacyId),
+    yuan: Number(anchor.yuan),
+    quota_per_yuan: Number(quotaPerYuan.toFixed(4)),
+    quota_anchor: quotaAnchor,
+    label: anchor.label,
+  };
 }
 
 function getLegacyTier(legacyId) {
@@ -253,9 +287,40 @@ function getWearProfile(termMetrics) {
   const fireCount = termMetrics.fire_count;
   const calmCount = termMetrics.calm_count;
   if (fireCount === 0 && calmCount === 0) return { kind: "none", basePrice: 0 };
-  if (fireCount >= 1 && calmCount >= 1) return { kind: "dual_mixed", basePrice: 12000 };
-  if (fireCount >= 1) return { kind: "single_fire", basePrice: 6000 };
+  if (fireCount >= 1 && calmCount >= 1) return { kind: "dual_mixed", basePrice: 22500 };
+  if (fireCount >= 1) return { kind: "single_fire", basePrice: 9000 };
   return { kind: "single_calm", basePrice: 6000 };
+}
+
+function getTierSoftDiscount(product, referenceCaps) {
+  const tier = getLegacyTier(product?.legacy_id);
+  if (!["purple", "orange", "red"].includes(tier)) {
+    return {
+      applied: false,
+      rate: 1,
+      reason: "tier_not_discounted",
+    };
+  }
+
+  const attackValue = Number(product?.attack_value) || 0;
+  const hpValue = Number(product?.hp_value) || 0;
+  const attackMax = Math.max(Number(referenceCaps?.attack_max) || 0, 1);
+  const hpMax = Math.max(Number(referenceCaps?.hp_max) || 0, 1);
+  const exactDoubleFull = attackValue >= attackMax && hpValue >= hpMax;
+
+  if (exactDoubleFull) {
+    return {
+      applied: false,
+      rate: 1,
+      reason: "double_full_exempt",
+    };
+  }
+
+  return {
+    applied: true,
+    rate: 0.7,
+    reason: "non_double_full_tier_discount",
+  };
 }
 
 function getGoldHighTermBonus(wearProfile, termMetrics, referenceCaps) {
@@ -267,29 +332,133 @@ function getGoldHighTermBonus(wearProfile, termMetrics, referenceCaps) {
   const calmTotal = Number(termMetrics.calm_total) || 0;
 
   if (wearProfile.kind === "single_fire" && fireTotal >= 2.5) {
-    if (fireTotal >= 3.0) return 4200;
-    if (fireTotal >= 2.8) return 3600;
-    if (fireTotal >= 2.7) return 3000;
-    if (fireTotal >= 2.6) return 2600;
-    return 2200;
+    if (fireTotal >= 3.0) return 13800;
+    if (fireTotal >= 2.8) return 9800;
+    if (fireTotal >= 2.7) return 7800;
+    if (fireTotal >= 2.6) return 6200;
+    return 5000;
   }
 
   if (wearProfile.kind === "single_calm" && calmTotal >= 2.5) {
-    if (calmTotal >= 3.0) return 2600;
-    if (calmTotal >= 2.8) return 2200;
-    if (calmTotal >= 2.7) return 1800;
-    if (calmTotal >= 2.6) return 1500;
+    if (calmTotal >= 3.0) return 11400;
+    if (calmTotal >= 2.9) return 8200;
+    if (calmTotal >= 2.8) return 6800;
+    if (calmTotal >= 2.7) return 5400;
+    if (calmTotal >= 2.6) return 2600;
     return 1200;
   }
 
   if (wearProfile.kind === "dual_mixed") {
     const fireRatio = clamp(fireTotal / fireCap, 0, 1);
     const calmRatio = clamp(calmTotal / calmCap, 0, 1);
-    const combined = fireRatio * 0.58 + calmRatio * 0.42;
-    return 1000 + combined * 1800;
+    const combined = fireRatio * 0.62 + calmRatio * 0.38;
+    const lowerTerm = Math.min(fireTotal, calmTotal);
+    const higherTerm = Math.max(fireTotal, calmTotal);
+    let bonus = 1200 + combined * 3200;
+    if (lowerTerm >= 2.1) bonus += 1200;
+    if (lowerTerm >= 2.3) bonus += 1800;
+    if (lowerTerm >= 2.4) bonus += 1800;
+    if (lowerTerm >= 2.5) bonus += 2400;
+    if (higherTerm >= 2.5) bonus += 3000;
+    if (calmTotal >= 2.4) bonus += 1200;
+    if (fireTotal >= 2.5) bonus += 4500;
+    if (fireTotal >= 2.6) bonus += 5000;
+    if (fireTotal >= 2.7) bonus += 5000;
+    if (fireTotal >= 2.8) bonus += 7000;
+    if (fireTotal >= 2.9) bonus += 9000;
+    if (lowerTerm >= 2.7) bonus += 3000;
+    if (lowerTerm >= 2.9) bonus += 5000;
+    if (lowerTerm >= 3.0) bonus += 9000;
+    return bonus;
   }
 
   return 0;
+}
+
+function getFireBiasMultiplier(tier, wearProfile, termMetrics) {
+  const fireTotal = Number(termMetrics?.fire_total || 0);
+  if (fireTotal <= 0) return 1;
+
+  if (wearProfile?.kind === "single_fire") {
+    if (tier === "gold") {
+      if (fireTotal >= 3.0) return 1.92;
+      if (fireTotal >= 2.8) return 1.58;
+      if (fireTotal >= 2.7) return 1.44;
+      if (fireTotal >= 2.6) return 1.32;
+      if (fireTotal >= 2.5) return 1.22;
+      return 1.12;
+    }
+    if (tier === "red") {
+      if (fireTotal >= 2.5) return 1.2;
+      return 1.1;
+    }
+    return 1.06;
+  }
+
+  if (wearProfile?.kind === "dual_mixed") {
+    if (tier === "gold") {
+      if (fireTotal >= 3.0) return 1.64;
+      if (fireTotal >= 2.9) return 1.52;
+      if (fireTotal >= 2.8) return 1.44;
+      if (fireTotal >= 2.7) return 1.36;
+      if (fireTotal >= 2.6) return 1.3;
+      if (fireTotal >= 2.5) return 1.22;
+    }
+    return 1.12;
+  }
+
+  return 1;
+}
+
+function getCalmBiasMultiplier(tier, wearProfile, termMetrics) {
+  const calmTotal = Number(termMetrics?.calm_total || 0);
+  if (calmTotal <= 0) return 1;
+
+  if (wearProfile?.kind === "single_calm") {
+    if (tier === "gold") {
+      if (calmTotal >= 3.0) return 1.82;
+      if (calmTotal >= 2.9) return 1.52;
+      if (calmTotal >= 2.8) return 1.38;
+      if (calmTotal >= 2.7) return 1.26;
+      if (calmTotal >= 2.6) return 1.12;
+      return 1.04;
+    }
+    if (tier === "red") {
+      if (calmTotal >= 2.7) return 1.14;
+      return 1.06;
+    }
+    return 1.03;
+  }
+
+  if (wearProfile?.kind === "dual_mixed") {
+    if (tier === "gold") {
+      if (calmTotal >= 3.0) return 1.38;
+      if (calmTotal >= 2.9) return 1.28;
+      if (calmTotal >= 2.7) return 1.18;
+      if (calmTotal >= 2.5) return 1.1;
+    }
+    return 1.12;
+  }
+
+  return 1;
+}
+
+function getGoldSeasonPremium(product, atlas, wearProfile, termMetrics) {
+  if (!product?.is_current_season) return 0;
+  if (!wearProfile || wearProfile.kind === "none") return 0;
+
+  const attackRate = Number(atlas?.attack_rate || 0);
+  const hpRate = Number(atlas?.hp_rate || 0);
+  const fireTotal = Number(termMetrics?.fire_total || 0);
+  const calmTotal = Number(termMetrics?.calm_total || 0);
+
+  let premium = 300;
+  if (wearProfile.kind === "single_fire" && fireTotal >= 2.7) premium += 300;
+  if (wearProfile.kind === "single_calm" && calmTotal >= 2.7) premium += 500;
+  if (wearProfile.kind === "dual_mixed") premium += 1400;
+  if (attackRate >= 0.9) premium += 200;
+  if (hpRate >= 0.995) premium += 200;
+  return premium;
 }
 
 function getWearPrice(product, atlas, referenceCaps, tierRule) {
@@ -337,6 +506,11 @@ function getWearPrice(product, atlas, referenceCaps, tierRule) {
   const statsBonus = 0.82 + Number(atlas?.score || 0) * 0.32;
   const highTermBonus =
     tier === "gold" ? getGoldHighTermBonus(wearProfile, termMetrics, referenceCaps) : 0;
+  const seasonPremium =
+    tier === "gold" ? getGoldSeasonPremium(product, atlas, wearProfile, termMetrics) : 0;
+  const fireBiasMultiplier = getFireBiasMultiplier(tier, wearProfile, termMetrics);
+  const calmBiasMultiplier = getCalmBiasMultiplier(tier, wearProfile, termMetrics);
+  const termBiasMultiplier = Math.max(fireBiasMultiplier, calmBiasMultiplier);
   let wearPrice = 0;
 
   if (tier === "orange") {
@@ -345,16 +519,17 @@ function getWearPrice(product, atlas, referenceCaps, tierRule) {
     if (wearProfile.kind === "dual_mixed") {
       const fireWeight = fireRate * 0.58;
       const calmWeight = calmRate * 0.42;
-      const dualPremium = 150 + (fireWeight + calmWeight) * 450 + Number(atlas?.score || 0) * 150;
+      const dualPremium = 500 + (fireWeight + calmWeight) * 900 + Number(atlas?.score || 0) * 300;
       wearPrice = (Number(atlas?.price) || 0) + dualPremium;
     } else {
       wearPrice = 0;
     }
   } else {
     wearPrice =
-      (wearProfile.basePrice + highTermBonus) *
+      (wearProfile.basePrice + highTermBonus + seasonPremium) *
       (0.7 + qualityScore * 0.35) *
       statsBonus *
+      termBiasMultiplier *
       Number(tierRule?.wearMultiplier || 1);
   }
 
@@ -366,6 +541,10 @@ function getWearPrice(product, atlas, referenceCaps, tierRule) {
     calm_rate: Number(calmRate.toFixed(4)),
     quality_score: Number(qualityScore.toFixed(4)),
     high_term_bonus: roundPrice(highTermBonus),
+    season_premium: roundPrice(seasonPremium),
+    fire_bias_multiplier: Number(fireBiasMultiplier.toFixed(4)),
+    calm_bias_multiplier: Number(calmBiasMultiplier.toFixed(4)),
+    term_bias_multiplier: Number(termBiasMultiplier.toFixed(4)),
     price: roundPrice(wearPrice),
   };
 }
@@ -532,13 +711,40 @@ function buildSimilarityReference(target, pricedProducts) {
     };
   }
 
+  if (target.rmb_anchor) {
+    return {
+      applied: false,
+      reason: "rmb_anchor_base",
+      sample_size: 0,
+      effective_sample_size: 0,
+      reference_price: roundPrice(target.rmb_anchor.quota_anchor),
+      blended_base_price: roundPrice(target.rmb_anchor.quota_anchor),
+      season_sensitive: false,
+      top_matches: [],
+    };
+  }
+
   const tierConfig =
     target.tier === "gold" ? PRICE_CONFIG.similarity.gold : PRICE_CONFIG.similarity.other;
   const weightedMatches = [];
+  const targetTermBucketRank = Number(target.profile?.term_bucket_rank || 0);
 
   for (const candidate of pricedProducts) {
     if (Number(candidate.id) === Number(target.id)) continue;
     if (candidate.tier !== target.tier) continue;
+    if (
+      targetTermBucketRank >= 2 &&
+      Number(candidate.profile?.term_bucket_rank || 0) !== targetTermBucketRank
+    ) {
+      continue;
+    }
+    if (
+      target.tier === "gold" &&
+      targetTermBucketRank >= 2 &&
+      Number(candidate.legacy_id || 0) !== Number(target.legacy_id || 0)
+    ) {
+      continue;
+    }
 
     const weight =
       target.tier === "gold"
@@ -701,9 +907,10 @@ function applyMonotonicCap(products, step) {
   }
 }
 
-function repriceProducts(products, orderEvents, now = new Date()) {
+function repriceProducts(products, orderEvents, now = new Date(), options = {}) {
   const configuredMaxMap = buildConfiguredMaxMap(products);
   const demandMap = buildDemandMap(orderEvents, now);
+  const rechargeConfig = options?.rechargeConfig || {};
 
   const basePricedProducts = products.map((product) => {
     const tier = getLegacyTier(product.legacy_id);
@@ -718,11 +925,22 @@ function repriceProducts(products, orderEvents, now = new Date()) {
 
     const atlas = getAtlasPrice(product, tierRule, referenceCaps);
     const wear = getWearPrice(product, atlas, referenceCaps, tierRule);
-    const dominant =
+    const rmbAnchor = getRmbAnchorForLegacy(product.legacy_id, rechargeConfig);
+    let dominant =
       Number(wear.price || 0) > Number(atlas.price || 0)
         ? { type: "wear", label: "佩戴价主导" }
         : { type: "atlas", label: "图鉴价主导" };
-    const autoBasePrice = Math.max(floorPrice, Number(atlas.price) || 0, Number(wear.price) || 0);
+    const intrinsicAutoBasePrice = Math.max(
+      floorPrice,
+      Number(atlas.price) || 0,
+      Number(wear.price) || 0
+    );
+    const autoBasePrice = rmbAnchor
+      ? Math.max(floorPrice, Number(rmbAnchor.quota_anchor) || 0)
+      : intrinsicAutoBasePrice;
+    if (rmbAnchor) {
+      dominant = { type: "rmb_anchor", label: "RMB anchor" };
+    }
     const profile = createSimilarityProfile(product, atlas, wear, autoBasePrice);
 
     return {
@@ -732,6 +950,8 @@ function repriceProducts(products, orderEvents, now = new Date()) {
       atlas,
       wear,
       dominant,
+      rmb_anchor: rmbAnchor,
+      intrinsic_auto_base_price: intrinsicAutoBasePrice,
       auto_base_price: autoBasePrice,
       reference_caps: referenceCaps,
       profile,
@@ -740,9 +960,13 @@ function repriceProducts(products, orderEvents, now = new Date()) {
 
   const pricedProducts = basePricedProducts.map((product) => {
     const similarity = buildSimilarityReference(product, basePricedProducts);
+    const tierSoftDiscount = getTierSoftDiscount(product, product.reference_caps);
+    const discountedAutoBasePrice = roundPrice(
+      Number(similarity.blended_base_price || product.auto_base_price || 0) * Number(tierSoftDiscount.rate || 1)
+    );
     const adjustedAutoBasePrice = Math.max(
       Number(product.floor_price || 0),
-      Number(similarity.blended_base_price || product.auto_base_price || 0)
+      discountedAutoBasePrice
     );
     const market = getMarketFactor({
       ...(demandMap.get(Number(product.id)) || {}),
@@ -756,10 +980,15 @@ function repriceProducts(products, orderEvents, now = new Date()) {
       product.manual_price_quota === null || product.manual_price_quota === undefined
         ? null
         : Number(product.manual_price_quota);
+    const effectiveManualPrice = product.rmb_anchor ? null : manualPrice;
 
     const pricingMeta = {
       version: PRICE_CONFIG.version,
-      source: Number.isInteger(manualPrice) ? "manual" : "auto",
+      source: product.rmb_anchor
+        ? "rmb_anchor"
+        : Number.isInteger(effectiveManualPrice)
+        ? "manual"
+        : "auto",
       tier: product.tier,
       floor_price: product.floor_price,
       reference_caps: product.reference_caps,
@@ -768,17 +997,20 @@ function repriceProducts(products, orderEvents, now = new Date()) {
       wear: product.wear,
       similarity,
       market,
+      rmb_anchor: product.rmb_anchor,
+      intrinsic_auto_base_price: product.intrinsic_auto_base_price,
       auto_base_price: product.auto_base_price,
+      tier_soft_discount: tierSoftDiscount,
       adjusted_auto_base_price: adjustedAutoBasePrice,
       auto_price: autoPrice,
-      manual_price: manualPrice,
+      manual_price: effectiveManualPrice,
       dominant_reason: product.dominant.type,
       dominant_reason_label: product.dominant.label,
     };
 
     return {
       ...product,
-      price_quota: Number.isInteger(manualPrice) ? manualPrice : autoPrice,
+      price_quota: Number.isInteger(effectiveManualPrice) ? effectiveManualPrice : autoPrice,
       pricing_meta: pricingMeta,
     };
   });
@@ -794,7 +1026,9 @@ function repriceProducts(products, orderEvents, now = new Date()) {
   for (const group of grouped.values()) {
     const tier = getLegacyTier(group[0]?.legacy_id);
     const step = PRICE_CONFIG.tierRules[tier].monotonicStep;
-    const autoProducts = group.filter((item) => !Number.isInteger(item.manual_price_quota));
+    const autoProducts = group.filter(
+      (item) => item.rmb_anchor || !Number.isInteger(item.manual_price_quota)
+    );
     const [doubleTermProducts, singleTermProducts, normalProducts] = splitPricingBuckets(autoProducts);
 
     applyMonotonicCap(doubleTermProducts, step);

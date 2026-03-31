@@ -3,7 +3,12 @@ const { pool } = require("../db/pool");
 const { authRequired } = require("../middlewares/auth");
 const { useFileStore } = require("../services/runtime");
 const devStore = require("../services/dev-store");
-const { validateOrderCreate, validateDrawOrderCreate } = require("../services/validate");
+const {
+  validateOrderCreate,
+  validateGuestTransferOrderCreate,
+  validateDrawOrderCreate,
+  validateAuctionBidCreate,
+} = require("../services/validate");
 const { listOrders } = require("../services/order-query");
 const { applyQuotaChange } = require("../services/quota");
 const { canAccessOrder } = require("../services/authz");
@@ -12,6 +17,39 @@ const { recalculateDatabasePricing } = require("../services/pricing");
 const { ensureBundleSeeds } = require("../services/bundle-catalog");
 
 const ordersRouter = express.Router();
+
+ordersRouter.post("/guest-transfer", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateGuestTransferOrderCreate(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    if (useFileStore()) {
+      const created = devStore.createGuestTransferOrder(
+        body.item_id ?? body.product_id,
+        body.item_kind || "card",
+        {
+          gameRoleId: body.game_role_id,
+          gameRoleName: body.game_role_name,
+          nickname: body.nickname || null,
+          amountYuan: Number(body.amount_yuan),
+          transferAmount: body.transfer_amount === undefined ? null : Number(body.transfer_amount),
+          paymentChannel: body.payment_channel || "alipay_qr",
+          paymentReference: body.payment_reference,
+          payerNote: body.payer_note || null,
+        }
+      );
+      return res.json(created);
+    }
+
+    return res.status(501).json({ error: "guest_transfer_order_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 ordersRouter.use(authRequired);
 
 ordersRouter.post("/", async (req, res, next) => {
@@ -242,6 +280,40 @@ ordersRouter.post("/draw-service", async (req, res, next) => {
     }
 
     return res.status(501).json({ error: "draw_service_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ordersRouter.get("/auctions/mine", async (req, res, next) => {
+  try {
+    if (useFileStore()) {
+      return res.json({
+        items: devStore.listAuctionBidSummariesForUser(req.user.id),
+      });
+    }
+
+    return res.status(501).json({ error: "auction_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ordersRouter.post("/auctions/:id/bids", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateAuctionBidCreate(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    if (useFileStore()) {
+      return res.json(
+        devStore.placeAuctionBid(req.params.id, req.user.id, Number(body.amount_quota))
+      );
+    }
+
+    return res.status(501).json({ error: "auction_not_supported_in_db_mode" });
   } catch (error) {
     return next(error);
   }

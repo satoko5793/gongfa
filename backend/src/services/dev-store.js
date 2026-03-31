@@ -30,6 +30,7 @@ const DRAW_SERVICE_STEP_QUOTA = 200;
 const DRAW_SERVICE_MILESTONE_QUOTA = 50000;
 const DRAW_SERVICE_FIRST_REBATE_QUOTA = 10000;
 const DRAW_SERVICE_REPEAT_REBATE_QUOTA = 5000;
+const AUCTION_BLOCKING_STATUSES = new Set(["scheduled", "live", "ended"]);
 const DRAW_SERVICE_ATLAS_BONUS_LABEL = "一套带金高攻高血图鉴";
 const DRAW_SERVICE_VIDEO_NOTICE =
   "如需代抽视频确认真实性，请在“我的信息”里的“订单帮助”中，通过微信群联系管理员索取。";
@@ -49,6 +50,25 @@ const LEGACY_DISPLAY_NAME_BY_ID = {
   403: "跑路草上飞",
   501: "运气诀",
 };
+
+const LEGACY_DISPLAY_NAME_OVERRIDES = {
+  201: "\u4e5f\u884c\u5200\u6cd5",
+  501: "\u8fd0\u6c14\u51b3",
+  601: "\u73cd \u8fd0\u6c14\u51b3",
+  602: "\u73cd \u8fde\u73af\u9a6c\u540e\u70ae",
+  603: "\u73cd \u4e7e\u5764\u4e00\u63b7",
+};
+
+function getExpectedLegacyDisplayName(legacyId) {
+  return (
+    LEGACY_DISPLAY_NAME_OVERRIDES[Number(legacyId)] || LEGACY_DISPLAY_NAME_BY_ID[Number(legacyId)]
+  );
+}
+
+function getExpectedLegacyImageUrl(legacyId) {
+  const displayName = getExpectedLegacyDisplayName(legacyId);
+  return displayName ? `./legacy-assets/${encodeURIComponent(displayName)}.png` : null;
+}
 
 function now() {
   return new Date().toISOString();
@@ -76,12 +96,22 @@ function getEffectiveQuotaPrice(basePrice, discountRate) {
   return Math.max(1, Math.round((normalizedPrice * normalizedRate) / 100));
 }
 
+function getQuotaCashAmountFromStore(data, quotaAmount) {
+  const config = normalizeRechargeConfig(data?.rechargeConfig || buildDefaultRechargeConfig());
+  const exchangeQuota = Math.max(Number(config.exchange_quota || 0), 1);
+  const exchangeYuan = Math.max(Number(config.exchange_yuan || 1), 0.01);
+  const yuan = (Math.max(Number(quotaAmount) || 0, 0) * exchangeYuan) / exchangeQuota;
+  return Number(yuan.toFixed(2));
+}
+
 function defaultData() {
   return {
     users: [],
     productImports: [],
     products: [],
     bundleSkus: [],
+    auctions: [],
+    auctionBids: [],
     quotaAccounts: [],
     quotaLogs: [],
     orders: [],
@@ -203,7 +233,7 @@ function normalizeLegacyCardNames(data) {
 
   data.products = (data.products || []).map((product) => {
     const legacyId = Number(product?.legacy_id || 0);
-    const expectedName = LEGACY_DISPLAY_NAME_BY_ID[legacyId];
+    const expectedName = getExpectedLegacyDisplayName(legacyId);
     if (!expectedName) return product;
 
     const next = { ...product };
@@ -219,6 +249,12 @@ function normalizeLegacyCardNames(data) {
       changed = true;
     }
 
+    const expectedImageUrl = getExpectedLegacyImageUrl(legacyId);
+    if (expectedImageUrl && String(product?.image_url || "").trim() !== expectedImageUrl) {
+      next.image_url = expectedImageUrl;
+      changed = true;
+    }
+
     return next;
   });
 
@@ -228,7 +264,9 @@ function normalizeLegacyCardNames(data) {
 function repriceDataProducts(data) {
   const pricedProducts = repriceProducts(
     data.products || [],
-    buildOrderEvents(data.orders || [], data.orderItems || [])
+    buildOrderEvents(data.orders || [], data.orderItems || []),
+    new Date(),
+    { rechargeConfig: data.rechargeConfig || {} }
   );
 
   const pricedById = new Map(pricedProducts.map((item) => [Number(item.id), item]));
@@ -394,7 +432,70 @@ function normalizeData(data) {
     }
     return normalized;
   });
+  next.auctions = (next.auctions || []).map((auction) => {
+    const normalizedStatus = normalizeAuctionStatus(auction?.status);
+    const normalized = {
+      ...auction,
+      item_kind: "card",
+      title: String(auction?.title || "").trim() || null,
+      current_price_quota: Number(
+        auction?.current_price_quota || auction?.starting_price_quota || 0
+      ),
+      current_bid_user_id:
+        auction?.current_bid_user_id === undefined || auction?.current_bid_user_id === null
+          ? null
+          : Number(auction.current_bid_user_id),
+      current_bid_at: auction?.current_bid_at || null,
+      settled_order_id:
+        auction?.settled_order_id === undefined || auction?.settled_order_id === null
+          ? null
+          : Number(auction.settled_order_id),
+      settled_at: auction?.settled_at || null,
+      cancelled_at: auction?.cancelled_at || null,
+      cancelled_reason: auction?.cancelled_reason || null,
+      winning_bid_amount:
+        auction?.winning_bid_amount === undefined || auction?.winning_bid_amount === null
+          ? null
+          : Number(auction.winning_bid_amount),
+      winning_bid_user_id:
+        auction?.winning_bid_user_id === undefined || auction?.winning_bid_user_id === null
+          ? null
+          : Number(auction.winning_bid_user_id),
+      product_snapshot:
+        auction?.product_snapshot && typeof auction.product_snapshot === "object"
+          ? auction.product_snapshot
+          : null,
+      status: normalizedStatus,
+    };
+    if (
+      auction?.status !== normalizedStatus ||
+      auction?.item_kind !== "card" ||
+      auction?.product_snapshot === undefined
+    ) {
+      changed = true;
+    }
+    return normalized;
+  });
+  next.auctionBids = (next.auctionBids || []).map((bid) => {
+    const normalized = {
+      ...bid,
+      amount_quota: Number(bid?.amount_quota || 0),
+      auction_id: Number(bid?.auction_id || 0),
+      user_id: Number(bid?.user_id || 0),
+    };
+    if (
+      Number(bid?.amount_quota || 0) !== normalized.amount_quota ||
+      Number(bid?.auction_id || 0) !== normalized.auction_id ||
+      Number(bid?.user_id || 0) !== normalized.user_id
+    ) {
+      changed = true;
+    }
+    return normalized;
+  });
   next.rechargeConfig = normalizeRechargeConfig(next.rechargeConfig || {});
+  if (refreshAuctionStatuses(next)) {
+    changed = true;
+  }
   if (backfillBeginnerGuideRewards(next)) {
     changed = true;
   }
@@ -428,6 +529,118 @@ function nextId(list) {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeAuctionStatus(status) {
+  return ["scheduled", "live", "ended", "settled", "cancelled"].includes(
+    String(status || "").trim()
+  )
+    ? String(status).trim()
+    : "scheduled";
+}
+
+function refreshAuctionStatuses(data) {
+  let changed = false;
+  const currentTime = Date.now();
+
+  data.auctions = (data.auctions || []).map((auction) => {
+    const next = { ...auction };
+    const currentStatus = normalizeAuctionStatus(next.status);
+    const startsAt = next.starts_at ? new Date(next.starts_at).getTime() : currentTime;
+    const endsAt = next.ends_at ? new Date(next.ends_at).getTime() : currentTime;
+    let resolvedStatus = currentStatus;
+
+    if (!["settled", "cancelled"].includes(currentStatus)) {
+      if (startsAt > currentTime) {
+        resolvedStatus = "scheduled";
+      } else if (endsAt <= currentTime) {
+        resolvedStatus = "ended";
+      } else {
+        resolvedStatus = "live";
+      }
+    }
+
+    if (resolvedStatus !== currentStatus) {
+      next.status = resolvedStatus;
+      next.updated_at = now();
+      changed = true;
+    }
+
+    return next;
+  });
+
+  return changed;
+}
+
+function getBlockingAuctionForProduct(data, productId, options = {}) {
+  const excludeAuctionId =
+    options.excludeAuctionId === undefined || options.excludeAuctionId === null
+      ? null
+      : Number(options.excludeAuctionId);
+  return (data.auctions || []).find(
+    (auction) =>
+      Number(auction.product_id) === Number(productId) &&
+      (excludeAuctionId === null || Number(auction.id) !== excludeAuctionId) &&
+      AUCTION_BLOCKING_STATUSES.has(String(auction.status || "").trim())
+  );
+}
+
+function getReservedAuctionCountForProduct(data, productId, options = {}) {
+  const excludeAuctionId =
+    options.excludeAuctionId === undefined || options.excludeAuctionId === null
+      ? null
+      : Number(options.excludeAuctionId);
+  return (data.auctions || []).filter(
+    (auction) =>
+      Number(auction.product_id) === Number(productId) &&
+      (excludeAuctionId === null || Number(auction.id) !== excludeAuctionId) &&
+      AUCTION_BLOCKING_STATUSES.has(String(auction.status || "").trim())
+  ).length;
+}
+
+function getAvailableProductStock(data, product) {
+  const totalStock = Number(product?.stock || 0);
+  if (!Number.isFinite(totalStock) || totalStock <= 0) return 0;
+  const reservedCount = getReservedAuctionCountForProduct(data, Number(product?.id));
+  return Math.max(0, totalStock - reservedCount);
+}
+
+function ensureProductNotBlockedByAuction(data, productId, errorCode = "product_in_auction") {
+  const blockingAuction = getBlockingAuctionForProduct(data, productId);
+  const product = (data.products || []).find((item) => Number(item.id) === Number(productId));
+  if (!blockingAuction) return;
+  if (product && getAvailableProductStock(data, product) > 0) return;
+  const err = new Error(errorCode);
+  err.statusCode = 400;
+  err.payload = {
+    auction_id: Number(blockingAuction.id),
+    auction_status: String(blockingAuction.status || "").trim(),
+  };
+  throw err;
+}
+
+function getAuctionBuyerLabel(user) {
+  const source =
+    String(user?.nickname || "").trim() ||
+    String(user?.game_role_name || "").trim() ||
+    String(user?.game_role_id || "").trim();
+  return source || "匿名用户";
+}
+
+function hasConfirmedSaleRecord(data, productId) {
+  const normalizedProductId = Number(productId);
+  if (!Number.isInteger(normalizedProductId) || normalizedProductId <= 0) return false;
+  const confirmedOrderIds = new Set(
+    (data.orders || [])
+      .filter((order) => String(order?.status || "").trim() === "confirmed")
+      .map((order) => Number(order.id))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  );
+  return (data.orderItems || []).some(
+    (item) =>
+      Number(item?.product_id) === normalizedProductId &&
+      confirmedOrderIds.has(Number(item?.order_id))
+  );
 }
 
 function sanitizeUser(user) {
@@ -864,6 +1077,7 @@ function updateRechargeConfig(patch, actorUserId = null) {
     ...patch,
   });
   data.rechargeConfig = nextConfig;
+  repriceDataProducts(data);
 
   if (actorUserId) {
     addAuditLog(data, {
@@ -947,7 +1161,11 @@ async function changeSelfPassword(userId, currentPassword, nextPassword) {
 
 function listProducts({ keyword = "", sort = "created_desc", publicOnly = false } = {}) {
   const data = readData();
-  const cards = data.products.filter((item) => (publicOnly ? item.status === "on_sale" : true));
+  const cards = data.products.filter((item) => {
+    if (!publicOnly) return true;
+    if (item.status !== "on_sale") return false;
+    return getAvailableProductStock(data, item) > 0;
+  });
   const bundles = (data.bundleSkus || []).filter((item) => (publicOnly ? item.status === "on_sale" : true));
   let products = [...cards.map(normalizeCardProduct), ...bundles.map(normalizeBundleSku)];
 
@@ -982,6 +1200,9 @@ function getProductById(productId, { publicOnly = false, itemKind = "card" } = {
   const product = data.products.find(
     (item) => item.id === Number(productId) && (!publicOnly || item.status === "on_sale")
   );
+  if (publicOnly && product && getAvailableProductStock(data, product) <= 0) {
+    return null;
+  }
   return product ? normalizeCardProduct(product) : null;
 }
 
@@ -997,10 +1218,10 @@ function hydrateOrders(data, orders) {
     const user = data.users.find((item) => item.id === order.user_id);
     return {
       ...clone(order),
-      game_role_id: user?.game_role_id || null,
-      game_server: user?.game_server || null,
-      game_role_name: user?.game_role_name || null,
-      nickname: user?.nickname || null,
+      game_role_id: user?.game_role_id || order?.guest_game_role_id || null,
+      game_server: user?.game_server || order?.guest_game_server || null,
+      game_role_name: user?.game_role_name || order?.guest_game_role_name || null,
+      nickname: user?.nickname || order?.guest_nickname || null,
       order_source: order?.order_source || "mall",
       buyer_label: order?.buyer_label || null,
       items: clone(data.orderItems.filter((item) => item.order_id === order.id)),
@@ -1028,6 +1249,133 @@ function hydrateRechargeOrders(data, rechargeOrders) {
       reviewer_role_name: reviewer?.game_role_name || null,
     };
   });
+}
+
+function hydrateAuction(data, auction, { publicView = false } = {}) {
+  const product = (data.products || []).find((item) => Number(item.id) === Number(auction.product_id));
+  const snapshotBase =
+    auction?.product_snapshot && typeof auction.product_snapshot === "object"
+      ? auction.product_snapshot
+      : product;
+  const item = snapshotBase
+    ? normalizeCardProduct({ ...snapshotBase, id: Number(auction.product_id) })
+    : null;
+  const bids = (data.auctionBids || [])
+    .filter((bid) => Number(bid.auction_id) === Number(auction.id))
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const leadingUser = (data.users || []).find(
+    (user) => Number(user.id) === Number(auction.current_bid_user_id)
+  );
+  const leadingAccount = leadingUser ? ensureQuotaAccount(data, Number(leadingUser.id)) : null;
+  const nextMinBidQuota = auction.current_bid_user_id
+    ? Number(auction.current_price_quota || 0) + Number(auction.min_increment_quota || 0)
+    : Number(auction.starting_price_quota || 0);
+  const winningAmount = Number(auction.current_price_quota || auction.starting_price_quota || 0);
+  const base = {
+    ...clone(auction),
+    item,
+    bid_count: bids.length,
+    next_min_bid_quota: nextMinBidQuota,
+    leading_bidder_label: leadingUser ? getAuctionBuyerLabel(leadingUser) : "无",
+    current_bid_user_name: leadingUser?.game_role_name || null,
+    current_bid_user_game_role_id: leadingUser?.game_role_id || null,
+    current_bid_user_quota_balance: leadingAccount ? Number(leadingAccount.balance || 0) : null,
+    winning_amount_quota: winningAmount,
+    can_direct_settle: leadingAccount ? Number(leadingAccount.balance || 0) >= winningAmount : false,
+  };
+
+  if (publicView) {
+    delete base.product_snapshot;
+    delete base.created_by;
+    delete base.current_bid_user_id;
+    delete base.current_bid_user_name;
+    delete base.current_bid_user_game_role_id;
+    delete base.current_bid_user_quota_balance;
+    delete base.can_direct_settle;
+    delete base.winning_bid_user_id;
+    return base;
+  }
+
+  return {
+    ...base,
+    bids: bids.map((bid) => {
+      const bidUser = (data.users || []).find((user) => Number(user.id) === Number(bid.user_id));
+      return {
+        ...clone(bid),
+        game_role_id: bidUser?.game_role_id || null,
+        game_role_name: bidUser?.game_role_name || null,
+        nickname: bidUser?.nickname || null,
+      };
+    }),
+  };
+}
+
+function listAuctions({ status = "all", auctionId = null, publicView = false } = {}) {
+  const data = readData();
+  let auctions = (data.auctions || []).slice();
+
+  if (auctionId !== null && auctionId !== undefined) {
+    auctions = auctions.filter((auction) => Number(auction.id) === Number(auctionId));
+  }
+  if (status && status !== "all") {
+    auctions = auctions.filter(
+      (auction) => String(auction.status || "").trim() === String(status).trim()
+    );
+  }
+
+  const statusOrder = {
+    live: 0,
+    scheduled: 1,
+    ended: 2,
+    settled: 3,
+    cancelled: 4,
+  };
+  auctions.sort(
+    (a, b) =>
+      Number(statusOrder[String(a.status || "").trim()] ?? 9) -
+        Number(statusOrder[String(b.status || "").trim()] ?? 9) ||
+      String(a.ends_at || "").localeCompare(String(b.ends_at || "")) ||
+      String(b.created_at || "").localeCompare(String(a.created_at || ""))
+  );
+
+  return clone(auctions.map((auction) => hydrateAuction(data, auction, { publicView })));
+}
+
+function listAuctionBidSummariesForUser(userId) {
+  const data = readData();
+  const bids = (data.auctionBids || []).filter((bid) => Number(bid.user_id) === Number(userId));
+  const grouped = new Map();
+
+  bids.forEach((bid) => {
+    const auctionId = Number(bid.auction_id);
+    const current = grouped.get(auctionId) || {
+      auction_id: auctionId,
+      latest_bid_amount: 0,
+      highest_bid_amount: 0,
+      latest_bid_at: null,
+    };
+    const amount = Number(bid.amount_quota || 0);
+    if (amount >= current.highest_bid_amount) {
+      current.highest_bid_amount = amount;
+    }
+    if (!current.latest_bid_at || String(bid.created_at).localeCompare(String(current.latest_bid_at)) > 0) {
+      current.latest_bid_at = bid.created_at;
+      current.latest_bid_amount = amount;
+    }
+    grouped.set(auctionId, current);
+  });
+
+  return clone(
+    [...grouped.values()].map((entry) => {
+      const auction = (data.auctions || []).find((item) => Number(item.id) === Number(entry.auction_id));
+      return {
+        ...entry,
+        status: auction?.status || null,
+        current_price_quota: Number(auction?.current_price_quota || 0),
+        is_leading: Number(auction?.current_bid_user_id || 0) === Number(userId),
+      };
+    })
+  );
 }
 
 function listBundleSkus({ publicOnly = false } = {}) {
@@ -1067,6 +1415,12 @@ function listOrders({
         order?.buyer_label,
         order?.order_source,
         order?.remark,
+        order?.guest_game_role_id,
+        order?.guest_game_role_name,
+        order?.guest_nickname,
+        order?.payment_reference,
+        order?.payment_channel,
+        String(order?.payment_amount_yuan || ""),
         user?.game_role_id,
         user?.game_server,
         user?.game_role_name,
@@ -1103,6 +1457,9 @@ function createExternalOrder(
     const err = new Error(isBundle ? "bundle_not_found" : "product_not_found");
     err.statusCode = 404;
     throw err;
+  }
+  if (!isBundle) {
+    ensureProductNotBlockedByAuction(data, item.id, "product_in_auction");
   }
   if (item.status !== "on_sale") {
     const err = new Error(isBundle ? "bundle_not_on_sale" : "product_not_on_sale");
@@ -1279,18 +1636,6 @@ function applyQuotaChange(
 
 function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedProducts }) {
   const data = readData();
-  const hasPendingOrders = (data.orders || []).some((order) =>
-    ["pending", "cancel_requested"].includes(String(order?.status || ""))
-  );
-  if (hasPendingOrders) {
-    const err = new Error("catalog_replace_blocked_by_pending_orders");
-    err.statusCode = 409;
-    throw err;
-  }
-
-  data.products = [];
-  data.productImports = [];
-
   const importId = nextId(data.productImports);
   const importedAt = now();
 
@@ -1304,8 +1649,55 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
   };
   data.productImports.push(importRow);
 
+  const blockingStatuses = new Set(["scheduled", "live", "ended"]);
+  const pendingOrderStatuses = new Set(["pending", "cancel_requested"]);
+  const preservedPendingProductIds = new Set(
+    (data.orderItems || [])
+      .filter((item) => {
+        const order = (data.orders || []).find((candidate) => Number(candidate?.id) === Number(item?.order_id));
+        return (
+          order &&
+          pendingOrderStatuses.has(String(order?.status || "").trim()) &&
+          item?.item_kind === "card" &&
+          Number(item?.product_id) > 0
+        );
+      })
+      .map((item) => Number(item.product_id))
+  );
+  const preservedAuctionProducts = (data.products || []).filter((product) =>
+    (data.auctions || []).some(
+      (auction) =>
+        Number(auction?.product_id) === Number(product.id) &&
+        blockingStatuses.has(String(auction?.status || "").trim())
+    )
+  );
+  const preservedPendingProducts = (data.products || []).filter((product) =>
+    preservedPendingProductIds.has(Number(product.id))
+  );
+  const preservedProductsMap = new Map();
+  [...preservedAuctionProducts, ...preservedPendingProducts].forEach((product) => {
+    preservedProductsMap.set(Number(product.id), product);
+  });
+  const preservedProducts = Array.from(preservedProductsMap.values());
+  const preservedImportIds = new Set(
+    preservedProducts.map((item) => Number(item.import_id)).filter(Boolean)
+  );
+  const removedCount = Math.max((data.products || []).length - preservedProducts.length, 0);
+  data.products = preservedProducts;
+  data.productImports = (data.productImports || []).filter(
+    (item) => Number(item.id) === Number(importId) || preservedImportIds.has(Number(item.id))
+  );
+
+  const existingByUid = new Map((data.products || []).map((item) => [String(item.uid || ""), item]));
+  let insertedCount = 0;
+  let updatedCount = 0;
+  const preservedAuctionCount = preservedAuctionProducts.length;
+  const preservedPendingCount = preservedPendingProducts.length;
+
   parsedProducts.forEach((product) => {
-    let existing = data.products.find((item) => item.uid === product.uid);
+    const productUid = String(product.uid || "").trim();
+    if (!productUid) return;
+    let existing = existingByUid.get(productUid);
     if (!existing) {
       existing = {
         id: nextId(data.products),
@@ -1334,6 +1726,8 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
         updated_at: importedAt,
       };
       data.products.push(existing);
+      existingByUid.set(productUid, existing);
+      insertedCount += 1;
     } else {
       existing.import_id = importId;
       existing.legacy_id = product.legacy_id;
@@ -1351,8 +1745,11 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
       existing.season_display = product.season_display || "老卡";
       existing.discount_rate = normalizeDiscountRate(existing.discount_rate);
       existing.stock = Number(product.stock) || 1;
-      existing.status = "on_sale";
+      if (existing.status !== "sold") {
+        existing.status = "on_sale";
+      }
       existing.updated_at = importedAt;
+      updatedCount += 1;
     }
   });
 
@@ -1367,11 +1764,24 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
       source_type: importRow.source_type,
       source_file_name: importRow.source_file_name,
       parsed_count: parsedProducts.length,
+      inserted_count: insertedCount,
+      updated_count: updatedCount,
+      removed_count: removedCount,
+      preserved_auction_count: preservedAuctionCount,
+      preserved_pending_count: preservedPendingCount,
     },
   });
 
   writeData(data);
-  return { import: clone(importRow), parsed_count: parsedProducts.length };
+  return {
+    import: clone(importRow),
+    parsed_count: parsedProducts.length,
+    inserted_count: insertedCount,
+    updated_count: updatedCount,
+    removed_count: removedCount,
+    preserved_auction_count: preservedAuctionCount,
+    preserved_pending_count: preservedPendingCount,
+  };
 }
 
 function listAdminProducts() {
@@ -1379,6 +1789,7 @@ function listAdminProducts() {
   return clone(
     data.products
       .map((product) => {
+        const blockingAuction = getBlockingAuctionForProduct(data, product.id);
         const imported = data.productImports.find((item) => item.id === product.import_id);
         const basePriceQuota = Number(product.price_quota || 0);
         const discountRate = normalizeDiscountRate(product.discount_rate);
@@ -1390,6 +1801,12 @@ function listAdminProducts() {
           discount_saved_quota: Math.max(0, basePriceQuota - effectivePriceQuota),
           discount_label: getDiscountLabel(discountRate),
           is_discounted: discountRate < 100 && effectivePriceQuota < basePriceQuota,
+          auction_id: blockingAuction ? Number(blockingAuction.id) : null,
+          auction_status: blockingAuction?.status || null,
+          auction_ends_at: blockingAuction?.ends_at || null,
+          auction_current_price_quota: blockingAuction
+            ? Number(blockingAuction.current_price_quota || blockingAuction.starting_price_quota || 0)
+            : null,
           source_type: imported?.source_type || null,
           source_file_name: imported?.source_file_name || null,
           imported_at: imported?.created_at || null,
@@ -1904,6 +2321,9 @@ function createOrder(userId, itemId, itemKind = "card") {
     err.statusCode = 404;
     throw err;
   }
+  if (!isBundle) {
+    ensureProductNotBlockedByAuction(data, item.id, "product_in_auction");
+  }
   if (item.status !== "on_sale") {
     const err = new Error(isBundle ? "bundle_not_on_sale" : "product_not_on_sale");
     err.statusCode = 400;
@@ -1986,6 +2406,183 @@ function createOrder(userId, itemId, itemKind = "card") {
   return listOrders({ orderId: order.id, userId: Number(userId), limit: 1 })[0];
 }
 
+function createGuestTransferOrder(
+  itemId,
+  itemKind = "card",
+  {
+    gameRoleId,
+    gameRoleName,
+    nickname = null,
+    amountYuan,
+    transferAmount = null,
+    paymentChannel = "alipay_qr",
+    paymentReference,
+    payerNote = null,
+  } = {}
+) {
+  const data = readData();
+  const isBundle = itemKind === "bundle";
+  const item = isBundle
+    ? (data.bundleSkus || []).find((bundle) => bundle.id === Number(itemId))
+    : data.products.find((product) => product.id === Number(itemId));
+
+  if (!item) {
+    const err = new Error(isBundle ? "bundle_not_found" : "product_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (!isBundle) {
+    ensureProductNotBlockedByAuction(data, item.id, "product_in_auction");
+  }
+  if (item.status !== "on_sale") {
+    const err = new Error(isBundle ? "bundle_not_on_sale" : "product_not_on_sale");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!isBundle && Number(item.stock) <= 0) {
+    const err = new Error("product_out_of_stock");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (isBundle && item.stock !== null && item.stock !== undefined && Number(item.stock) <= 0) {
+    const err = new Error("bundle_out_of_stock");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const effectivePriceQuota = getEffectiveQuotaPrice(item.price_quota, item.discount_rate);
+  const normalizedPaymentChannel =
+    String(paymentChannel || "").trim() === "wechat_qr"
+      ? "wechat_qr"
+      : String(paymentChannel || "").trim() === "game_residual_transfer"
+        ? "game_residual_transfer"
+        : "alipay_qr";
+  const normalizedAmountYuan =
+    normalizedPaymentChannel === "game_residual_transfer"
+      ? null
+      : Number(Number(amountYuan || 0).toFixed(2));
+  const config = normalizeRechargeConfig(data?.rechargeConfig || buildDefaultRechargeConfig());
+  const expectedAmountYuan = getQuotaCashAmountFromStore(data, effectivePriceQuota);
+  const normalizedTransferAmount =
+    normalizedPaymentChannel === "game_residual_transfer"
+      ? Math.max(Number(transferAmount || 0), 0)
+      : null;
+  const expectedTransferAmount =
+    normalizedPaymentChannel === "game_residual_transfer"
+      ? Math.ceil(effectivePriceQuota / Math.max(Number(config.residual_quota_per_unit || 1), 1))
+      : null;
+
+  if (normalizedPaymentChannel === "game_residual_transfer") {
+    if (!config.residual_transfer_enabled) {
+      const err = new Error("residual_transfer_disabled");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!Number.isInteger(normalizedTransferAmount) || normalizedTransferAmount <= 0) {
+      const err = new Error("transfer_amount_invalid");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (normalizedTransferAmount !== expectedTransferAmount) {
+      const err = new Error("transfer_amount_mismatch");
+      err.statusCode = 400;
+      err.payload = {
+        expected_transfer_amount: expectedTransferAmount,
+        transfer_unit: config.residual_unit_label || "残卷",
+      };
+      throw err;
+    }
+  } else if (
+    !Number.isFinite(normalizedAmountYuan) ||
+    normalizedAmountYuan <= 0 ||
+    Math.abs(normalizedAmountYuan - expectedAmountYuan) > 0.01
+  ) {
+    const err = new Error("amount_yuan_mismatch");
+    err.statusCode = 400;
+    err.payload = { expected_amount_yuan: expectedAmountYuan };
+    throw err;
+  }
+
+  const order = {
+    id: nextId(data.orders),
+    user_id: null,
+    total_quota: effectivePriceQuota,
+    status: "pending",
+    remark: payerNote ? String(payerNote).trim() : null,
+    order_source: "guest_transfer",
+    buyer_label: String(gameRoleName || "").trim(),
+    guest_game_role_id: String(gameRoleId || "").trim(),
+    guest_game_role_name: String(gameRoleName || "").trim(),
+    guest_game_server: null,
+    guest_nickname: nickname ? String(nickname).trim() : null,
+    payment_channel: normalizedPaymentChannel,
+    payment_reference: String(paymentReference || "").trim(),
+    payment_amount_yuan: normalizedAmountYuan,
+    transfer_amount: normalizedTransferAmount,
+    transfer_unit:
+      normalizedPaymentChannel === "game_residual_transfer"
+        ? String(config.residual_unit_label || "残卷")
+        : null,
+    transfer_target_role_id:
+      normalizedPaymentChannel === "game_residual_transfer"
+        ? String(config.residual_admin_role_id || "584967604")
+        : null,
+    transfer_target_role_name:
+      normalizedPaymentChannel === "game_residual_transfer"
+        ? String(config.residual_admin_role_name || "admin残卷")
+        : null,
+    created_at: now(),
+    updated_at: now(),
+  };
+  data.orders.push(order);
+
+  data.orderItems.push({
+    id: nextId(data.orderItems),
+    order_id: order.id,
+    item_kind: itemKind,
+    product_id: isBundle ? null : item.id,
+    bundle_sku_id: isBundle ? item.id : null,
+    product_name: item.name,
+    product_snapshot: clone(item),
+    price_quota: effectivePriceQuota,
+    created_at: now(),
+  });
+
+  if (isBundle) {
+    if (item.stock !== null && item.stock !== undefined) {
+      item.stock = Number(item.stock) - 1;
+      if (item.stock <= 0) item.status = "sold";
+    }
+    item.updated_at = now();
+  } else {
+    item.stock = Number(item.stock) - 1;
+    if (item.stock <= 0) item.status = "sold";
+    item.updated_at = now();
+  }
+
+  addAuditLog(data, {
+    actorUserId: null,
+    targetType: "order",
+    targetId: order.id,
+    action: "guest_transfer_order_create",
+    detail: {
+      item_kind: itemKind,
+      item_id: item.id,
+      total_quota: effectivePriceQuota,
+      game_role_id: order.guest_game_role_id,
+      game_role_name: order.guest_game_role_name,
+      payment_channel: order.payment_channel,
+      payment_amount_yuan: order.payment_amount_yuan,
+      transfer_amount: order.transfer_amount,
+      transfer_unit: order.transfer_unit,
+    },
+  });
+
+  repriceDataProducts(data);
+  writeData(data);
+  return listOrders({ orderId: order.id, limit: 1 })[0];
+}
+
 function requestOrderCancellation(orderId, userId, remark = null) {
   const data = readData();
   const order = data.orders.find(
@@ -2048,13 +2645,15 @@ function updateOrderStatus(orderId, status, remark, actorUserId, options = {}) {
         product.updated_at = now();
       }
     });
-    applyQuotaChange(data, {
-      userId: order.user_id,
-      changeAmount: Number(order.total_quota),
-      type: "order_refund",
-      orderId: order.id,
-      remark: remark || "admin cancel order",
-    });
+    if (order.user_id !== null && order.user_id !== undefined) {
+      applyQuotaChange(data, {
+        userId: order.user_id,
+        changeAmount: Number(order.total_quota),
+        type: "order_refund",
+        orderId: order.id,
+        remark: remark || "admin cancel order",
+      });
+    }
   }
 
   order.status = status;
@@ -2175,6 +2774,337 @@ function recalculatePricing(actorUserId = null) {
   return clone(data.products);
 }
 
+function createAuction(
+  productId,
+  {
+    title = null,
+    startingPriceQuota,
+    minIncrementQuota,
+    startsAt = null,
+    endsAt,
+    remark = null,
+  },
+  actorUserId
+) {
+  const data = readData();
+  const product = data.products.find((item) => Number(item.id) === Number(productId));
+  if (!product) {
+    const err = new Error("product_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  const productStatus = String(product.status || "").trim();
+  const canAuctionOffSale =
+    productStatus === "off_sale" && Number(product.stock) > 0 && !hasConfirmedSaleRecord(data, product.id);
+  if (productStatus !== "on_sale" && !canAuctionOffSale) {
+    const err = new Error("product_not_on_sale");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (Number(product.stock) <= 0) {
+    const err = new Error("product_out_of_stock");
+    err.statusCode = 400;
+    throw err;
+  }
+  ensureProductNotBlockedByAuction(data, product.id, "product_in_auction");
+
+  const normalizedStartingPrice = Number(startingPriceQuota);
+  const normalizedIncrement = Number(minIncrementQuota);
+  const startValue = startsAt ? new Date(startsAt) : new Date();
+  const endValue = new Date(endsAt);
+  if (!Number.isInteger(normalizedStartingPrice) || normalizedStartingPrice <= 0) {
+    const err = new Error("auction_starting_price_invalid");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!Number.isInteger(normalizedIncrement) || normalizedIncrement <= 0) {
+    const err = new Error("auction_min_increment_invalid");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (Number.isNaN(startValue.getTime()) || Number.isNaN(endValue.getTime())) {
+    const err = new Error("auction_time_invalid");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (endValue.getTime() <= startValue.getTime()) {
+    const err = new Error("auction_end_before_start");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const auction = {
+    id: nextId(data.auctions || []),
+    item_kind: "card",
+    product_id: Number(product.id),
+    title: String(title || "").trim() || product.name,
+    remark: remark ? String(remark).trim() : null,
+    status: startValue.getTime() > Date.now() ? "scheduled" : "live",
+    product_snapshot: clone(product),
+    starting_price_quota: normalizedStartingPrice,
+    min_increment_quota: normalizedIncrement,
+    current_price_quota: normalizedStartingPrice,
+    current_bid_user_id: null,
+    current_bid_at: null,
+    starts_at: startValue.toISOString(),
+    ends_at: endValue.toISOString(),
+    settled_order_id: null,
+    settled_at: null,
+    cancelled_at: null,
+    cancelled_reason: null,
+    winning_bid_amount: null,
+    winning_bid_user_id: null,
+    created_by: Number(actorUserId),
+    created_at: now(),
+    updated_at: now(),
+  };
+  data.auctions.push(auction);
+
+  addAuditLog(data, {
+    actorUserId,
+    targetType: "auction",
+    targetId: auction.id,
+    action: "auction_create",
+    detail: {
+      product_id: Number(product.id),
+      starting_price_quota: normalizedStartingPrice,
+      min_increment_quota: normalizedIncrement,
+      starts_at: auction.starts_at,
+      ends_at: auction.ends_at,
+    },
+  });
+
+  writeData(data);
+  return listAuctions({ auctionId: auction.id })[0];
+}
+
+function placeAuctionBid(auctionId, userId, amountQuota) {
+  const data = readData();
+  const user = data.users.find((item) => Number(item.id) === Number(userId));
+  if (!user) {
+    const err = new Error("user_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (user.status !== "active") {
+    const err = new Error("user_disabled");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  refreshAuctionStatuses(data);
+  const auction = (data.auctions || []).find((item) => Number(item.id) === Number(auctionId));
+  if (!auction) {
+    const err = new Error("auction_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (String(auction.status || "") !== "live") {
+    const err = new Error("auction_not_live");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const normalizedAmount = Number(amountQuota);
+  if (!Number.isInteger(normalizedAmount) || normalizedAmount <= 0) {
+    const err = new Error("auction_bid_amount_invalid");
+    err.statusCode = 400;
+    throw err;
+  }
+  const nextMinBidQuota = auction.current_bid_user_id
+    ? Number(auction.current_price_quota || 0) + Number(auction.min_increment_quota || 0)
+    : Number(auction.starting_price_quota || 0);
+  if (normalizedAmount < nextMinBidQuota) {
+    const err = new Error("auction_bid_too_low");
+    err.statusCode = 400;
+    err.payload = { next_min_bid_quota: nextMinBidQuota };
+    throw err;
+  }
+
+  const bid = {
+    id: nextId(data.auctionBids || []),
+    auction_id: Number(auction.id),
+    user_id: Number(userId),
+    amount_quota: normalizedAmount,
+    created_at: now(),
+  };
+  data.auctionBids.push(bid);
+  auction.current_price_quota = normalizedAmount;
+  auction.current_bid_user_id = Number(userId);
+  auction.current_bid_at = bid.created_at;
+  auction.updated_at = now();
+
+  addAuditLog(data, {
+    actorUserId: Number(userId),
+    targetType: "auction",
+    targetId: Number(auction.id),
+    action: "auction_bid_create",
+    detail: {
+      amount_quota: normalizedAmount,
+      next_min_bid_quota: normalizedAmount + Number(auction.min_increment_quota || 0),
+    },
+  });
+
+  writeData(data);
+  return listAuctions({ auctionId: auction.id, publicView: true })[0];
+}
+
+function settleAuction(auctionId, { remark = null, settlementMode = "offline" } = {}, actorUserId) {
+  const data = readData();
+  refreshAuctionStatuses(data);
+  const auction = (data.auctions || []).find((item) => Number(item.id) === Number(auctionId));
+  if (!auction) {
+    const err = new Error("auction_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (!["ended", "live"].includes(String(auction.status || "").trim())) {
+    const err = new Error("auction_settle_not_allowed");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (String(auction.status || "").trim() === "live" && new Date(auction.ends_at).getTime() > Date.now()) {
+    const err = new Error("auction_not_ended");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!auction.current_bid_user_id) {
+    const err = new Error("auction_no_bids");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const product = data.products.find((item) => Number(item.id) === Number(auction.product_id));
+  if (!product) {
+    const err = new Error("product_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (Number(product.stock) <= 0) {
+    const err = new Error("product_out_of_stock");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const winningAmount = Number(auction.current_price_quota || auction.starting_price_quota || 0);
+  const normalizedSettlementMode =
+    String(settlementMode || "").trim() === "direct_quota" ? "direct_quota" : "offline";
+
+  if (normalizedSettlementMode === "direct_quota") {
+    applyQuotaChange(data, {
+      userId: Number(auction.current_bid_user_id),
+      changeAmount: -winningAmount,
+      type: "order_deduct",
+      remark: `auction_settle:${auction.id}`,
+      bonusAmount: 0,
+    });
+  }
+
+  const order = {
+    id: nextId(data.orders),
+    user_id: Number(auction.current_bid_user_id),
+    total_quota: winningAmount,
+    status: "confirmed",
+    remark: remark ? String(remark).trim() : null,
+    order_source: "auction",
+    auction_id: Number(auction.id),
+    payment_mode: normalizedSettlementMode,
+    created_at: now(),
+    updated_at: now(),
+  };
+  data.orders.push(order);
+
+  data.orderItems.push({
+    id: nextId(data.orderItems),
+    order_id: order.id,
+    item_kind: "card",
+    product_id: Number(product.id),
+    bundle_sku_id: null,
+    product_name: product.name,
+    product_snapshot: clone(product),
+    price_quota: winningAmount,
+    created_at: now(),
+  });
+
+  if (normalizedSettlementMode === "direct_quota") {
+    const quotaLog = data.quotaLogs[data.quotaLogs.length - 1];
+    if (quotaLog && quotaLog.type === "order_deduct" && !quotaLog.order_id) {
+      quotaLog.order_id = order.id;
+    }
+  }
+
+  product.stock = Number(product.stock) - 1;
+  product.updated_at = now();
+  if (product.stock <= 0) {
+    product.status = "sold";
+  }
+
+  auction.status = "settled";
+  auction.settled_order_id = Number(order.id);
+  auction.settled_at = now();
+  auction.winning_bid_amount = winningAmount;
+  auction.winning_bid_user_id = Number(auction.current_bid_user_id);
+  auction.remark = remark ? String(remark).trim() : auction.remark || null;
+  auction.updated_at = now();
+
+  addAuditLog(data, {
+    actorUserId,
+    targetType: "auction",
+    targetId: Number(auction.id),
+    action: "auction_settle",
+    detail: {
+      order_id: Number(order.id),
+      product_id: Number(product.id),
+      winning_bid_amount: winningAmount,
+      winning_bid_user_id: Number(auction.current_bid_user_id),
+      settlement_mode: normalizedSettlementMode,
+    },
+  });
+
+  repriceDataProducts(data);
+  writeData(data);
+  return listAuctions({ auctionId: auction.id })[0];
+}
+
+function cancelAuction(auctionId, { reason = null, remark = null } = {}, actorUserId) {
+  const data = readData();
+  refreshAuctionStatuses(data);
+  const auction = (data.auctions || []).find((item) => Number(item.id) === Number(auctionId));
+  if (!auction) {
+    const err = new Error("auction_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (["settled", "cancelled"].includes(String(auction.status || "").trim())) {
+    const err = new Error("auction_cancel_not_allowed");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  auction.status = "cancelled";
+  auction.cancelled_at = now();
+  auction.cancelled_reason = reason ? String(reason).trim() : null;
+  auction.remark = remark ? String(remark).trim() : auction.remark || null;
+  auction.updated_at = now();
+
+  addAuditLog(data, {
+    actorUserId,
+    targetType: "auction",
+    targetId: Number(auction.id),
+    action: "auction_cancel",
+    detail: {
+      reason: auction.cancelled_reason,
+      remark: auction.remark,
+      bid_count: Number(
+        (data.auctionBids || []).filter((bid) => Number(bid.auction_id) === Number(auction.id)).length
+      ),
+    },
+  });
+
+  writeData(data);
+  return listAuctions({ auctionId: auction.id })[0];
+}
+
 function listAuditLogs({ keyword = "", action = "", limit = 200, offset = 0 } = {}) {
   const data = readData();
   let logs = (data.auditLogs || []).slice();
@@ -2272,6 +3202,8 @@ module.exports = {
   listProducts,
   getProductById,
   listBundleSkus,
+  listAuctions,
+  listAuctionBidSummariesForUser,
   getQuota,
   listOrders,
   listRechargeOrders,
@@ -2288,12 +3220,17 @@ module.exports = {
   clearProductManualPrice,
   recalculatePricing,
   createExternalOrder,
+  createAuction,
+  placeAuctionBid,
+  settleAuction,
+  cancelAuction,
   listUsers,
   changeUserQuota,
   updateUserStatus,
   updateSelfProfile,
   changeSelfPassword,
   createOrder,
+  createGuestTransferOrder,
   createDrawServiceOrder,
   createRechargeOrder,
   updateRechargeConfig,

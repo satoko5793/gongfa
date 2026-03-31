@@ -271,6 +271,44 @@ function validateOrderCreate(body) {
   return errors;
 }
 
+function validateGuestTransferOrderCreate(body) {
+  const errors = [];
+  const itemId = body.item_id ?? body.product_id;
+  const paymentChannel = String(body.payment_channel || "alipay_qr").trim() || "alipay_qr";
+  if (!isInteger(itemId)) errors.push("item_id_required");
+  if (
+    body.item_kind !== undefined &&
+    !["card", "bundle"].includes(String(body.item_kind).trim())
+  ) {
+    errors.push("item_kind_invalid");
+  }
+  if (!requiredString(body.game_role_id)) errors.push("game_role_id_required");
+  if (!requiredString(body.game_role_name)) errors.push("game_role_name_required");
+  if (body.nickname !== undefined && !optionalString(body.nickname)) {
+    errors.push("nickname_invalid");
+  }
+  if (
+    paymentChannel === "game_residual_transfer"
+      ? !Number.isInteger(body.transfer_amount) || Number(body.transfer_amount) <= 0
+      : !isPositiveMoneyAmount(body.amount_yuan)
+  ) {
+    errors.push("amount_yuan_invalid");
+  }
+  if (!requiredString(body.payment_reference)) {
+    errors.push("payment_reference_required");
+  }
+  if (
+    body.payment_channel !== undefined &&
+    !["alipay_qr", "wechat_qr", "game_residual_transfer"].includes(paymentChannel)
+  ) {
+    errors.push("payment_channel_invalid");
+  }
+  if (body.payer_note !== undefined && !optionalString(body.payer_note)) {
+    errors.push("payer_note_invalid");
+  }
+  return [...new Set(errors)];
+}
+
 function validateOrderStatus(status) {
   return ["pending", "confirmed", "cancel_requested", "cancelled"].includes(status);
 }
@@ -308,6 +346,49 @@ function validateExternalOrderCreate(body) {
     errors.push("buyer_label_invalid");
   }
   if (body.remark !== undefined && !optionalString(body.remark)) {
+    errors.push("remark_invalid");
+  }
+  return [...new Set(errors)];
+}
+
+function validateAuctionCreate(body) {
+  const errors = [];
+  if (!isInteger(body?.product_id)) errors.push("product_id_required");
+  if (!isInteger(body?.starting_price_quota) || Number(body.starting_price_quota) <= 0) {
+    errors.push("starting_price_quota_invalid");
+  }
+  if (!isInteger(body?.min_increment_quota) || Number(body.min_increment_quota) <= 0) {
+    errors.push("min_increment_quota_invalid");
+  }
+  if (!requiredString(body?.ends_at)) {
+    errors.push("ends_at_required");
+  }
+  if (body?.starts_at !== undefined && body?.starts_at !== null && !requiredString(body.starts_at)) {
+    errors.push("starts_at_invalid");
+  }
+  if (body?.title !== undefined && !optionalString(body.title)) {
+    errors.push("title_invalid");
+  }
+  if (body?.remark !== undefined && !optionalString(body.remark)) {
+    errors.push("remark_invalid");
+  }
+  return [...new Set(errors)];
+}
+
+function validateAuctionBidCreate(body) {
+  const errors = [];
+  if (!isInteger(body?.amount_quota) || Number(body.amount_quota) <= 0) {
+    errors.push("amount_quota_invalid");
+  }
+  return [...new Set(errors)];
+}
+
+function validateAuctionCancelInput(body) {
+  const errors = [];
+  if (body?.reason !== undefined && !optionalString(body.reason)) {
+    errors.push("reason_invalid");
+  }
+  if (body?.remark !== undefined && !optionalString(body.remark)) {
     errors.push("remark_invalid");
   }
   return [...new Set(errors)];
@@ -355,7 +436,11 @@ module.exports = {
   validateBundleUpdate,
   validateQuotaChange,
   validateOrderCreate,
+  validateGuestTransferOrderCreate,
   validateDrawOrderCreate,
   validateOrderStatus,
   validateExternalOrderCreate,
+  validateAuctionCreate,
+  validateAuctionBidCreate,
+  validateAuctionCancelInput,
 };

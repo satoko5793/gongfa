@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260318x" />
+    <link rel="stylesheet" href="styles.css?v=20260331e" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -151,13 +151,15 @@
               <option value="shop_default">商城排序</option>
               <option value="price_asc">价格升序</option>
               <option value="price_desc">价格降序</option>
-              <option value="attack_asc">攻击升序</option>
-              <option value="hp_asc">血量升序</option>
+              <option value="attack_desc">攻击降序</option>
+              <option value="hp_desc">血量降序</option>
             </select>
           </div>
         </div>
         <div id="product-category-tabs" class="category-tabs"></div>
         <div id="product-subcategory-tabs" class="subcategory-tabs hidden"></div>
+        <div id="product-detail-tabs" class="subcategory-tabs hidden"></div>
+        <div id="product-fullness-tabs" class="subcategory-tabs hidden"></div>
         <div id="product-grid" class="product-grid"></div>
         <div id="product-pagination" class="pagination-bar"></div>
       </section>
@@ -176,13 +178,15 @@
               <option value="shop_default">打折区排序</option>
               <option value="price_asc">价格升序</option>
               <option value="price_desc">价格降序</option>
-              <option value="attack_asc">攻击升序</option>
-              <option value="hp_asc">血量升序</option>
+              <option value="attack_desc">攻击降序</option>
+              <option value="hp_desc">血量降序</option>
             </select>
           </div>
         </div>
         <div id="discount-category-tabs" class="category-tabs"></div>
         <div id="discount-subcategory-tabs" class="subcategory-tabs hidden"></div>
+        <div id="discount-detail-tabs" class="subcategory-tabs hidden"></div>
+        <div id="discount-fullness-tabs" class="subcategory-tabs hidden"></div>
         <div id="discount-product-grid" class="product-grid"></div>
         <div id="discount-product-pagination" class="pagination-bar"></div>
       </section>
@@ -411,20 +415,23 @@
         </div>
       </section>
 
-      <section id="auction-zone" class="card dock-target-section teaser-panel">
+      <section id="auction-zone" class="card dock-target-section">
         <div class="section-head">
           <div>
-            <div class="eyebrow">Coming Soon</div>
+            <div class="eyebrow">Auction</div>
             <div class="card-title">拍卖专区</div>
-            <div class="card-sub">后续会放拍卖型商品和限时竞价入口，这里先预留成单独面板。</div>
+            <div class="card-sub">管理员选卡开拍，用户在线出价；拍卖成功后请加管理员微信 18930468426 沟通支付，到点后由管理员确认成交或流拍。</div>
           </div>
-          <span class="teaser-chip">筹备中</span>
+          <span class="teaser-chip">拍卖 v1</span>
         </div>
-        <div class="teaser-body">
-          <div class="teaser-copy">
-            这里后面适合放限时拍卖、特殊品竞价、结束提醒和我的出价记录。现在先把入口固定住，后面继续加不会打断用户习惯。
-          </div>
+        <div id="auction-status-tabs" class="preset-list">
+          <button class="preset-chip active" type="button" data-auction-status="live">进行中</button>
+          <button class="preset-chip" type="button" data-auction-status="scheduled">即将开始</button>
+          <button class="preset-chip" type="button" data-auction-status="ended">等待结算</button>
+          <button class="preset-chip" type="button" data-auction-status="settled">已成交</button>
         </div>
+        <div id="auction-message" class="notice"></div>
+        <div id="auction-body" class="stack-list"></div>
       </section>
 
       <section id="draw-service-zone" class="card dock-target-section">
@@ -467,7 +474,7 @@
         <div class="modal-head">
           <div>
             <div class="card-title" id="product-detail-title">商品详情</div>
-            <div class="card-sub">确认卡片信息后再下单，当前仍然使用额度购买。</div>
+            <div class="card-sub">确认卡片信息后可直接额度购买，也可以填写转账信息先锁卡。</div>
           </div>
           <button id="close-product-detail-btn" class="ghost" type="button">关闭</button>
         </div>
@@ -485,6 +492,6 @@
       <button class="page-dock-item" type="button" data-dock-target="auction-zone">拍卖</button>
       <button class="page-dock-item" type="button" data-dock-target="draw-service-zone">代抽专区</button>
     </nav>
-    <script type="module" src="./app.js?v=20260318x"></script>
+    <script type="module" src="./app.js?v=20260331q"></script>
   </body>
 </html>

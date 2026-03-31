@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>功法卡片商城 - 后台</title>
-    <link rel="stylesheet" href="styles.css?v=20260318q" />
+    <link rel="stylesheet" href="styles.css?v=20260331g" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -26,7 +26,7 @@
         <div class="section-head">
           <div>
             <div class="card-title">管理员会话</div>
-            <div class="card-sub">支持在后台页直接登录。当前账号需要具备 `admin` 角色。</div>
+            <div class="card-sub">支持在后台页直接登录。当前账号需要具备 `admin` 或 `poster_admin` 角色。</div>
           </div>
           <button id="reload-admin-btn" class="ghost" type="button">刷新后台数据</button>
         </div>
@@ -123,6 +123,10 @@
               </select>
             </div>
           </div>
+          <div id="admin-product-category-tabs" class="category-tabs"></div>
+          <div id="admin-product-subcategory-tabs" class="subcategory-tabs hidden"></div>
+          <div id="admin-product-detail-tabs" class="subcategory-tabs hidden"></div>
+          <div id="admin-product-fullness-tabs" class="subcategory-tabs hidden"></div>
           <div class="bulk-toolbar">
             <div class="chip-row">
               <span id="selected-products-chip" class="chip">已选 0</span>
@@ -162,8 +166,53 @@
               <button id="random-discount-btn" class="primary" type="button">随机打折</button>
             </div>
           </div>
+          <div class="bulk-toolbar poster-toolbar">
+            <div class="inline-form bulk-inline-form">
+              <input id="export-poster-auto-count-input" type="number" min="4" max="60" value="12" placeholder="自动选几件" />
+              <button id="smart-select-hot-products-btn" class="ghost" type="button">自动选热卖</button>
+              <button id="smart-select-budget-products-btn" class="ghost" type="button">自动选冷门低价</button>
+              <button id="smart-select-mixed-products-btn" class="ghost" type="button">半热卖半冷门</button>
+              <input id="export-poster-title-input" type="text" value="繁星功法商城 精选报价" placeholder="报价图标题" />
+              <input id="export-poster-subtitle-input" type="text" value="热门好卡一图看清 | 残卷在上 RMB 在下" placeholder="报价图副标题" />
+              <input id="export-poster-footnote-input" type="text" value="更多商品都在繁星功法商城中，购买请进商城下单" placeholder="底部说明" />
+              <button id="export-product-poster-btn" class="primary" type="button">一键导出报价图</button>
+            </div>
+          </div>
           <div id="admin-products" class="admin-list"></div>
           <div id="admin-products-pagination" class="pagination-bar"></div>
+        </section>
+
+        <section id="auctions" class="card">
+          <div class="card-title">拍卖管理</div>
+          <div class="card-sub">先在上面筛到目标卡并勾选一张，再填写起拍价、加价幅度和结束时间开拍。</div>
+          <div class="chip-row" style="margin-bottom: 12px;">
+            <span id="selected-auction-product-chip" class="chip">当前未选择拍卖商品</span>
+          </div>
+          <div class="inline-form">
+            <input id="admin-auction-starting-price-input" type="number" min="1" placeholder="起拍价" />
+            <input id="admin-auction-min-increment-input" type="number" min="1" placeholder="加价幅度" />
+            <input id="admin-auction-start-at-input" type="datetime-local" />
+            <input id="admin-auction-end-at-input" type="datetime-local" />
+          </div>
+          <div class="inline-form">
+            <input id="admin-auction-title-input" type="text" placeholder="拍卖标题，可选" />
+            <input id="admin-auction-remark-input" type="text" placeholder="拍卖备注，可选" />
+            <button id="admin-create-auction-btn" class="primary" type="button">用当前选中商品开拍</button>
+          </div>
+          <div class="toolbar">
+            <div class="filters">
+              <select id="admin-auction-status-filter">
+                <option value="all">全部拍卖</option>
+                <option value="live">进行中</option>
+                <option value="scheduled">即将开始</option>
+                <option value="ended">等待结算</option>
+                <option value="settled">已成交</option>
+                <option value="cancelled">已流拍</option>
+              </select>
+              <button id="reload-auctions-btn" class="ghost" type="button">刷新拍卖</button>
+            </div>
+          </div>
+          <div id="admin-auctions" class="admin-list"></div>
         </section>
 
         <section id="bundles" class="card">
@@ -429,7 +478,7 @@
 
     <aside id="admin-debug-panel" class="debug-panel">
       <div class="debug-title">后台调试</div>
-      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260318r</div>
+      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260331p</div>
       <div id="admin-debug-action" class="debug-line">action: page_loaded</div>
       <div id="admin-debug-session" class="debug-line">session: unknown</div>
       <div id="admin-debug-error" class="debug-line">error: none</div>
@@ -439,6 +488,6 @@
     <script>
       window.__adminModuleReady = false;
     </script>
-    <script type="module" src="./admin.js?v=20260318r"></script>
+    <script type="module" src="./admin.js?v=20260331p"></script>
   </body>
 </html>

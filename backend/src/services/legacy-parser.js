@@ -1,31 +1,19 @@
 const legacyLocalNameById = {
-  1: "随便掌",
-  2: "折凳要诀",
-  101: "退堂鼓",
-  102: "杠上开花手",
-  201: "也行刀法",
-  202: "摸牌透视眼",
-  301: "杠精罡气",
-  302: "摸鱼化劲",
-  401: "对穿肠文攻术",
-  402: "小强不死身",
-  403: "跑路草上飞",
-  501: "运气诀",
-};
-
-const legacyAssetNameById = {
-  1: "suibianzhang",
-  2: "zhedeng-yaojue",
-  101: "tuitanggu",
-  102: "gangshang-kaihuashou",
-  201: "yexing-daofa",
-  202: "mopai-toushiyan",
-  301: "gangjing-gangqi",
-  302: "moyu-huajin",
-  401: "duichuanchang-wengongshu",
-  402: "xiaoqiang-busishen",
-  403: "paolu-caoshangfei",
-  501: "yunqijue",
+  1: "\u968f\u4fbf\u638c",
+  2: "\u6298\u51f3\u8981\u8bc0",
+  101: "\u9000\u5802\u9f13",
+  102: "\u6760\u4e0a\u5f00\u82b1\u624b",
+  201: "\u4e5f\u884c\u5200\u6cd5",
+  202: "\u6478\u724c\u900f\u89c6\u773c",
+  301: "\u6760\u7cbe\u7f61\u6c14",
+  302: "\u6478\u9c7c\u5316\u52b2",
+  401: "\u5bf9\u7a7f\u80a0\u6587\u653b\u672f",
+  402: "\u5c0f\u5f3a\u4e0d\u6b7b\u8eab",
+  403: "\u8dd1\u8def\u8349\u4e0a\u98de",
+  501: "\u8fd0\u6c14\u51b3",
+  601: "\u73cd \u8fd0\u6c14\u51b3",
+  602: "\u73cd \u8fde\u73af\u9a6c\u540e\u70ae",
+  603: "\u73cd \u4e7e\u5764\u4e00\u63b7",
 };
 
 const scaledTermAttrIds = new Set([604, 605]);
@@ -92,9 +80,9 @@ function getTermValues(entry) {
 
 function formatTermSummary({ fireValues, calmValues }) {
   const list = [];
-  fireValues.forEach((value) => list.push(`走火 ${value}`));
-  calmValues.forEach((value) => list.push(`气定 ${value}`));
-  return list.length > 0 ? list.join(" | ") : "无";
+  fireValues.forEach((value) => list.push(`\u8d70\u706b ${value}`));
+  calmValues.forEach((value) => list.push(`\u6c14\u5b9a ${value}`));
+  return list.length > 0 ? list.join(" | ") : "\u65e0";
 }
 
 function getAttrValueById(entry, attrId) {
@@ -125,8 +113,8 @@ function getHpValue(entry) {
 }
 
 function getLocalAssetUrl(legacyId) {
-  const assetName = legacyAssetNameById[Number(legacyId)];
-  return assetName ? `/gongfa/${assetName}.png` : null;
+  const localName = legacyLocalNameById[Number(legacyId)];
+  return localName ? `./legacy-assets/${encodeURIComponent(localName)}.png` : null;
 }
 
 function normalizeLegacyEntries(source) {
@@ -176,10 +164,10 @@ function buildSeasonMeta(entry) {
     season_tag: isCurrentSeason ? "current" : "legacy",
     season_label: scheduleId > 0 ? `S${scheduleId}` : "-",
     season_display: isCurrentSeason
-      ? `S${scheduleId} 当前赛季`
+      ? `S${scheduleId} \u5f53\u524d\u8d5b\u5b63`
       : scheduleId > 0
-        ? `S${scheduleId} 老卡`
-        : "未知赛季",
+        ? `S${scheduleId} \u8001\u5361`
+        : "\u672a\u77e5\u8d5b\u5b63",
   };
 }
 
@@ -196,7 +184,7 @@ function parseLegacyProducts(source) {
       return {
         uid,
         legacy_id: legacyId,
-        name: legacyLocalNameById[legacyId] || `功法 ${legacyId}`,
+        name: legacyLocalNameById[legacyId] || `\u529f\u6cd5 ${legacyId}`,
         image_url: getLocalAssetUrl(legacyId),
         attack_value: getAttackValue(entry),
         hp_value: getHpValue(entry),

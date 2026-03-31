@@ -34,6 +34,7 @@ function maskPublicBuyerLabel(order) {
   if (nickname) return maskName(nickname);
   if (gameRoleName) return maskName(gameRoleName);
   if (gameRoleId) return maskName(gameRoleId);
+  if (source === "guest_transfer") return "转账买家";
   if (source === "external") return "站外买家";
   return "匿名用户";
 }
@@ -41,7 +42,9 @@ function maskPublicBuyerLabel(order) {
 function getPublicOrderSourceLabel(order) {
   const source = String(order?.order_source || "mall").trim();
   if (source === "external") return "站外成交";
+  if (source === "guest_transfer") return "转账成交";
   if (source === "draw_service") return "代抽成交";
+  if (source === "auction") return "拍卖成交";
   return "商城成交";
 }
 
@@ -143,6 +146,22 @@ productsRouter.get("/meta", async (req, res, next) => {
         exchange_quota: Number(rechargeConfig.exchange_quota || 0),
         quota_per_yuan: Number(rechargeConfig.quota_per_yuan || 0),
         min_amount_yuan: Number(rechargeConfig.min_amount_yuan || 0),
+        qr_image_url: rechargeConfig.qr_image_url || null,
+        payee_name: rechargeConfig.payee_name || null,
+        payee_hint: rechargeConfig.payee_hint || null,
+        wechat_qr_image_url: rechargeConfig.wechat_qr_image_url || null,
+        wechat_payee_name: rechargeConfig.wechat_payee_name || null,
+        wechat_payee_hint: rechargeConfig.wechat_payee_hint || null,
+        instructions: Array.isArray(rechargeConfig.instructions) ? rechargeConfig.instructions : [],
+        residual_transfer_enabled: Boolean(rechargeConfig.residual_transfer_enabled),
+        residual_admin_role_id: rechargeConfig.residual_admin_role_id || null,
+        residual_admin_role_name: rechargeConfig.residual_admin_role_name || null,
+        residual_admin_game_name: rechargeConfig.residual_admin_game_name || null,
+        residual_unit_label: rechargeConfig.residual_unit_label || null,
+        residual_quota_per_unit: Number(rechargeConfig.residual_quota_per_unit || 0),
+        residual_instructions: Array.isArray(rechargeConfig.residual_instructions)
+          ? rechargeConfig.residual_instructions
+          : [],
       },
     });
   } catch (error) {
@@ -310,6 +329,20 @@ productsRouter.get("/recent-sales", async (req, res, next) => {
       .map((row) => mapPublicRecentSale(row))
       .filter((row) => row.item_count > 0);
     return res.json({ items, total: items.length });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+productsRouter.get("/auctions", async (req, res, next) => {
+  try {
+    const status = String(req.query.status || "all").trim() || "all";
+    if (useFileStore()) {
+      const items = devStore.listAuctions({ status, publicView: true });
+      return res.json({ items, total: items.length });
+    }
+
+    return res.status(501).json({ error: "auction_not_supported_in_db_mode" });
   } catch (error) {
     return next(error);
   }
