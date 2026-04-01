@@ -1,7 +1,7 @@
 const { LEGACY_CAPS } = require("../config/catalog-config");
 
 const PRICE_CONFIG = {
-  version: "pricing_v11",
+  version: "pricing_v14",
   marketFactor: {
     min: 0.5,
     max: 4.0,
@@ -9,10 +9,10 @@ const PRICE_CONFIG = {
   similarity: {
     topMatches: 3,
     gold: {
-      baseBlend: 0.34,
+      baseBlend: 0.22,
       minMatches: 2,
-      clampMin: 0.72,
-      clampMax: 1.38,
+      clampMin: 0.58,
+      clampMax: 1.28,
       maxStatDistance: 0.26,
       seasonMismatchWeight: 0.34,
     },
@@ -25,6 +25,7 @@ const PRICE_CONFIG = {
     },
   },
   floorMultiplier: 2,
+  broadDiscountRate: 0.8,
   tierRules: {
     green: {
       salvageQuota: 50,
@@ -63,7 +64,7 @@ const PRICE_CONFIG = {
       wearMultiplier: 0.48,
     },
     gold: {
-      salvageQuota: 200,
+      salvageQuota: 250,
       fullAtlasAnchor: 50000,
       atlasExponent: 4.8,
       monotonicStep: 50,
@@ -72,10 +73,10 @@ const PRICE_CONFIG = {
   },
 };
 
-const RMB_ANCHOR_BY_LEGACY_ID = {
-  601: { yuan: 390, label: "rare_yunqijue" },
-  602: { yuan: 440, label: "rare_lianhuanmahopao" },
-  603: { yuan: 520, label: "rare_qiankunyizhi" },
+const QUOTA_ANCHOR_BY_LEGACY_ID = {
+  601: { current_quota: 400000, legacy_delta: 100000, label: "rare_yunqijue" },
+  602: { current_quota: 440000, legacy_delta: 100000, label: "rare_lianhuanmahopao" },
+  603: { current_quota: 480000, legacy_delta: 100000, label: "rare_qiankunyizhi" },
 };
 
 function clamp(value, min, max) {
@@ -88,32 +89,25 @@ function roundPrice(value) {
   return Math.round(num / 100) * 100;
 }
 
-function getQuotaPerYuan(rechargeConfig = {}) {
-  const direct = Number(rechargeConfig?.quota_per_yuan);
-  if (Number.isFinite(direct) && direct > 0) return direct;
-
-  const exchangeQuota = Number(rechargeConfig?.exchange_quota);
-  const exchangeYuan = Number(rechargeConfig?.exchange_yuan);
-  if (Number.isFinite(exchangeQuota) && exchangeQuota > 0 && Number.isFinite(exchangeYuan) && exchangeYuan > 0) {
-    return exchangeQuota / exchangeYuan;
-  }
-
-  return 10000 / 12;
-}
-
-function getRmbAnchorForLegacy(legacyId, rechargeConfig = {}) {
-  const anchor = RMB_ANCHOR_BY_LEGACY_ID[Number(legacyId)];
+function getFixedQuotaAnchor(product) {
+  const anchor = QUOTA_ANCHOR_BY_LEGACY_ID[Number(product?.legacy_id)];
   if (!anchor) return null;
 
-  const quotaPerYuan = getQuotaPerYuan(rechargeConfig);
-  const quotaAnchor = roundPrice(anchor.yuan * quotaPerYuan);
+  const isCurrentSeason = Boolean(product?.is_current_season);
+  const baseQuota = Number(anchor.current_quota || 0);
+  const legacyDelta = Number(anchor.legacy_delta || 0);
+  const quotaAnchor = roundPrice(Math.max(0, isCurrentSeason ? baseQuota : baseQuota - legacyDelta));
   return {
-    legacy_id: Number(legacyId),
-    yuan: Number(anchor.yuan),
-    quota_per_yuan: Number(quotaPerYuan.toFixed(4)),
+    legacy_id: Number(product?.legacy_id || 0),
+    anchor_type: "fixed_quota",
+    is_current_season: isCurrentSeason,
     quota_anchor: quotaAnchor,
     label: anchor.label,
   };
+}
+
+function hasRareRmbAnchor(legacyId) {
+  return Boolean(QUOTA_ANCHOR_BY_LEGACY_ID[Number(legacyId)]);
 }
 
 function getLegacyTier(legacyId) {
@@ -244,9 +238,16 @@ function getAtlasPrice(product, tierRule, referenceCaps) {
   const tier = getLegacyTier(product.legacy_id);
   let atlasScore = attackRate * 0.72 + hpRate * 0.28;
   let atlasPrice = 0;
+  const tierCurvePowerMap = {
+    green: 1.28,
+    blue: 1.34,
+    purple: 1.14,
+    orange: 1.18,
+    red: 1.22,
+  };
 
   if (tier === "orange" || tier === "red" || tier === "purple") {
-    atlasScore = clamp(exactCombinedRate, 0, 1);
+    atlasScore = clamp(Math.pow(clamp(exactCombinedRate, 0, 1), tierCurvePowerMap[tier] || 1), 0, 1);
     atlasPrice =
       floorPrice +
       (tierRule.fullAtlasAnchor - floorPrice) *
@@ -254,17 +255,19 @@ function getAtlasPrice(product, tierRule, referenceCaps) {
   } else {
     if (attackRate >= 0.995) atlasScore += 0.04;
     if (hpRate >= 0.95) atlasScore += 0.03;
-    atlasScore = clamp(atlasScore, 0, 1);
+    atlasScore = clamp(Math.pow(clamp(atlasScore, 0, 1), tierCurvePowerMap[tier] || 1), 0, 1);
     atlasPrice =
       floorPrice +
       (tierRule.fullAtlasAnchor - floorPrice) * Math.pow(atlasScore, tierRule.atlasExponent);
   }
 
   if (tier === "gold") {
+    const goldBaseRate = clamp(attackRate * 0.82 + hpRate * 0.18, 0, 1);
     atlasPrice =
       floorPrice +
-      (8000 - floorPrice) * Math.pow(attackRate, 5.2) +
-      (attackRate >= 0.995 ? 4000 * Math.pow(hpRate, 4.2) : 0);
+      (8000 - floorPrice) * Math.pow(goldBaseRate, 8.6) +
+      (attackRate >= 0.985 ? 1800 * Math.pow(hpRate, 5.4) : 0) +
+      (attackRate >= 0.995 ? 3200 * Math.pow(hpRate, 6.2) : 0);
     if (attackRate >= 0.995) atlasPrice = Math.max(atlasPrice, 8000);
     if (attackRate >= 0.995 && hpRate >= 0.88) atlasPrice = Math.max(atlasPrice, 12000);
     if (attackRate >= 0.995 && hpRate >= 0.995) atlasPrice = Math.max(atlasPrice, 50000);
@@ -320,6 +323,36 @@ function getTierSoftDiscount(product, referenceCaps) {
     applied: true,
     rate: 0.7,
     reason: "non_double_full_tier_discount",
+  };
+}
+
+function getGlobalPriceAdjustment(product, referenceCaps) {
+  if (!product) {
+    return { applied: false, rate: 1, reason: "missing_product" };
+  }
+
+  if (hasRareRmbAnchor(product.legacy_id) || product.rmb_anchor) {
+    return { applied: false, rate: 1, reason: "rare_exempt" };
+  }
+
+  const wear = product.wear || {};
+  if (getTermBucketRank(wear) >= 2) {
+    return { applied: false, rate: 1, reason: "double_term_exempt" };
+  }
+
+  const attackValue = Number(product?.attack_value || 0);
+  const hpValue = Number(product?.hp_value || 0);
+  const attackMax = Math.max(Number(referenceCaps?.attack_max) || 0, 1);
+  const hpMax = Math.max(Number(referenceCaps?.hp_max) || 0, 1);
+  const exactDoubleFull = attackValue >= attackMax && hpValue >= hpMax;
+  if (exactDoubleFull) {
+    return { applied: false, rate: 1, reason: "double_full_exempt" };
+  }
+
+  return {
+    applied: true,
+    rate: Number(PRICE_CONFIG.broadDiscountRate || 1),
+    reason: "broad_market_discount",
   };
 }
 
@@ -714,7 +747,7 @@ function buildSimilarityReference(target, pricedProducts) {
   if (target.rmb_anchor) {
     return {
       applied: false,
-      reason: "rmb_anchor_base",
+      reason: "fixed_quota_anchor_base",
       sample_size: 0,
       effective_sample_size: 0,
       reference_price: roundPrice(target.rmb_anchor.quota_anchor),
@@ -732,6 +765,7 @@ function buildSimilarityReference(target, pricedProducts) {
   for (const candidate of pricedProducts) {
     if (Number(candidate.id) === Number(target.id)) continue;
     if (candidate.tier !== target.tier) continue;
+    if (candidate.rmb_anchor && !target.rmb_anchor) continue;
     if (
       targetTermBucketRank >= 2 &&
       Number(candidate.profile?.term_bucket_rank || 0) !== targetTermBucketRank
@@ -887,6 +921,34 @@ function splitPricingBuckets(products) {
   return [doubleTermProducts, singleTermProducts, normalProducts];
 }
 
+function getEliteGoldProtectedBasePrice(product) {
+  if (String(product?.tier || "") !== "gold") return 0;
+  const atlas = product?.atlas || {};
+  const wear = product?.wear || {};
+  const attackRate = Number(atlas.attack_rate || 0);
+  const hpRate = Number(atlas.hp_rate || 0);
+  const termBucketRank = getTermBucketRank(wear);
+  const intrinsicPrice = Math.max(
+    Number(product?.intrinsic_auto_base_price || 0),
+    Number(product?.auto_base_price || 0),
+    0
+  );
+
+  if (attackRate >= 0.995 && hpRate >= 0.995) {
+    return intrinsicPrice;
+  }
+
+  if (termBucketRank >= 2 && attackRate >= 0.95 && hpRate >= 0.9) {
+    return intrinsicPrice;
+  }
+
+  if (termBucketRank >= 1 && attackRate >= 0.99 && hpRate >= 0.92) {
+    return intrinsicPrice;
+  }
+
+  return 0;
+}
+
 function applyMonotonicCap(products, step) {
   const sortedProducts = products.sort((a, b) =>
     compareIntrinsic(createIntrinsicSortKey(a, a.pricing_meta), createIntrinsicSortKey(b, b.pricing_meta))
@@ -925,7 +987,7 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
 
     const atlas = getAtlasPrice(product, tierRule, referenceCaps);
     const wear = getWearPrice(product, atlas, referenceCaps, tierRule);
-    const rmbAnchor = getRmbAnchorForLegacy(product.legacy_id, rechargeConfig);
+    const rmbAnchor = getFixedQuotaAnchor(product);
     let dominant =
       Number(wear.price || 0) > Number(atlas.price || 0)
         ? { type: "wear", label: "佩戴价主导" }
@@ -939,7 +1001,7 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
       ? Math.max(floorPrice, Number(rmbAnchor.quota_anchor) || 0)
       : intrinsicAutoBasePrice;
     if (rmbAnchor) {
-      dominant = { type: "rmb_anchor", label: "RMB anchor" };
+      dominant = { type: "fixed_quota_anchor", label: "固定卷锚" };
     }
     const profile = createSimilarityProfile(product, atlas, wear, autoBasePrice);
 
@@ -961,12 +1023,18 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
   const pricedProducts = basePricedProducts.map((product) => {
     const similarity = buildSimilarityReference(product, basePricedProducts);
     const tierSoftDiscount = getTierSoftDiscount(product, product.reference_caps);
+    const globalPriceAdjustment = getGlobalPriceAdjustment(product, product.reference_caps);
     const discountedAutoBasePrice = roundPrice(
       Number(similarity.blended_base_price || product.auto_base_price || 0) * Number(tierSoftDiscount.rate || 1)
     );
+    const protectedAutoBasePrice = Math.max(
+      Number(product.floor_price || 0),
+      discountedAutoBasePrice,
+      getEliteGoldProtectedBasePrice(product)
+    );
     const adjustedAutoBasePrice = Math.max(
       Number(product.floor_price || 0),
-      discountedAutoBasePrice
+      roundPrice(protectedAutoBasePrice * Number(globalPriceAdjustment.rate || 1))
     );
     const market = getMarketFactor({
       ...(demandMap.get(Number(product.id)) || {}),
@@ -985,7 +1053,7 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
     const pricingMeta = {
       version: PRICE_CONFIG.version,
       source: product.rmb_anchor
-        ? "rmb_anchor"
+        ? "fixed_quota_anchor"
         : Number.isInteger(effectiveManualPrice)
         ? "manual"
         : "auto",
@@ -1001,6 +1069,7 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
       intrinsic_auto_base_price: product.intrinsic_auto_base_price,
       auto_base_price: product.auto_base_price,
       tier_soft_discount: tierSoftDiscount,
+      global_price_adjustment: globalPriceAdjustment,
       adjusted_auto_base_price: adjustedAutoBasePrice,
       auto_price: autoPrice,
       manual_price: effectiveManualPrice,

@@ -77,6 +77,7 @@ const accountTabLinks = Array.from(document.querySelectorAll("[data-account-tab-
 const accountSecurityTabButton = document.querySelector('[data-account-tab="security"]');
 const pageDockItems = Array.from(document.querySelectorAll("[data-dock-target]"));
 const discountDockButton = document.querySelector('[data-dock-target="discount-products-section"]');
+const mobileAdminLink = document.getElementById("mobile-admin-link");
 
 const registerForm = document.getElementById("register-form");
 const registerRoleIdInput = document.getElementById("register-role-id");
@@ -419,6 +420,7 @@ function updateShellVisibility(profile) {
   const canChangePassword = loggedIn && profile?.auth_provider === "password";
   navBindLink?.classList.toggle("hidden", loggedIn);
   navAdminLink?.classList.toggle("hidden", !isAdmin);
+  mobileAdminLink?.classList.toggle("hidden", !isAdmin);
   bindSection?.classList.toggle("hidden", loggedIn);
   accountLogoutBtn?.classList.toggle("hidden", !loggedIn);
   accountSwitchLink?.classList.toggle("hidden", !loggedIn);
@@ -3557,6 +3559,9 @@ pageDockItems.forEach((button) => {
   button.addEventListener("click", () => {
     navigateWithDock(button.getAttribute("data-dock-target") || "products");
   });
+});
+mobileAdminLink?.addEventListener("click", () => {
+  window.location.href = "admin.html";
 });
 document.addEventListener("click", (event) => {
   const link = event.target.closest("[data-account-tab-target]");

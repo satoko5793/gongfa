@@ -23,6 +23,11 @@ const { writeAuditLog } = require("../services/audit");
 const { recalculateDatabasePricing } = require("../services/pricing");
 const { ensureBundleSeeds } = require("../services/bundle-catalog");
 const { getRechargeConfig } = require("../config/recharge-config");
+const {
+  reviewRechargeOrder,
+  updateOrderStatus,
+  updateOrderRemark,
+} = require("../modules/admin/orders/service");
 
 const adminRouter = express.Router();
 adminRouter.use(authRequired, adminReadOnly);
@@ -894,23 +899,7 @@ adminRouter.patch("/recharge-orders/:id/review", adminWriteOnly, async (req, res
     if (errors.length) {
       return res.status(400).json({ error: "invalid_input", details: errors });
     }
-
-    if (useFileStore()) {
-      const updated = devStore.reviewRechargeOrder(
-        req.params.id,
-        {
-          status: body.status,
-          adminRemark: body.admin_remark || null,
-        },
-        req.user.id
-      );
-      if (!updated) {
-        return res.status(404).json({ error: "recharge_order_not_found" });
-      }
-      return res.json(updated);
-    }
-
-    return res.status(501).json({ error: "recharge_order_not_supported_in_db_mode" });
+    return res.json(await reviewRechargeOrder(req.user, req.params.id, body));
   } catch (error) {
     return next(error);
   }
@@ -1012,135 +1001,28 @@ adminRouter.post("/pricing/recalculate", adminWriteOnly, async (req, res, next) 
 });
 
 adminRouter.patch("/orders/:id/status", adminWriteOnly, async (req, res, next) => {
-  if (useFileStore()) {
-    try {
-      const { status, remark, returned_cards_text, best_gold_card } = req.body || {};
-      if (!validateOrderStatus(status)) {
-        return res.status(400).json({ error: "status_invalid" });
-      }
-      if (
-        returned_cards_text !== undefined &&
-        returned_cards_text !== null &&
-        typeof returned_cards_text !== "string"
-      ) {
-        return res.status(400).json({ error: "returned_cards_text_invalid" });
-      }
-      if (
-        best_gold_card !== undefined &&
-        best_gold_card !== null &&
-        typeof best_gold_card !== "string"
-      ) {
-        return res.status(400).json({ error: "best_gold_card_invalid" });
-      }
-      const updated = devStore.updateOrderStatus(
-        req.params.id,
-        status,
-        remark || null,
-        req.user.id,
-        {
-          returnedCardsText: returned_cards_text || null,
-          bestGoldCard: best_gold_card || null,
-        }
-      );
-      if (!updated) {
-        return res.status(404).json({ error: "order_not_found" });
-      }
-      return res.json(updated);
-    } catch (error) {
-      return next(error);
-    }
-  }
-  const client = await pool.connect();
   try {
-    const { status, remark } = req.body || {};
+    const { status, returned_cards_text, best_gold_card } = req.body || {};
     if (!validateOrderStatus(status)) {
       return res.status(400).json({ error: "status_invalid" });
     }
-
-    await client.query("BEGIN");
-
-    const orderResult = await client.query("SELECT * FROM orders WHERE id=$1 FOR UPDATE", [
-      req.params.id,
-    ]);
-    if (orderResult.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "order_not_found" });
+    if (
+      returned_cards_text !== undefined &&
+      returned_cards_text !== null &&
+      typeof returned_cards_text !== "string"
+    ) {
+      return res.status(400).json({ error: "returned_cards_text_invalid" });
     }
-
-    const order = orderResult.rows[0];
-    if (order.status === "cancelled" && status !== "cancelled") {
-      await client.query("ROLLBACK");
-      return res.status(400).json({ error: "invalid_order_transition" });
+    if (
+      best_gold_card !== undefined &&
+      best_gold_card !== null &&
+      typeof best_gold_card !== "string"
+    ) {
+      return res.status(400).json({ error: "best_gold_card_invalid" });
     }
-
-    if (status === "cancelled" && order.status !== "cancelled") {
-      const itemsResult = await client.query(
-        "SELECT item_kind, product_id, bundle_sku_id FROM order_items WHERE order_id=$1",
-        [order.id]
-      );
-
-      for (const item of itemsResult.rows) {
-        if (item.item_kind === "bundle") {
-          await client.query(
-            `UPDATE bundle_skus
-             SET
-              stock=CASE WHEN stock IS NULL THEN NULL ELSE stock+1 END,
-              status=CASE WHEN status='sold' THEN 'on_sale' ELSE status END,
-              updated_at=NOW()
-             WHERE id=$1`,
-            [item.bundle_sku_id]
-          );
-          continue;
-        }
-
-        await client.query(
-          `UPDATE products
-           SET
-            stock=stock+1,
-            status=CASE WHEN status='sold' THEN 'on_sale' ELSE status END,
-            updated_at=NOW()
-           WHERE id=$1`,
-          [item.product_id]
-        );
-      }
-
-      await applyQuotaChange(client, {
-        userId: order.user_id,
-        changeAmount: Number(order.total_quota),
-        type: "order_refund",
-        orderId: order.id,
-        remark: remark || "admin cancel order",
-      });
-    }
-
-    await client.query(
-      `UPDATE orders
-       SET status=$2, remark=$3, updated_at=NOW()
-       WHERE id=$1`,
-      [order.id, status, remark || null]
-    );
-
-    await recalculateDatabasePricing(client);
-
-    await writeAuditLog(
-      {
-        actorUserId: req.user.id,
-        targetType: "order",
-        targetId: order.id,
-        action: "order_status_update",
-        detail: { from: order.status, to: status, remark: remark || null },
-      },
-      client
-    );
-
-    await client.query("COMMIT");
-    const [fullOrder] = await listOrders(pool, { orderId: order.id, limit: 1 });
-    return res.json(fullOrder || null);
+    return res.json(await updateOrderStatus(req.user, req.params.id, req.body || {}));
   } catch (error) {
-    await client.query("ROLLBACK");
     return next(error);
-  } finally {
-    client.release();
   }
 });
 
@@ -1172,63 +1054,14 @@ adminRouter.post("/orders/external", adminWriteOnly, async (req, res, next) => {
 });
 
 adminRouter.patch("/orders/:id/remark", adminWriteOnly, async (req, res, next) => {
-  if (useFileStore()) {
-    try {
-      const { remark } = req.body || {};
-      if (remark !== undefined && remark !== null && typeof remark !== "string") {
-        return res.status(400).json({ error: "remark_invalid" });
-      }
-      const updated = devStore.updateOrderRemark(req.params.id, remark || null, req.user.id);
-      if (!updated) {
-        return res.status(404).json({ error: "order_not_found" });
-      }
-      return res.json(updated);
-    } catch (error) {
-      return next(error);
-    }
-  }
-
-  const client = await pool.connect();
   try {
     const { remark } = req.body || {};
     if (remark !== undefined && remark !== null && typeof remark !== "string") {
       return res.status(400).json({ error: "remark_invalid" });
     }
-
-    await client.query("BEGIN");
-
-    const result = await client.query(
-      `UPDATE orders
-       SET remark=$2, updated_at=NOW()
-       WHERE id=$1
-       RETURNING id`,
-      [req.params.id, remark || null]
-    );
-
-    if (result.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "order_not_found" });
-    }
-
-    await writeAuditLog(
-      {
-        actorUserId: req.user.id,
-        targetType: "order",
-        targetId: Number(req.params.id),
-        action: "order_remark_update",
-        detail: { remark: remark || null },
-      },
-      client
-    );
-
-    await client.query("COMMIT");
-    const [fullOrder] = await listOrders(pool, { orderId: req.params.id, limit: 1 });
-    return res.json(fullOrder || null);
+    return res.json(await updateOrderRemark(req.user, req.params.id, req.body || {}));
   } catch (error) {
-    await client.query("ROLLBACK");
     return next(error);
-  } finally {
-    client.release();
   }
 });
 

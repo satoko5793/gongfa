@@ -1458,6 +1458,10 @@ function getPosterTermLabel(product) {
   return mainAttrs || "无额外词条";
 }
 
+function isPosterSoldProduct(product) {
+  return String(product?.status || "").trim() === "sold";
+}
+
 function getPosterExportProducts() {
   const selected = allProducts.filter((product) => selectedProductIds.has(Number(product.id)));
   const fallbackCount = getPosterAutoPickCount();
@@ -1724,6 +1728,51 @@ function drawCoverImage(ctx, image, x, y, width, height) {
   ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 }
 
+function drawPosterSoldOverlay(ctx, x, y, width, height) {
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const overlayWidth = Math.min(width - 24, 224);
+  const overlayHeight = 72;
+
+  ctx.save();
+  clipRoundedRect(ctx, x, y, width, height, 22);
+  ctx.fillStyle = "rgba(20, 12, 10, 0.18)";
+  ctx.fillRect(x, y, width, height);
+  ctx.translate(centerX, centerY);
+  ctx.rotate(-0.16);
+  drawShadowCard(
+    ctx,
+    -overlayWidth / 2,
+    -overlayHeight / 2,
+    overlayWidth,
+    overlayHeight,
+    24,
+    "rgba(168, 44, 36, 0.92)",
+    {
+      color: "rgba(102, 20, 18, 0.3)",
+      blur: 18,
+      offsetY: 8,
+    }
+  );
+  strokeRoundedRect(
+    ctx,
+    -overlayWidth / 2,
+    -overlayHeight / 2,
+    overlayWidth,
+    overlayHeight,
+    24,
+    "rgba(255, 236, 228, 0.68)",
+    2
+  );
+  ctx.fillStyle = "#fff8f0";
+  drawFittedText(ctx, "已售出", -overlayWidth / 2 + 18, 13, overlayWidth - 36, {
+    weight: 800,
+    size: 38,
+    minSize: 28,
+  });
+  ctx.restore();
+}
+
 function loadPosterImage(src) {
   const url = String(src || "").trim();
   if (!url) return Promise.resolve(null);
@@ -1909,6 +1958,7 @@ async function exportSelectedProductsPoster() {
       const priceQuota = Number(product.effective_price_quota || product.price_quota || 0);
       const cashLabel = formatPosterCashAmount(getPosterCashAmount(priceQuota));
       const termLabel = getPosterTermLabel(product);
+      const soldOut = isPosterSoldProduct(product);
 
       drawShadowCard(ctx, cardX, cardY, cardWidth, cardHeight, 28, "rgba(255, 255, 255, 0.92)");
       strokeRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 28, "rgba(125, 93, 67, 0.14)");
@@ -1936,6 +1986,10 @@ async function exportSelectedProductsPoster() {
         ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
         ctx.font = "700 54px 'IBM Plex Sans', 'Segoe UI', sans-serif";
         ctx.fillText(String(product.name || "?").slice(0, 1), imageX + 22, imageY + 72);
+      }
+
+      if (soldOut) {
+        drawPosterSoldOverlay(ctx, imageX, imageY, imageWidth, imageHeight);
       }
 
       const topInset = 12;

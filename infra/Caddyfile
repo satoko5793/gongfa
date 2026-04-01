@@ -1,9 +1,38 @@
+(xyzw_helper_routes) {
+  redir /xyzw-helper /xyzw-helper/
+
+  handle_path /xyzw-helper/* {
+    reverse_proxy 172.17.0.1:8082
+  }
+
+  @xyzwHelperApiWeixinLong path /api/weixin-long/*
+  handle @xyzwHelperApiWeixinLong {
+    reverse_proxy 172.17.0.1:8082
+  }
+
+  @xyzwHelperApiWeixin path /api/weixin/*
+  handle @xyzwHelperApiWeixin {
+    reverse_proxy 172.17.0.1:8082
+  }
+
+  @xyzwHelperApiHortor path /api/hortor/*
+  handle @xyzwHelperApiHortor {
+    reverse_proxy 172.17.0.1:8082
+  }
+}
+
 gongfazhushou.cn {
   encode zstd gzip
-  reverse_proxy web:8090
+  route {
+    import xyzw_helper_routes
+    reverse_proxy web:8090
+  }
 }
 
 http://101.34.247.186 {
   encode zstd gzip
-  reverse_proxy web:8090
+  route {
+    import xyzw_helper_routes
+    reverse_proxy web:8090
+  }
 }

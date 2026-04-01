@@ -1857,6 +1857,10 @@ button {
   box-shadow: 0 12px 26px rgba(196, 85, 45, 0.26);
 }
 
+.mobile-admin-shortcut {
+  display: none;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2128,6 +2132,10 @@ button {
 
   .nav {
     display: none;
+  }
+
+  .mobile-admin-shortcut:not(.hidden) {
+    display: block;
   }
 
   .container {

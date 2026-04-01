@@ -25,6 +25,12 @@
 - [16-staging-test-flow.md](/c:/Users/Administrator/Desktop/内包/gongfa/docs/16-staging-test-flow.md)
   测试服固定的小测试和大测试流程。
 
+- [17-claude-code-reference-optimization.md](17-claude-code-reference-optimization.md)
+  结合 Claude Code 源码和深度分析后的正式优化路线图。
+
+- [18-iteration-1-execution-plan.md](18-iteration-1-execution-plan.md)
+  第一期可直接执行的改造任务清单。
+
 ## 按问题查文档
 
 - 价格规则：
@@ -35,6 +41,12 @@
 
 - 数据结构：
   [02-data-model.md](/c:/Users/Administrator/Desktop/内包/gongfa/docs/02-data-model.md)
+
+- 架构优化路线：
+  [17-claude-code-reference-optimization.md](17-claude-code-reference-optimization.md)
+
+- 第一期实施清单：
+  [18-iteration-1-execution-plan.md](18-iteration-1-execution-plan.md)
 
 - 旧小程序路径和归档：
   [07-miniapp-plan.md](/c:/Users/Administrator/Desktop/内包/gongfa/docs/07-miniapp-plan.md)

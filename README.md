@@ -105,6 +105,8 @@ node src/server.js
 - [运维手册](docs/14-operations-handbook.md)
 - [前端校验说明](docs/15-frontend-validation.md)
 - [测试服测试流程](docs/16-staging-test-flow.md)
+- [基于 Claude Code 的工程优化方案](docs/17-claude-code-reference-optimization.md)
+- [第一期实施任务清单](docs/18-iteration-1-execution-plan.md)
 - [前端结构说明](frontend/README.md)
 
 ## 部署说明
