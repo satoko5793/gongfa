@@ -131,3 +131,35 @@ docker compose -p gongfa-staging -f infra/docker-compose.staging.yml up -d --bui
 
 两套 compose 文件已经写死不同项目名，避免测试服和正式服互相重建。
 测试服默认只绑定服务器本机 `127.0.0.1:8081`，建议用 SSH 隧道访问。
+
+## 一键部署脚本
+
+当前仓库已内置一键部署脚本，默认使用本机 SSH 别名：
+
+- `gongfa-prod`
+- `gongfa-staging`
+
+首次准备：
+
+```bash
+ssh gongfa-prod
+ssh gongfa-staging
+```
+
+常用发版命令：
+
+```bash
+# 发布测试服
+./scripts/deploy-staging.sh
+
+# 发布正式服
+./scripts/deploy-prod.sh
+```
+
+脚本行为：
+
+- 自动用 `rsync` 同步仓库到服务器目录
+- 自动排除本地 `.git`、`node_modules`、环境文件和本地数据文件
+- 如果本机存在同级目录 `../xyzw_web_helper/public`，会一并同步 helper 静态资源
+- 自动执行 `docker compose ... up -d --build web`
+- 自动打印容器状态并做健康检查
