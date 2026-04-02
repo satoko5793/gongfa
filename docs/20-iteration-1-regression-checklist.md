@@ -73,3 +73,72 @@
 - 后台取消订单未复测
 - 充值审核链路未复测
 - 游客残卷锁卡未复测
+
+## 2026-04-02 已完成项
+
+- `admin` 查询链路第二轮拆分已落地
+- `GET /admin/orders` HTTP 冒烟通过
+- `GET /admin/recharge-orders` HTTP 冒烟通过
+- `GET /admin/quota-logs` HTTP 冒烟通过
+- 返回分页结构未变化
+
+## 2026-04-02 未完成项
+
+- `admin/users` 查询链路未拆
+- `admin/products` 查询链路未拆
+- `admin/audit-logs` 查询链路未拆
+- 数据库模式下的 `admin` 查询冒烟未复测
+
+## 2026-04-02 追加完成项
+
+- `GET /admin/products` HTTP 冒烟通过
+- `GET /admin/users` HTTP 冒烟通过
+- `GET /admin/audit-logs` HTTP 冒烟通过
+- `admin` 六条核心查询接口已迁入模块层
+
+## 2026-04-02 追加未完成项
+
+- `bundles` 查询链路尚未并入 admin query service
+- `recharge-config` 查询链路尚未并入 admin query service
+- 数据库模式下 `products / users / audit-logs` 未复测
+
+## 2026-04-02 写操作追加完成项
+
+- `admin` 商品写操作第一轮模块化已落地
+- `admin` 用户写操作第一轮模块化已落地
+- 商品状态修改 HTTP 冒烟通过
+- 商品批量更新 HTTP 冒烟通过
+- 用户额度调整 HTTP 冒烟通过
+- 用户状态修改 HTTP 冒烟通过
+
+## 2026-04-02 写操作追加未完成项
+
+- `products/:id` 单商品完整更新未做 HTTP 级复测
+- `products/:id/manual-price` 清除手动价未做 HTTP 级复测
+- 数据库模式下商品/用户写操作未做 HTTP 级复测
+
+## 2026-04-02 套餐与充值配置追加完成项
+
+- `admin/bundles` 读写第一轮模块化已落地
+- `admin/recharge-config` 读写第一轮模块化已落地
+- `GET /admin/bundles` HTTP 冒烟通过
+- `PATCH /admin/bundles/:id` HTTP 冒烟通过
+- `PATCH /admin/bundles/:id/status` HTTP 冒烟通过
+- `GET /admin/recharge-config` HTTP 冒烟通过
+- `PATCH /admin/recharge-config` HTTP 冒烟通过
+
+## 2026-04-02 套餐与充值配置追加未完成项
+
+- 数据库模式下 `bundles` 链路未做 HTTP 级复测
+- 数据库模式下 `recharge-config` 链路未做 HTTP 级复测
+
+## 2026-04-02 导入与定价追加完成项
+
+- `admin/imports` 第一轮模块化已落地
+- `admin/pricing` 第一轮模块化已落地
+- `POST /admin/pricing/recalculate` HTTP 冒烟通过
+- `POST /admin/imports/cards-json` HTTP 冒烟通过
+
+## 2026-04-02 导入与定价追加未完成项
+
+- 数据库模式下 `imports/pricing` 链路未做 HTTP 级复测
