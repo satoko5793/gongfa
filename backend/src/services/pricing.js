@@ -1,10 +1,12 @@
 const { LEGACY_CAPS } = require("../config/catalog-config");
 
 const PRICE_CONFIG = {
-  version: "pricing_v14",
+  version: "pricing_v17",
   marketFactor: {
-    min: 0.5,
-    max: 4.0,
+    min: 0.82,
+    max: 1.28,
+    exactMinSamples: 2,
+    broadMinSamples: 4,
   },
   similarity: {
     topMatches: 3,
@@ -25,7 +27,18 @@ const PRICE_CONFIG = {
     },
   },
   floorMultiplier: 2,
-  broadDiscountRate: 0.8,
+  broadDiscountRate: 1,
+  seasonDecay: {
+    enabled: true,
+    assumedSeasonDays: 28,
+    currentSeasonStartMultiplier: 1.1,
+    atlasEndMultiplier: 0.8,
+    profiles: {
+      single_fire_high: { endMultiplier: 0.8, label: "本赛季高走火缓降" },
+      single_fire_low: { endMultiplier: 0.5, label: "本赛季普通走火快降" },
+      single_calm: { endMultiplier: 0.2, label: "本赛季气定快速衰减" },
+    },
+  },
   tierRules: {
     green: {
       salvageQuota: 50,
@@ -87,6 +100,11 @@ function roundPrice(value) {
   const num = Math.max(0, Number(value) || 0);
   if (num < 1000) return Math.round(num / 50) * 50;
   return Math.round(num / 100) * 100;
+}
+
+function parseTimestamp(value) {
+  const date = new Date(value || 0);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function getFixedQuotaAnchor(product) {
@@ -172,53 +190,131 @@ function buildConfiguredMaxMap(products) {
   return configuredMaxMap;
 }
 
-function buildDemandMap(orderEvents, now = new Date()) {
-  const nowMs = now.getTime();
-  const demandMap = new Map();
+function getTermLevelBucket(value) {
+  const numeric = Number(value) || 0;
+  if (numeric <= 0) return "0.0";
+  return (Math.round(numeric * 10) / 10).toFixed(1);
+}
+
+function buildTurnoverDescriptor(product, wearOverride = null) {
+  if (!product) return null;
+
+  const legacyId = Number(product.legacy_id) || 0;
+  if (!legacyId) return null;
+
+  const wear =
+    wearOverride ||
+    getWearPrice(
+      product,
+      { score: 0, attack_rate: 0, hp_rate: 0, price: 0 },
+      {
+        attack_max: Math.max(Number(product.attack_value) || 0, 1),
+        hp_max: Math.max(Number(product.hp_value) || 0, 1),
+        fire_total_max: Number(parseTermMetrics(product.ext_attrs).fire_total) || 0,
+        calm_total_max: Number(parseTermMetrics(product.ext_attrs).calm_total) || 0,
+      },
+      PRICE_CONFIG.tierRules[getLegacyTier(legacyId)]
+    );
+
+  const tier = getLegacyTier(legacyId);
+  const fireBucket = getTermLevelBucket(wear.fire_total);
+  const calmBucket = getTermLevelBucket(wear.calm_total);
+
+  return {
+    tier,
+    legacy_id: legacyId,
+    is_current_season: Boolean(product.is_current_season),
+    kind: wear.kind || "none",
+    term_bucket_rank: getTermBucketRank(wear),
+    fire_bucket: fireBucket,
+    calm_bucket: calmBucket,
+  };
+}
+
+function buildTurnoverKey(descriptor, scope = "exact") {
+  if (!descriptor) return null;
+  const base = [
+    descriptor.tier,
+    descriptor.is_current_season ? "current" : "legacy",
+    descriptor.kind,
+    `rank:${descriptor.term_bucket_rank}`,
+    `fire:${descriptor.fire_bucket}`,
+    `calm:${descriptor.calm_bucket}`,
+  ];
+  if (scope === "exact") {
+    base.splice(1, 0, `legacy:${descriptor.legacy_id}`);
+  }
+  return base.join("|");
+}
+
+function summarizeTurnoverSamples(samples) {
+  const sorted = samples
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right);
+
+  if (sorted.length === 0) return null;
+
+  const pick = (ratio) => {
+    const index = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * ratio)));
+    return sorted[index];
+  };
+  const average = sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
+  const fastShare = sorted.filter((value) => value <= 3).length / sorted.length;
+
+  return {
+    sample_size: sorted.length,
+    median_sale_days: Number(pick(0.5).toFixed(2)),
+    p75_sale_days: Number(pick(0.75).toFixed(2)),
+    avg_sale_days: Number(average.toFixed(2)),
+    fast_sale_share_3d: Number(fastShare.toFixed(4)),
+  };
+}
+
+function buildTurnoverMaps(orderEvents) {
+  const exactSamples = new Map();
+  const broadSamples = new Map();
+
+  const pushSample = (map, key, value) => {
+    if (!key) return;
+    const list = map.get(key) || [];
+    list.push(value);
+    map.set(key, list);
+  };
 
   for (const event of orderEvents) {
-    const productId = Number(event.product_id);
-    if (!productId) continue;
+    if (event.status !== "confirmed") continue;
 
-    const entry = demandMap.get(productId) || {
-      confirmed_7d: 0,
-      active_30d_weighted: 0,
-      unique_buyers_30d: new Set(),
-      last_active_at: null,
-    };
+    const listedAt = new Date(event.listed_at || event.product_snapshot?.created_at || 0);
+    const soldAt = new Date(event.happened_at || event.updated_at || event.created_at || 0);
+    if (!Number.isFinite(listedAt.getTime()) || !Number.isFinite(soldAt.getTime())) continue;
 
-    const happenedAt = new Date(event.happened_at || event.updated_at || event.created_at || now);
-    const ageDays = Math.max(0, (nowMs - happenedAt.getTime()) / 86400000);
-    if (!Number.isFinite(ageDays)) continue;
+    const saleDays = Math.max(0, (soldAt.getTime() - listedAt.getTime()) / 86400000);
+    if (!Number.isFinite(saleDays)) continue;
 
-    if (event.status !== "cancelled" && (!entry.last_active_at || happenedAt > entry.last_active_at)) {
-      entry.last_active_at = happenedAt;
-    }
-
-    if (event.status === "confirmed" && ageDays <= 7) {
-      entry.confirmed_7d += 1;
-    }
-
-    if (ageDays <= 30 && event.status !== "cancelled") {
-      if (event.status === "confirmed") entry.active_30d_weighted += 1;
-      else if (event.status === "pending") entry.active_30d_weighted += 0.35;
-
-      if (event.user_id) {
-        entry.unique_buyers_30d.add(String(event.user_id));
-      }
-    }
-
-    demandMap.set(productId, entry);
-  }
-
-  for (const entry of demandMap.values()) {
-    entry.unique_buyers_30d = entry.unique_buyers_30d.size;
-    entry.days_since_active = entry.last_active_at
-      ? Math.max(0, (nowMs - entry.last_active_at.getTime()) / 86400000)
+    const snapshot = event.product_snapshot && typeof event.product_snapshot === "object"
+      ? event.product_snapshot
       : null;
+    const descriptor = buildTurnoverDescriptor(snapshot);
+    if (!descriptor) continue;
+
+    pushSample(exactSamples, buildTurnoverKey(descriptor, "exact"), saleDays);
+    pushSample(broadSamples, buildTurnoverKey(descriptor, "broad"), saleDays);
   }
 
-  return demandMap;
+  const finalize = (samplesMap) => {
+    const result = new Map();
+    for (const [key, samples] of samplesMap.entries()) {
+      const summary = summarizeTurnoverSamples(samples);
+      if (summary) result.set(key, summary);
+    }
+    return result;
+  };
+
+  return {
+    exact: finalize(exactSamples),
+    broad: finalize(broadSamples),
+  };
 }
 
 function getAtlasPrice(product, tierRule, referenceCaps) {
@@ -349,10 +445,160 @@ function getGlobalPriceAdjustment(product, referenceCaps) {
     return { applied: false, rate: 1, reason: "double_full_exempt" };
   }
 
+  const rate = Number(PRICE_CONFIG.broadDiscountRate || 1);
+  if (rate >= 1) {
+    return {
+      applied: false,
+      rate: 1,
+      reason: "broad_discount_disabled",
+    };
+  }
+
   return {
     applied: true,
-    rate: Number(PRICE_CONFIG.broadDiscountRate || 1),
+    rate,
     reason: "broad_market_discount",
+  };
+}
+
+function isSeasonDecayExempt(product, wear = {}, referenceCaps = {}) {
+  if (!product?.is_current_season) return true;
+  if (hasRareRmbAnchor(product.legacy_id) || product.rmb_anchor) return true;
+  const attackValue = Number(product?.attack_value || 0);
+  const hpValue = Number(product?.hp_value || 0);
+  const attackMax = Math.max(Number(referenceCaps?.attack_max || product?.reference_caps?.attack_max || 0), 1);
+  const hpMax = Math.max(Number(referenceCaps?.hp_max || product?.reference_caps?.hp_max || 0), 1);
+  const exactDoubleFull = attackValue >= attackMax && hpValue >= hpMax;
+  if (exactDoubleFull) return true;
+
+  const termBucketRank = getTermBucketRank(wear);
+  if (termBucketRank >= 2) return true;
+
+  return false;
+}
+
+function getWearSeasonDecayProfileKey(product, wear = {}, referenceCaps = {}) {
+  if (isSeasonDecayExempt(product, wear, referenceCaps)) return null;
+
+  if (wear.kind === "single_fire") {
+    const fireTotal = Number(wear.fire_total || 0);
+    return fireTotal >= 2.7 ? "single_fire_high" : "single_fire_low";
+  }
+
+  if (wear.kind === "single_calm") {
+    return "single_calm";
+  }
+
+  return null;
+}
+
+function getSeasonTimingWindow(products, rechargeConfig, now = new Date()) {
+  const expiresAt = parseTimestamp(rechargeConfig?.season_member_expires_at);
+  if (!expiresAt) return null;
+
+  const currentSeasonProducts = (products || []).filter((item) => Boolean(item?.is_current_season));
+  if (currentSeasonProducts.length === 0) return null;
+
+  const seasonLengthDays = Math.max(Number(PRICE_CONFIG.seasonDecay?.assumedSeasonDays) || 28, 1);
+  const endAt = expiresAt;
+  const startAt = new Date(endAt.getTime() - seasonLengthDays * 86400000);
+  const nowAt = parseTimestamp(now) || new Date();
+  const totalMs = Math.max(endAt.getTime() - startAt.getTime(), 1);
+  const elapsedRatio = clamp((nowAt.getTime() - startAt.getTime()) / totalMs, 0, 1);
+
+  return {
+    start_at: startAt.toISOString(),
+    end_at: endAt.toISOString(),
+    now_at: nowAt.toISOString(),
+    assumed_season_days: seasonLengthDays,
+    progress_ratio: Number(elapsedRatio.toFixed(4)),
+    days_until_end: Number(((endAt.getTime() - nowAt.getTime()) / 86400000).toFixed(2)),
+  };
+}
+
+function buildSeasonDecayResult({ applied, rate = 1, reason, profile = null, profileLabel = null, seasonTiming = null }) {
+  return {
+    applied,
+    rate: Number((Number(rate) || 1).toFixed(4)),
+    profile,
+    profile_label: profileLabel,
+    progress_ratio: seasonTiming ? clamp(Number(seasonTiming.progress_ratio || 0), 0, 1) : null,
+    start_multiplier: seasonTiming ? Number(PRICE_CONFIG.seasonDecay?.currentSeasonStartMultiplier || 1) : null,
+    season_start_at: seasonTiming?.start_at || null,
+    season_end_at: seasonTiming?.end_at || null,
+    days_until_end: seasonTiming?.days_until_end ?? null,
+    assumed_season_days: seasonTiming?.assumed_season_days ?? null,
+    reason,
+  };
+}
+
+function getAtlasSeasonDecayMultiplier(product, wear, referenceCaps, seasonTiming) {
+  const config = PRICE_CONFIG.seasonDecay || {};
+  if (!config.enabled) {
+    return buildSeasonDecayResult({ applied: false, rate: 1, reason: "season_decay_disabled" });
+  }
+
+  if (!seasonTiming) {
+    return buildSeasonDecayResult({ applied: false, rate: 1, reason: "season_timing_unavailable" });
+  }
+
+  if (isSeasonDecayExempt(product, wear, referenceCaps)) {
+    return buildSeasonDecayResult({ applied: false, rate: 1, reason: "season_decay_exempt", seasonTiming });
+  }
+
+  const startMultiplier = Number(config.currentSeasonStartMultiplier || 1);
+  const endMultiplier = Number(config.atlasEndMultiplier || 1);
+  const progressRatio = clamp(Number(seasonTiming.progress_ratio || 0), 0, 1);
+  const rate = startMultiplier + (endMultiplier - startMultiplier) * progressRatio;
+
+  return {
+    ...buildSeasonDecayResult({
+      applied: true,
+      rate,
+      reason: "current_season_atlas_decay",
+      profile: "atlas_base",
+      profileLabel: "本赛季属性价值缓降",
+      seasonTiming,
+    }),
+    end_multiplier: endMultiplier,
+  };
+}
+
+function getWearSeasonDecayMultiplier(product, wear, referenceCaps, seasonTiming) {
+  const config = PRICE_CONFIG.seasonDecay || {};
+  if (!config.enabled) {
+    return buildSeasonDecayResult({ applied: false, rate: 1, reason: "season_decay_disabled" });
+  }
+
+  if (!seasonTiming) {
+    return buildSeasonDecayResult({ applied: false, rate: 1, reason: "season_timing_unavailable" });
+  }
+
+  const profileKey = getWearSeasonDecayProfileKey(product, wear, referenceCaps);
+  if (!profileKey) {
+    return buildSeasonDecayResult({ applied: false, rate: 1, reason: "season_decay_exempt", seasonTiming });
+  }
+
+  const profile = config.profiles?.[profileKey];
+  if (!profile) {
+    return buildSeasonDecayResult({ applied: false, rate: 1, reason: "season_decay_profile_missing", seasonTiming });
+  }
+
+  const startMultiplier = Number(config.currentSeasonStartMultiplier || 1);
+  const endMultiplier = Number(profile.endMultiplier || 1);
+  const progressRatio = clamp(Number(seasonTiming.progress_ratio || 0), 0, 1);
+  const rate = startMultiplier + (endMultiplier - startMultiplier) * progressRatio;
+
+  return {
+    ...buildSeasonDecayResult({
+      applied: true,
+      rate,
+      reason: "current_season_wear_decay",
+      profile: profileKey,
+      profileLabel: profile.label,
+      seasonTiming,
+    }),
+    end_multiplier: endMultiplier,
   };
 }
 
@@ -494,6 +740,54 @@ function getGoldSeasonPremium(product, atlas, wearProfile, termMetrics) {
   return premium;
 }
 
+function getInterpolatedTermCurve(termValue, points) {
+  const value = Number(termValue) || 0;
+  if (!Array.isArray(points) || points.length === 0) return 0;
+  if (value <= Number(points[0][0])) return Number(points[0][1]) || 0;
+
+  for (let index = 1; index < points.length; index += 1) {
+    const [rightX, rightY] = points[index];
+    const [leftX, leftY] = points[index - 1];
+    if (value <= Number(rightX)) {
+      const ratio = (value - Number(leftX)) / Math.max(Number(rightX) - Number(leftX), 0.0001);
+      return Number(leftY) + (Number(rightY) - Number(leftY)) * ratio;
+    }
+  }
+
+  return Number(points[points.length - 1][1]) || 0;
+}
+
+function getGoldSingleTermCurveBase(kind, termValue) {
+  const fireCurve = [
+    [0, 0],
+    [2.1, 2800],
+    [2.2, 3400],
+    [2.3, 4300],
+    [2.4, 6000],
+    [2.5, 8600],
+    [2.6, 11800],
+    [2.7, 17000],
+    [2.8, 24500],
+    [2.9, 33500],
+    [3.0, 45000],
+  ];
+  const calmCurve = [
+    [0, 0],
+    [2.1, 1800],
+    [2.2, 2200],
+    [2.3, 2800],
+    [2.4, 3800],
+    [2.5, 5200],
+    [2.6, 7200],
+    [2.7, 9800],
+    [2.8, 13800],
+    [2.9, 18500],
+    [3.0, 22000],
+  ];
+
+  return getInterpolatedTermCurve(termValue, kind === "single_calm" ? calmCurve : fireCurve);
+}
+
 function getWearPrice(product, atlas, referenceCaps, tierRule) {
   const termMetrics = parseTermMetrics(product.ext_attrs);
   const wearProfile = getWearProfile(termMetrics);
@@ -557,6 +851,18 @@ function getWearPrice(product, atlas, referenceCaps, tierRule) {
     } else {
       wearPrice = 0;
     }
+  } else if (
+    tier === "gold" &&
+    (wearProfile.kind === "single_fire" || wearProfile.kind === "single_calm")
+  ) {
+    const peakTerm =
+      wearProfile.kind === "single_calm"
+        ? Number(termMetrics.calm_total || 0)
+        : Number(termMetrics.fire_total || 0);
+    const curveBase = getGoldSingleTermCurveBase(wearProfile.kind, peakTerm);
+    const statFactor = 0.9 + Number(atlas?.score || 0) * 0.16;
+    const seasonPremium = product?.is_current_season ? 300 : 0;
+    wearPrice = curveBase * statFactor + seasonPremium;
   } else {
     wearPrice =
       (wearProfile.basePrice + highTermBonus + seasonPremium) *
@@ -582,62 +888,79 @@ function getWearPrice(product, atlas, referenceCaps, tierRule) {
   };
 }
 
-function getMarketFactor(demand) {
-  const previousFactor = clamp(Number(demand?.previous_factor) || 1, 0.5, 4.0);
-  if (!demand) {
+function getTurnoverTargetFactor(stats) {
+  if (!stats) return 1;
+
+  const median = Number(stats.median_sale_days) || 0;
+  const p75 = Number(stats.p75_sale_days) || 0;
+  const fastShare = Number(stats.fast_sale_share_3d) || 0;
+
+  let factor = 1;
+  if (median <= 1 && p75 <= 3) factor = 1.2;
+  else if (median <= 3) factor = 1.14;
+  else if (median <= 7) factor = 1.08;
+  else if (median <= 14) factor = 1.02;
+  else if (median <= 21) factor = 0.97;
+  else if (median <= 30) factor = 0.92;
+  else factor = 0.86;
+
+  if (fastShare >= 0.65) factor += 0.04;
+  else if (fastShare <= 0.2) factor -= 0.03;
+
+  return clamp(factor, PRICE_CONFIG.marketFactor.min, PRICE_CONFIG.marketFactor.max);
+}
+
+function getMarketFactor(product, turnoverMaps) {
+  const descriptor = buildTurnoverDescriptor(product, product?.wear);
+  const exactKey = buildTurnoverKey(descriptor, "exact");
+  const broadKey = buildTurnoverKey(descriptor, "broad");
+  const exactStats = exactKey ? turnoverMaps?.exact?.get(exactKey) || null : null;
+  const broadStats = broadKey ? turnoverMaps?.broad?.get(broadKey) || null : null;
+
+  const exactMinSamples = Number(PRICE_CONFIG.marketFactor.exactMinSamples) || 2;
+  const broadMinSamples = Number(PRICE_CONFIG.marketFactor.broadMinSamples) || 4;
+
+  let stats = null;
+  let scope = "none";
+  if (exactStats && Number(exactStats.sample_size) >= exactMinSamples) {
+    stats = exactStats;
+    scope = "exact";
+  } else if (broadStats && Number(broadStats.sample_size) >= broadMinSamples) {
+    stats = broadStats;
+    scope = "broad";
+  }
+
+  if (!stats) {
     return {
       factor: 1,
       target_factor: 1,
-      previous_factor: previousFactor,
-      hot_score: 0,
-      cold_penalty: 0,
-      reason: "no_trade_history",
-      rise_blocked: false,
-      rise_cap: null,
+      reason: "no_turnover_history",
+      scope,
+      sample_size: 0,
+      confidence: 0,
+      median_sale_days: null,
+      p75_sale_days: null,
+      avg_sale_days: null,
+      fast_sale_share_3d: null,
     };
   }
 
-  const hotScore =
-    (Number(demand.confirmed_7d) || 0) * 0.18 +
-    (Number(demand.active_30d_weighted) || 0) * 0.08 +
-    (Number(demand.unique_buyers_30d) || 0) * 0.05;
-
-  let coldPenalty = 0;
-  const staleDaysRaw = Number(demand.days_since_active);
-  const staleDays = Number.isFinite(staleDaysRaw) ? staleDaysRaw : null;
-  if (staleDays !== null && staleDays >= 3) coldPenalty += 0.08;
-  if (staleDays !== null && staleDays >= 7) coldPenalty += 0.12;
-  if (staleDays !== null && staleDays >= 14) coldPenalty += 0.2;
-  if (staleDays !== null && staleDays >= 30) coldPenalty += 0.25;
-  if (staleDays !== null && staleDays >= 60) coldPenalty += 0.25;
-
-  const targetFactor = clamp(
-    1 + hotScore - coldPenalty,
-    PRICE_CONFIG.marketFactor.min,
-    PRICE_CONFIG.marketFactor.max
-  );
-  const confirmed7d = Number(demand.confirmed_7d) || 0;
-  const riseStep = confirmed7d >= 2 ? Math.min(0.24, 0.08 * (confirmed7d - 1)) : 0;
-  const riseCap = riseStep > 0 ? previousFactor + riseStep : previousFactor;
-  const factor =
-    targetFactor > previousFactor
-      ? confirmed7d < 2
-        ? previousFactor
-        : Math.min(targetFactor, riseCap)
-      : targetFactor;
+  const sampleSize = Number(stats.sample_size) || 0;
+  const confidence = clamp(sampleSize / (scope === "exact" ? 4 : 8), 0.35, 1);
+  const rawTarget = getTurnoverTargetFactor(stats);
+  const factor = 1 + (rawTarget - 1) * confidence;
 
   return {
     factor: Number(factor.toFixed(4)),
-    target_factor: Number(targetFactor.toFixed(4)),
-    previous_factor: Number(previousFactor.toFixed(4)),
-    hot_score: Number(hotScore.toFixed(4)),
-    cold_penalty: Number(coldPenalty.toFixed(4)),
-    confirmed_7d: confirmed7d,
-    active_30d_weighted: Number(Number(demand.active_30d_weighted || 0).toFixed(2)),
-    unique_buyers_30d: Number(demand.unique_buyers_30d) || 0,
-    days_since_active: staleDays === null ? null : Number(staleDays.toFixed(1)),
-    rise_blocked: targetFactor > previousFactor && confirmed7d < 2,
-    rise_cap: riseStep > 0 ? Number(riseCap.toFixed(4)) : null,
+    target_factor: Number(rawTarget.toFixed(4)),
+    reason: "turnover_velocity",
+    scope,
+    sample_size: sampleSize,
+    confidence: Number(confidence.toFixed(4)),
+    median_sale_days: Number(stats.median_sale_days),
+    p75_sale_days: Number(stats.p75_sale_days),
+    avg_sale_days: Number(stats.avg_sale_days),
+    fast_sale_share_3d: Number(stats.fast_sale_share_3d),
   };
 }
 
@@ -656,6 +979,14 @@ function buildOrderEvents(orders, orderItems) {
         user_id: Number(order.user_id),
         status: order.status,
         happened_at: order.updated_at || order.created_at,
+        listed_at:
+          item?.product_snapshot && typeof item.product_snapshot === "object"
+            ? item.product_snapshot.created_at || null
+            : null,
+        product_snapshot:
+          item?.product_snapshot && typeof item.product_snapshot === "object"
+            ? item.product_snapshot
+            : null,
       };
     })
     .filter(Boolean);
@@ -901,7 +1232,8 @@ function compareIntrinsic(a, b) {
 
 function splitPricingBuckets(products) {
   const doubleTermProducts = [];
-  const singleTermProducts = [];
+  const singleFireProducts = [];
+  const singleCalmProducts = [];
   const normalProducts = [];
 
   for (const product of products) {
@@ -912,13 +1244,14 @@ function splitPricingBuckets(products) {
       continue;
     }
     if (termCount >= 1) {
-      singleTermProducts.push(product);
+      if (wear.kind === "single_calm") singleCalmProducts.push(product);
+      else singleFireProducts.push(product);
       continue;
     }
     normalProducts.push(product);
   }
 
-  return [doubleTermProducts, singleTermProducts, normalProducts];
+  return [doubleTermProducts, singleFireProducts, singleCalmProducts, normalProducts];
 }
 
 function getEliteGoldProtectedBasePrice(product) {
@@ -971,8 +1304,9 @@ function applyMonotonicCap(products, step) {
 
 function repriceProducts(products, orderEvents, now = new Date(), options = {}) {
   const configuredMaxMap = buildConfiguredMaxMap(products);
-  const demandMap = buildDemandMap(orderEvents, now);
+  const turnoverMaps = buildTurnoverMaps(orderEvents, now);
   const rechargeConfig = options?.rechargeConfig || {};
+  const seasonTiming = getSeasonTimingWindow(products, rechargeConfig, now);
 
   const basePricedProducts = products.map((product) => {
     const tier = getLegacyTier(product.legacy_id);
@@ -987,15 +1321,22 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
 
     const atlas = getAtlasPrice(product, tierRule, referenceCaps);
     const wear = getWearPrice(product, atlas, referenceCaps, tierRule);
+    const atlasSeasonDecay = getAtlasSeasonDecayMultiplier(product, wear, referenceCaps, seasonTiming);
+    const wearSeasonDecay = getWearSeasonDecayMultiplier(product, wear, referenceCaps, seasonTiming);
+    const seasonAdjustedAtlasPrice = Math.max(
+      floorPrice,
+      roundPrice(Number(atlas.price || 0) * Number(atlasSeasonDecay.rate || 1))
+    );
+    const seasonAdjustedWearPrice = roundPrice(Number(wear.price || 0) * Number(wearSeasonDecay.rate || 1));
     const rmbAnchor = getFixedQuotaAnchor(product);
     let dominant =
-      Number(wear.price || 0) > Number(atlas.price || 0)
+      Number(seasonAdjustedWearPrice || 0) > Number(seasonAdjustedAtlasPrice || 0)
         ? { type: "wear", label: "佩戴价主导" }
         : { type: "atlas", label: "图鉴价主导" };
     const intrinsicAutoBasePrice = Math.max(
       floorPrice,
-      Number(atlas.price) || 0,
-      Number(wear.price) || 0
+      Number(seasonAdjustedAtlasPrice) || 0,
+      Number(seasonAdjustedWearPrice) || 0
     );
     const autoBasePrice = rmbAnchor
       ? Math.max(floorPrice, Number(rmbAnchor.quota_anchor) || 0)
@@ -1013,6 +1354,10 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
       wear,
       dominant,
       rmb_anchor: rmbAnchor,
+      atlas_season_decay: atlasSeasonDecay,
+      wear_season_decay: wearSeasonDecay,
+      season_adjusted_atlas_price: seasonAdjustedAtlasPrice,
+      season_adjusted_wear_price: seasonAdjustedWearPrice,
       intrinsic_auto_base_price: intrinsicAutoBasePrice,
       auto_base_price: autoBasePrice,
       reference_caps: referenceCaps,
@@ -1036,10 +1381,7 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
       Number(product.floor_price || 0),
       roundPrice(protectedAutoBasePrice * Number(globalPriceAdjustment.rate || 1))
     );
-    const market = getMarketFactor({
-      ...(demandMap.get(Number(product.id)) || {}),
-      previous_factor: Number(product?.pricing_meta?.market?.factor || 1),
-    });
+    const market = getMarketFactor(product, turnoverMaps);
     const autoPrice = Math.max(
       Number(product.floor_price || 0),
       roundPrice(adjustedAutoBasePrice * market.factor)
@@ -1066,6 +1408,10 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
       similarity,
       market,
       rmb_anchor: product.rmb_anchor,
+      atlas_season_decay: product.atlas_season_decay,
+      wear_season_decay: product.wear_season_decay,
+      season_adjusted_atlas_price: product.season_adjusted_atlas_price,
+      season_adjusted_wear_price: product.season_adjusted_wear_price,
       intrinsic_auto_base_price: product.intrinsic_auto_base_price,
       auto_base_price: product.auto_base_price,
       tier_soft_discount: tierSoftDiscount,
@@ -1098,10 +1444,12 @@ function repriceProducts(products, orderEvents, now = new Date(), options = {}) 
     const autoProducts = group.filter(
       (item) => item.rmb_anchor || !Number.isInteger(item.manual_price_quota)
     );
-    const [doubleTermProducts, singleTermProducts, normalProducts] = splitPricingBuckets(autoProducts);
+    const [doubleTermProducts, singleFireProducts, singleCalmProducts, normalProducts] =
+      splitPricingBuckets(autoProducts);
 
     applyMonotonicCap(doubleTermProducts, step);
-    applyMonotonicCap(singleTermProducts, step);
+    applyMonotonicCap(singleFireProducts, step);
+    applyMonotonicCap(singleCalmProducts, step);
     applyMonotonicCap(normalProducts, step);
   }
 
@@ -1142,6 +1490,7 @@ async function recalculateDatabasePricing(db) {
   const orderEventsResult = await db.query(
     `SELECT
       oi.product_id,
+      oi.product_snapshot,
       o.user_id,
       o.status,
       COALESCE(o.updated_at, o.created_at) AS happened_at

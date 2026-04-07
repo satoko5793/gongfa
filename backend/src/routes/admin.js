@@ -301,7 +301,7 @@ adminRouter.post("/pricing/recalculate", adminWriteOnly, async (req, res, next) 
   }
 });
 
-adminRouter.patch("/orders/:id/status", adminWriteOnly, async (req, res, next) => {
+adminRouter.patch("/orders/:id/status", async (req, res, next) => {
   try {
     const { status, returned_cards_text, best_gold_card } = req.body || {};
     if (!validateOrderStatus(status)) {
@@ -320,6 +320,11 @@ adminRouter.patch("/orders/:id/status", adminWriteOnly, async (req, res, next) =
       typeof best_gold_card !== "string"
     ) {
       return res.status(400).json({ error: "best_gold_card_invalid" });
+    }
+    const role = String(req.user?.role || "").trim();
+    const canConfirmOnly = role === "poster_admin" && String(status || "") === "confirmed";
+    if (role !== "admin" && !canConfirmOnly) {
+      return res.status(403).json({ error: "admin_write_only" });
     }
     return res.json(await updateOrderStatus(req.user, req.params.id, req.body || {}));
   } catch (error) {

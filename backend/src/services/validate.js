@@ -32,7 +32,139 @@ function validateBindInput(body) {
   if (!requiredString(body.game_role_name)) errors.push("game_role_name_required");
   if (!optionalString(body.bind_token_id)) errors.push("bind_token_id_invalid");
   if (!optionalString(body.nickname)) errors.push("nickname_invalid");
+  if (!optionalString(body.helper_token)) errors.push("helper_token_invalid");
+  if (!optionalString(body.helper_ws_url)) errors.push("helper_ws_url_invalid");
+  if (!optionalString(body.helper_import_method)) errors.push("helper_import_method_invalid");
   return errors;
+}
+
+function validateHelperBindingInput(body) {
+  return validateBindInput(body);
+}
+
+function validateHelperSnapshotInput(body) {
+  const errors = [];
+  if (
+    body?.binding_id !== undefined &&
+    body?.binding_id !== null &&
+    !Number.isInteger(Number(body.binding_id))
+  ) {
+    errors.push("binding_id_invalid");
+  }
+  if (body?.snapshot_name !== undefined && !optionalString(body.snapshot_name)) {
+    errors.push("snapshot_name_invalid");
+  }
+  if (
+    body?.source_type !== undefined &&
+    !["helper_bridge"].includes(String(body.source_type || "").trim())
+  ) {
+    errors.push("source_type_invalid");
+  }
+  if (!body?.summary || typeof body.summary !== "object" || Array.isArray(body.summary)) {
+    errors.push("summary_required");
+  }
+  if (!body?.raw || typeof body.raw !== "object" || Array.isArray(body.raw)) {
+    errors.push("raw_required");
+  }
+  return [...new Set(errors)];
+}
+
+function validateHelperInventoryInput(body) {
+  const errors = [];
+  if (
+    body?.binding_id !== undefined &&
+    body?.binding_id !== null &&
+    !Number.isInteger(Number(body.binding_id))
+  ) {
+    errors.push("binding_id_invalid");
+  }
+  if (
+    body?.source_type !== undefined &&
+    !["helper_bridge"].includes(String(body.source_type || "").trim())
+  ) {
+    errors.push("source_type_invalid");
+  }
+  if (!body?.summary || typeof body.summary !== "object" || Array.isArray(body.summary)) {
+    errors.push("summary_required");
+  }
+  if (!Array.isArray(body?.items)) {
+    errors.push("items_required");
+  }
+  return [...new Set(errors)];
+}
+
+function validateHelperSnapshotUpdateInput(body) {
+  const errors = [];
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    errors.push("body_invalid");
+    return errors;
+  }
+  if (body.snapshot_name === undefined && body.is_pinned === undefined) {
+    errors.push("snapshot_update_empty");
+  }
+  if (body.snapshot_name !== undefined) {
+    if (!requiredString(body.snapshot_name)) {
+      errors.push("snapshot_name_required");
+    } else if (String(body.snapshot_name || "").trim().length > 40) {
+      errors.push("snapshot_name_too_long");
+    }
+  }
+  if (body.is_pinned !== undefined && typeof body.is_pinned !== "boolean") {
+    errors.push("is_pinned_invalid");
+  }
+  return [...new Set(errors)];
+}
+
+function validateHelperActionLogInput(body) {
+  const errors = [];
+  if (
+    body?.binding_id !== undefined &&
+    body?.binding_id !== null &&
+    !Number.isInteger(Number(body.binding_id))
+  ) {
+    errors.push("binding_id_invalid");
+  }
+  if (!requiredString(body?.action_type)) {
+    errors.push("action_type_required");
+  } else if (
+    !["helper_team_switch", "helper_team_restore"].includes(String(body.action_type || "").trim())
+  ) {
+    errors.push("action_type_invalid");
+  }
+  if (
+    !body?.action_payload ||
+    typeof body.action_payload !== "object" ||
+    Array.isArray(body.action_payload)
+  ) {
+    errors.push("action_payload_required");
+  } else {
+    const actionType = String(body.action_type || "").trim();
+    if (actionType === "helper_team_switch") {
+      const teamId = Number(body.action_payload.team_id);
+      if (!Number.isInteger(teamId) || teamId < 1 || teamId > 4) {
+        errors.push("team_id_invalid");
+      }
+    }
+    if (actionType === "helper_team_restore") {
+      const snapshotId = Number(body.action_payload.snapshot_id);
+      if (!Number.isInteger(snapshotId) || snapshotId <= 0) {
+        errors.push("snapshot_id_invalid");
+      }
+    }
+  }
+  if (
+    body?.result_status !== undefined &&
+    !["ok", "warning", "error"].includes(String(body.result_status || "").trim())
+  ) {
+    errors.push("result_status_invalid");
+  }
+  if (
+    body?.result_payload !== undefined &&
+    (!body.result_payload || typeof body.result_payload !== "object" || Array.isArray(body.result_payload))
+  ) {
+    errors.push("result_payload_invalid");
+  }
+  return [...new Set(errors)];
 }
 
 function validatePasswordRegisterInput(body) {
@@ -146,7 +278,18 @@ function validateRechargeConfigUpdateInput(body) {
   ) {
     errors.push("residual_transfer_enabled_invalid");
   }
-  for (const field of ["exchange_yuan", "exchange_quota", "min_amount_yuan"]) {
+  for (const field of ["exchange_yuan", "min_amount_yuan", "season_member_price_yuan"]) {
+    if (body[field] !== undefined && !isPositiveMoneyAmount(body[field])) {
+      errors.push(`${field}_invalid`);
+    }
+  }
+  for (const field of [
+    "exchange_quota",
+    "season_member_quota",
+    "lineup_base_slots",
+    "lineup_permanent_slot_quota",
+    "lineup_seasonal_slot_quota",
+  ]) {
     if (
       body[field] !== undefined &&
       (!Number.isInteger(body[field]) || Number(body[field]) <= 0)
@@ -160,13 +303,17 @@ function validateRechargeConfigUpdateInput(body) {
   ) {
     errors.push("residual_quota_per_unit_invalid");
   }
-  for (const field of ["season_member_price_yuan", "season_member_quota"]) {
-    if (
-      body[field] !== undefined &&
-      (!Number.isInteger(body[field]) || Number(body[field]) <= 0)
-    ) {
-      errors.push(`${field}_invalid`);
-    }
+  if (
+    body.lineup_permanent_slot_max !== undefined &&
+    (!Number.isInteger(body.lineup_permanent_slot_max) || Number(body.lineup_permanent_slot_max) < 0)
+  ) {
+    errors.push("lineup_permanent_slot_max_invalid");
+  }
+  if (
+    body.lineup_member_bonus_slots !== undefined &&
+    (!Number.isInteger(body.lineup_member_bonus_slots) || Number(body.lineup_member_bonus_slots) < 0)
+  ) {
+    errors.push("lineup_member_bonus_slots_invalid");
   }
   if (
     body.season_member_bonus_rate !== undefined &&
@@ -181,7 +328,7 @@ function validateRechargeConfigUpdateInput(body) {
       errors.push("preset_amounts_invalid");
     } else if (
       body.preset_amounts.some(
-        (item) => !Number.isInteger(item) || Number(item) <= 0
+        (item) => !isPositiveMoneyAmount(item)
       )
     ) {
       errors.push("preset_amounts_invalid");
@@ -220,6 +367,15 @@ function validateRechargeConfigUpdateInput(body) {
     }
   }
   return [...new Set(errors)];
+}
+
+function validateLineupSlotPurchaseInput(body) {
+  const errors = [];
+  const purchaseType = String(body?.purchase_type || "").trim();
+  if (!["permanent", "seasonal"].includes(purchaseType)) {
+    errors.push("purchase_type_invalid");
+  }
+  return errors;
 }
 
 function validateImportInput(body) {
@@ -353,6 +509,11 @@ function validateBundleUpdate(body) {
 
 module.exports = {
   validateBindInput,
+  validateHelperBindingInput,
+  validateHelperInventoryInput,
+  validateHelperSnapshotInput,
+  validateHelperSnapshotUpdateInput,
+  validateHelperActionLogInput,
   validatePasswordRegisterInput,
   validatePasswordLoginInput,
   validateProfileUpdateInput,
@@ -360,6 +521,7 @@ module.exports = {
   validateRechargeOrderCreate,
   validateRechargeReviewInput,
   validateRechargeConfigUpdateInput,
+  validateLineupSlotPurchaseInput,
   validateImportInput,
   validateProductStatus,
   validateProductUpdate,

@@ -1,8 +1,13 @@
 (xyzw_helper_routes) {
   redir /xyzw-helper /xyzw-helper/
+  redir /xyzw-helper-staging /xyzw-helper-staging/
 
   handle_path /xyzw-helper/* {
     reverse_proxy 172.17.0.1:8082
+  }
+
+  handle_path /xyzw-helper-staging/* {
+    reverse_proxy 172.17.0.1:8083
   }
 
   @xyzwHelperApiWeixinLong path /api/weixin-long/*

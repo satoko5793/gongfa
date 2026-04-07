@@ -1,4 +1,4 @@
-﻿import { apiFetch, clearSession, formatDate, loadSession, saveSession } from "./shared.js";
+﻿import { apiFetch, clearSession, formatDate, loadSession, saveSession } from "./shared.js?v=20260404-fix1";
 
 const adminSession = document.getElementById("admin-session");
 const adminMessage = document.getElementById("admin-message");
@@ -55,6 +55,11 @@ const adminSeasonMemberExpiresAtInput = document.getElementById("admin-season-me
 const adminSeasonMemberPriceInput = document.getElementById("admin-season-member-price");
 const adminSeasonMemberQuotaInput = document.getElementById("admin-season-member-quota");
 const adminSeasonMemberBonusRateInput = document.getElementById("admin-season-member-bonus-rate");
+const adminLineupBaseSlotsInput = document.getElementById("admin-lineup-base-slots");
+const adminLineupPermanentSlotQuotaInput = document.getElementById("admin-lineup-permanent-slot-quota");
+const adminLineupPermanentSlotMaxInput = document.getElementById("admin-lineup-permanent-slot-max");
+const adminLineupSeasonalSlotQuotaInput = document.getElementById("admin-lineup-seasonal-slot-quota");
+const adminLineupMemberBonusSlotsInput = document.getElementById("admin-lineup-member-bonus-slots");
 const adminRechargePresetsInput = document.getElementById("admin-recharge-presets");
 const adminRechargePayeeNameInput = document.getElementById("admin-recharge-payee-name");
 const adminRechargePayeeHintInput = document.getElementById("admin-recharge-payee-hint");
@@ -203,6 +208,17 @@ function pickErrorMessage(error, fallback = "请求失败") {
   return error?.payload?.error || error?.message || fallback;
 }
 
+function parsePositiveMoneyValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const normalized = Number(numeric.toFixed(2));
+  if (normalized <= 0) return null;
+  if (Math.abs(normalized * 100 - Math.round(normalized * 100)) > 0.000001) {
+    return null;
+  }
+  return normalized;
+}
+
 function setMessage(text, type = "") {
   adminMessage.textContent = text || "";
   adminMessage.className = type ? `notice ${type}` : "notice";
@@ -223,6 +239,11 @@ function hasAdminReadAccess(profile = currentAdminProfile) {
 
 function hasAdminWriteAccess(profile = currentAdminProfile) {
   return ADMIN_WRITE_ROLES.has(getAdminRoleValue(profile));
+}
+
+function canConfirmOrders(profile = currentAdminProfile) {
+  const role = getAdminRoleValue(profile);
+  return role === "admin" || role === "poster_admin";
 }
 
 function isAdminReadOnlyMode(profile = currentAdminProfile) {
@@ -627,6 +648,19 @@ function renderRechargeConfig(config) {
   if (adminSeasonMemberPriceInput) adminSeasonMemberPriceInput.value = Number(config.season_member_price_yuan || 0);
   if (adminSeasonMemberQuotaInput) adminSeasonMemberQuotaInput.value = Number(config.season_member_quota || 0);
   if (adminSeasonMemberBonusRateInput) adminSeasonMemberBonusRateInput.value = Number(config.season_member_bonus_rate || 0);
+  if (adminLineupBaseSlotsInput) adminLineupBaseSlotsInput.value = Number(config.lineup_base_slots || 3);
+  if (adminLineupPermanentSlotQuotaInput) {
+    adminLineupPermanentSlotQuotaInput.value = Number(config.lineup_permanent_slot_quota || 5000);
+  }
+  if (adminLineupPermanentSlotMaxInput) {
+    adminLineupPermanentSlotMaxInput.value = Number(config.lineup_permanent_slot_max || 7);
+  }
+  if (adminLineupSeasonalSlotQuotaInput) {
+    adminLineupSeasonalSlotQuotaInput.value = Number(config.lineup_seasonal_slot_quota || 1000);
+  }
+  if (adminLineupMemberBonusSlotsInput) {
+    adminLineupMemberBonusSlotsInput.value = Number(config.lineup_member_bonus_slots || 3);
+  }
   if (adminRechargePresetsInput) {
     adminRechargePresetsInput.value = Array.isArray(config.preset_amounts)
       ? config.preset_amounts.join(",")
@@ -2269,6 +2303,8 @@ function renderUsers(users) {
             <div>当前额度：${Number(user.quota_balance || 0)}</div>
             <div>账号状态：${escapeHtml(user.status || "-")}</div>
             <div>昵称：${escapeHtml(user.nickname || "-")}</div>
+            <div>阵容槽位：已存 ${Number(user.lineup_slot_saved || 0)} / 可用 ${Number(user.lineup_slot_limit || 0)}</div>
+            <div>槽位构成：基础 ${Number(user.lineup_slot_base || 0)} / 永久 ${Number(user.lineup_slot_permanent || 0)} / 赛季 ${Number(user.lineup_slot_seasonal || 0)} / 会员赠送 ${Number(user.lineup_slot_member_bonus || 0)}</div>
           </div>
           ${
             canWrite
@@ -2567,6 +2603,10 @@ function formatQuotaLogType(type) {
       return "残卷到账";
     case "draw_service_rebate":
       return "代抽返利";
+    case "lineup_slot_permanent_purchase":
+      return "购买永久阵容槽";
+    case "lineup_slot_seasonal_purchase":
+      return "购买赛季阵容槽";
     case "beginner_guide_reward":
       return "新手教学奖励";
     default:
@@ -3416,8 +3456,8 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
 
   const presetAmounts = String(adminRechargePresetsInput.value || "")
     .split(",")
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isInteger(item) && item > 0);
+    .map((item) => parsePositiveMoneyValue(item.trim()))
+    .filter((item) => item !== null);
   const instructions = String(adminRechargeInstructionsInput.value || "")
     .split(/\r?\n/)
     .map((item) => item.trim())
@@ -3447,6 +3487,11 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
         season_member_price_yuan: Number(adminSeasonMemberPriceInput.value),
         season_member_quota: Number(adminSeasonMemberQuotaInput.value),
         season_member_bonus_rate: Number(adminSeasonMemberBonusRateInput.value),
+        lineup_base_slots: Number(adminLineupBaseSlotsInput?.value),
+        lineup_permanent_slot_quota: Number(adminLineupPermanentSlotQuotaInput?.value),
+        lineup_permanent_slot_max: Number(adminLineupPermanentSlotMaxInput?.value),
+        lineup_seasonal_slot_quota: Number(adminLineupSeasonalSlotQuotaInput?.value),
+        lineup_member_bonus_slots: Number(adminLineupMemberBonusSlotsInput?.value),
         preset_amounts: presetAmounts,
         qr_image_url: adminRechargeQrImageUrlInput.value.trim(),
         payee_name: adminRechargePayeeNameInput.value.trim(),
@@ -3471,7 +3516,6 @@ adminRechargeConfigForm?.addEventListener("submit", async (event) => {
 ordersRoot.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-order-id]");
   if (!card) return;
-  if (!guardAdminWriteAccess()) return;
   const orderId = Number(card.getAttribute("data-order-id"));
   const remark = card.querySelector('[data-field="remark"]').value.trim();
   const returnedCardsText =
@@ -3480,17 +3524,11 @@ ordersRoot.addEventListener("click", async (event) => {
     card.querySelector('[data-field="draw-best-gold"]')?.value?.trim() || "";
 
   try {
-    if (event.target.closest(".save-order-remark-btn")) {
-      await apiFetch(`/admin/orders/${orderId}/remark`, {
-        method: "PATCH",
-        body: JSON.stringify({ remark }),
-      });
-      setMessage(`订单 #${orderId} 备注已保存。`, "success");
-      await loadOrders();
-      return;
-    }
-
     if (event.target.closest(".confirm-order-btn")) {
+      if (!canConfirmOrders()) {
+        setMessage("当前账号没有确认订单权限。", "error");
+        return;
+      }
       await apiFetch(`/admin/orders/${orderId}/status`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -3502,6 +3540,18 @@ ordersRoot.addEventListener("click", async (event) => {
       });
       setMessage(`订单 #${orderId} 已确认。`, "success");
       await reloadAll();
+      return;
+    }
+
+    if (!guardAdminWriteAccess()) return;
+
+    if (event.target.closest(".save-order-remark-btn")) {
+      await apiFetch(`/admin/orders/${orderId}/remark`, {
+        method: "PATCH",
+        body: JSON.stringify({ remark }),
+      });
+      setMessage(`订单 #${orderId} 备注已保存。`, "success");
+      await loadOrders();
       return;
     }
 

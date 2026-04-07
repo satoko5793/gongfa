@@ -1,5 +1,8 @@
 const SESSION_KEY = "gongfa_session_v1";
 const HELPER_ORIGIN_KEY = "gongfa_helper_origin_v1";
+const HELPER_BRIDGE_SESSION_KEY = "gongfa_helper_bridge_session_v1";
+const HELPER_BRIDGE_INTENT_KEY = "gongfa_helper_bridge_intent_v1";
+const DEFAULT_HELPER_ORIGIN = "http://localhost:3000";
 
 export function loadSession() {
   try {
@@ -17,12 +20,53 @@ export function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
 }
 
+export function loadHelperBridgeSession() {
+  try {
+    return JSON.parse(window.localStorage.getItem(HELPER_BRIDGE_SESSION_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+export function saveHelperBridgeSession(session) {
+  window.localStorage.setItem(HELPER_BRIDGE_SESSION_KEY, JSON.stringify(session || null));
+}
+
+export function clearHelperBridgeSession() {
+  window.localStorage.removeItem(HELPER_BRIDGE_SESSION_KEY);
+}
+
+export function loadHelperBridgeIntent() {
+  return window.localStorage.getItem(HELPER_BRIDGE_INTENT_KEY) || "";
+}
+
+export function saveHelperBridgeIntent(intent) {
+  const normalizedIntent = String(intent || "").trim();
+  if (!normalizedIntent) {
+    window.localStorage.removeItem(HELPER_BRIDGE_INTENT_KEY);
+    return;
+  }
+  window.localStorage.setItem(HELPER_BRIDGE_INTENT_KEY, normalizedIntent);
+}
+
+export function clearHelperBridgeIntent() {
+  window.localStorage.removeItem(HELPER_BRIDGE_INTENT_KEY);
+}
+
 export function getHelperOrigin() {
-  return window.localStorage.getItem(HELPER_ORIGIN_KEY) || "http://localhost:3000";
+  return window.localStorage.getItem(HELPER_ORIGIN_KEY) || DEFAULT_HELPER_ORIGIN;
 }
 
 export function setHelperOrigin(origin) {
   window.localStorage.setItem(HELPER_ORIGIN_KEY, origin);
+}
+
+export function ensureHelperOrigin(origin) {
+  const current = window.localStorage.getItem(HELPER_ORIGIN_KEY);
+  if (current) return current;
+  const nextOrigin = String(origin || "").trim() || DEFAULT_HELPER_ORIGIN;
+  window.localStorage.setItem(HELPER_ORIGIN_KEY, nextOrigin);
+  return nextOrigin;
 }
 
 export function formatDate(value) {

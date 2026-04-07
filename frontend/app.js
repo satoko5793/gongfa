@@ -1,13 +1,20 @@
 import {
   apiFetch,
+  clearHelperBridgeIntent,
   clearSession,
+  clearHelperBridgeSession,
+  ensureHelperOrigin,
   getHelperOrigin,
+  loadHelperBridgeIntent,
   loadSession,
+  loadHelperBridgeSession,
   normalizeBindPayload,
+  saveHelperBridgeIntent,
   saveSession,
+  saveHelperBridgeSession,
   setHelperOrigin,
   formatDate,
-} from "./shared.js";
+} from "./shared.js?v=20260406-lineup-ui31";
 
 const productGrid = document.getElementById("product-grid");
 const discountProductsSection = document.getElementById("discount-products-section");
@@ -32,6 +39,46 @@ const sessionRole = document.getElementById("session-role");
 const navBindLink = document.getElementById("nav-bind-link");
 const navAdminLink = document.getElementById("nav-admin-link");
 const helperOriginInput = document.getElementById("helper-origin-input");
+const helperEntryNote = document.getElementById("helper-entry-note");
+const helperLabSection = document.getElementById("helper-lab");
+const helperLabBadge = document.getElementById("helper-lab-badge");
+const helperLabStage = document.getElementById("helper-lab-stage");
+const helperFeatureList = document.getElementById("helper-feature-list");
+const helperLabNote = document.getElementById("helper-lab-note");
+const helperLabOpenLink = document.getElementById("helper-lab-open-link");
+const helperAuthMessage = document.getElementById("helper-auth-message");
+const helperAuthNote = document.getElementById("helper-auth-note");
+const helperOpenAuthPopupBtn = document.getElementById("helper-open-auth-popup-btn");
+const helperBindMessage = document.getElementById("helper-bind-message");
+const helperInventoryMessage = document.getElementById("helper-inventory-message");
+const helperInventoryBindings = document.getElementById("helper-inventory-bindings");
+const helperInventoryMerged = document.getElementById("helper-inventory-merged");
+const helperSyncCurrentInventoryBtn = document.getElementById("helper-sync-current-inventory-btn");
+const helperSyncAllInventoryBtn = document.getElementById("helper-sync-all-inventory-btn");
+const helperBindCurrent = document.getElementById("helper-bind-current");
+const helperOpenBindPopupBtn = document.getElementById("helper-open-bind-popup-btn");
+const helperSaveBindBtn = document.getElementById("helper-save-bind-btn");
+const helperClearBindBtn = document.getElementById("helper-clear-bind-btn");
+const helperSlotSummary = document.getElementById("helper-slot-summary");
+const helperSlotMessage = document.getElementById("helper-slot-message");
+const helperBuyPermanentSlotBtn = document.getElementById("helper-buy-permanent-slot-btn");
+const helperBuySeasonalSlotBtn = document.getElementById("helper-buy-seasonal-slot-btn");
+const helperReadSnapshotBtn = document.getElementById("helper-read-snapshot-btn");
+const helperSnapshotMessage = document.getElementById("helper-snapshot-message");
+const helperSnapshotCurrent = document.getElementById("helper-snapshot-current");
+const helperSnapshotList = document.getElementById("helper-snapshot-list");
+const helperRestoreProgressCurrent = document.getElementById("helper-restore-progress-current");
+const helperRestoreResultCurrent = document.getElementById("helper-restore-result-current");
+const helperClearPreviewBtn = document.getElementById("helper-clear-preview-btn");
+const helperPreviewMessage = document.getElementById("helper-preview-message");
+const helperPreviewCurrent = document.getElementById("helper-preview-current");
+const helperTeamSwitchControls = document.getElementById("helper-team-switch-controls");
+const helperTeamSwitchMessage = document.getElementById("helper-team-switch-message");
+const helperTeamSwitchCurrent = document.getElementById("helper-team-switch-current");
+const helperTeamSwitchLog = document.getElementById("helper-team-switch-log");
+const helperLabDockItem = document.getElementById("helper-lab-dock-item");
+const debugPanel = document.getElementById("debug-panel");
+const debugLines = document.getElementById("debug-lines");
 const bindMessage = document.getElementById("bind-message");
 const bindSection = document.getElementById("bind");
 const accountSection = document.getElementById("account");
@@ -97,6 +144,13 @@ const bindNicknameInput = document.getElementById("bind-nickname");
 const productDetailModal = document.getElementById("product-detail-modal");
 const productDetailBody = document.getElementById("product-detail-body");
 const productDetailMessage = document.getElementById("product-detail-message");
+const helperBridgeModal = document.getElementById("helper-bridge-modal");
+const helperBridgeIframe = document.getElementById("helper-bridge-iframe");
+const helperBridgeHiddenFrame = document.getElementById("helper-bridge-hidden-frame");
+const helperBridgeModalTitle = document.getElementById("helper-bridge-modal-title");
+const helperBridgeModalMessage = document.getElementById("helper-bridge-modal-message");
+const helperBridgeModalHint = document.getElementById("helper-bridge-modal-hint");
+const closeHelperBridgeModalBtn = document.getElementById("close-helper-bridge-modal-btn");
 
 let allProducts = [];
 let currentProducts = [];
@@ -132,6 +186,68 @@ let recentSalesItems = [];
 let currentAuctions = [];
 let currentAuctionBidSummaries = [];
 let activeAuctionStatus = "live";
+let currentHelperBindings = [];
+let currentHelperInventories = [];
+let currentHelperMergedItems = [];
+let currentHelperSnapshots = [];
+let currentHelperActionLogs = [];
+let currentHelperRestorePreview = null;
+let currentHelperRestoreProgress = null;
+let pendingHelperPreviewSnapshotId = null;
+let expandedHelperSnapshotIds = new Set();
+let showArchivedHelperSnapshots = false;
+let helperInventorySyncState = {
+  running: false,
+  mode: "",
+  queue: [],
+  total: 0,
+  completed: 0,
+  failures: [],
+  currentBindingId: null,
+};
+let pendingHelperBridgePayload = loadHelperBridgeSession();
+let pendingHelperBridgeIntent = loadHelperBridgeIntent();
+let helperBridgeSurfaceState = {
+  mode: "",
+  interactive: false,
+};
+let helperBridgeBackgroundState = {
+  mode: "",
+  url: "",
+  timeoutId: null,
+};
+let helperConfig = {
+  enabled: false,
+  mode: "off",
+  public_base: "/xyzw-helper",
+  api_base: "/api",
+  features: {
+    scan_bind: false,
+    legacy_inventory: false,
+    team_snapshot: false,
+    team_switch: false,
+    team_restore: false,
+  },
+  access: {
+    whitelist_active: false,
+    lineup_allowed: true,
+    reason: "",
+  },
+  limits: {
+    snapshots_per_user: 3,
+  },
+  plans: {
+    base_slots: 3,
+    permanent_slot_quota: 5000,
+    permanent_slot_max: 7,
+    seasonal_slot_quota: 1000,
+    member_bonus_slots: 3,
+    season_label: "当前赛季",
+    season_expires_at: null,
+  },
+};
+const HELPER_BRIDGE_INTENT_AUTH = "scan_auth";
+const HELPER_BRIDGE_INTENT_BIND = "bind_current";
 const productPaginationState = {
   page: 1,
   pageSize: 12,
@@ -151,6 +267,52 @@ const DRAW_SERVICE_MILESTONE_QUOTA = 50000;
 const DRAW_SERVICE_FIRST_REBATE_QUOTA = 10000;
 const DRAW_SERVICE_REPEAT_REBATE_QUOTA = 5000;
 const AUCTION_COUNTDOWN_TICK_MS = 1000;
+const POST_AUTH_TARGET_KEY = "gongfa_post_auth_target_v1";
+const HELPER_CACHE_BUSTER = "20260405-helper-positionfix-1";
+const debugState = new Map();
+const HELPER_EQUIPMENT_PART_NAMES = {
+  1: "武器",
+  2: "铠甲",
+  3: "头冠",
+  4: "坐骑",
+};
+const HELPER_ATTR_NAMES = {
+  1: "攻击",
+  2: "血量",
+  3: "防御",
+  4: "速度",
+  5: "破甲",
+  6: "破抵",
+  7: "精准",
+  8: "格挡",
+  9: "减伤",
+  10: "暴击",
+  11: "抗暴",
+  12: "爆伤",
+  13: "抗爆伤",
+  14: "技伤",
+  15: "免控",
+  16: "免眩晕",
+  17: "免冰冻",
+  18: "免沉默",
+  19: "免流血",
+  20: "免中毒",
+  21: "免灼烧",
+};
+const HELPER_SLOT_COLOR_META = {
+  0: { label: "未开", tone: "empty" },
+  1: { label: "白", tone: "white" },
+  2: { label: "绿", tone: "green" },
+  3: { label: "蓝", tone: "blue" },
+  4: { label: "紫", tone: "purple" },
+  5: { label: "橙", tone: "orange" },
+  6: { label: "红", tone: "red" },
+};
+
+function normalizeHelperAttachmentUid(value) {
+  const attachmentUid = Number(value || 0);
+  return attachmentUid > 0 ? attachmentUid : null;
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -159,6 +321,693 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function normalizeHelperDisplayRoleName(value, roleId = "") {
+  const rawName = String(value || "").trim();
+  const normalizedRoleId = String(roleId || "").trim();
+  if (!rawName) return "";
+  if (normalizedRoleId) {
+    const suffixPattern = new RegExp(`-\\d+-${normalizedRoleId.replace(/[.*+?^${}()|[\]\\\\]/g, "\\$&")}$`);
+    if (suffixPattern.test(rawName)) {
+      return rawName.replace(suffixPattern, "").trim() || rawName;
+    }
+  }
+  return rawName;
+}
+
+function getHelperPublicAssetUrl(rawPath) {
+  const normalized = String(rawPath || "").trim();
+  if (!normalized) return "";
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  const cleanPath = normalized.replace(/^\/+/, "");
+  return `/helper-public/${cleanPath}`;
+}
+
+function getHeroAvatarUrl(hero) {
+  const directAvatar = getHelperPublicAssetUrl(hero?.hero_avatar || "");
+  if (directAvatar) return directAvatar;
+  return "";
+}
+
+function getHelperAttrName(attrId) {
+  return HELPER_ATTR_NAMES[Number(attrId || 0)] || `属性${Number(attrId || 0)}`;
+}
+
+function getHelperSlotColorMeta(colorId) {
+  return HELPER_SLOT_COLOR_META[Number(colorId || 0)] || HELPER_SLOT_COLOR_META[0];
+}
+
+function getSnapshotRawHeroes(snapshot) {
+  const rawHeroes = Array.isArray(snapshot?.raw?.heroes) ? snapshot.raw.heroes : [];
+  if (rawHeroes.length) return rawHeroes;
+  const summaryHeroes = Array.isArray(snapshot?.summary?.heroes) ? snapshot.summary.heroes : [];
+  return summaryHeroes.map((hero) => ({
+    slot: hero?.slot,
+    hero_id: hero?.hero_id,
+    hero_name: hero?.hero_name,
+    hero_type: hero?.hero_type,
+    hero_avatar: hero?.hero_avatar,
+    level: hero?.level,
+    power: hero?.power,
+    attachment_uid: hero?.attachment_uid,
+    fish_name: hero?.fish_name,
+    pearl_skill_name: hero?.pearl_skill_name,
+    red_count: hero?.red_count,
+    hole_count: hero?.hole_count,
+    fish_slots: [],
+    equipment: [],
+  }));
+}
+
+function getSnapshotRoleObject(snapshot) {
+  const raw = snapshot?.raw?.role_info;
+  const fallbackRoleSnapshot = snapshot?.raw?.role_snapshot;
+  const role =
+    raw?.role ||
+    raw?.roleInfo?.role ||
+    raw?.roleInfo ||
+    fallbackRoleSnapshot ||
+    raw ||
+    {};
+  return role && typeof role === "object" ? role : {};
+}
+
+function getSnapshotRoleHeroes(snapshot) {
+  const role = getSnapshotRoleObject(snapshot);
+  return role?.heroes && typeof role.heroes === "object" ? role.heroes : {};
+}
+
+function getSnapshotPresetTeamRoot(snapshot) {
+  const raw = snapshot?.raw?.preset_team;
+  const root = raw?.presetTeamInfo ?? raw ?? {};
+  const nested = root?.presetTeamInfo ?? root;
+  return {
+    useTeamId: Number(root?.useTeamId || nested?.useTeamId || snapshot?.summary?.use_team_id || 1) || 1,
+    teams: nested && typeof nested === "object" ? nested : {},
+  };
+}
+
+function getSnapshotCurrentTeamEntry(snapshot) {
+  const preset = getSnapshotPresetTeamRoot(snapshot);
+  return preset.teams?.[preset.useTeamId] || preset.teams?.[String(preset.useTeamId)] || {};
+}
+
+function getSnapshotCurrentTeamInfo(snapshot) {
+  const entry = getSnapshotCurrentTeamEntry(snapshot);
+  const teamInfo = entry?.teamInfo;
+  return teamInfo && typeof teamInfo === "object" ? teamInfo : {};
+}
+
+function getSnapshotPearlMap(snapshot) {
+  const role = getSnapshotRoleObject(snapshot);
+  const pearlMap = role?.pearlMap;
+  return pearlMap && typeof pearlMap === "object" ? pearlMap : {};
+}
+
+function getSnapshotWeaponInfo(snapshot) {
+  const summary = snapshot?.summary || {};
+  const entry = getSnapshotCurrentTeamEntry(snapshot);
+  const weaponId =
+    Number(summary?.weapon_id || entry?.weapon?.weaponId || 0) || 0;
+  const weaponName = String(summary?.weapon_name || "").trim();
+  if (weaponId > 0 || weaponName) {
+    return {
+      id: weaponId,
+      name: weaponName || `玩具 ${weaponId}`,
+    };
+  }
+  return null;
+}
+
+function getSnapshotLegionResearchCount(snapshot) {
+  const role = getSnapshotRoleObject(snapshot);
+  const legionResearch =
+    role?.legionResearch && typeof role.legionResearch === "object" ? role.legionResearch : {};
+  const exactCount = Object.keys(legionResearch).length;
+  if (exactCount > 0) return exactCount;
+  return Number(snapshot?.summary?.legion_research_count || 0);
+}
+
+function hasSnapshotExactLegionResearch(snapshot) {
+  const role = getSnapshotRoleObject(snapshot);
+  const legionResearch =
+    role?.legionResearch && typeof role.legionResearch === "object" ? role.legionResearch : {};
+  return Object.keys(legionResearch).length > 0;
+}
+
+function getSnapshotAttachmentOwnershipCount(snapshot) {
+  return getSnapshotRawHeroes(snapshot).filter((hero) =>
+    Boolean(normalizeHelperAttachmentUid(hero?.attachment_uid))
+  ).length;
+}
+
+function hasSnapshotRestoreFlags(snapshot) {
+  const restoreFlags = snapshot?.summary?.restore_flags;
+  return Boolean(restoreFlags && typeof restoreFlags === "object");
+}
+
+function isSnapshotSafeRestoreReady(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return false;
+  if (!hasSnapshotRestoreFlags(snapshot)) return false;
+  const rawHeroes = getSnapshotRawHeroes(snapshot);
+  if (!rawHeroes.length) return false;
+  return rawHeroes.some((hero) => Boolean(normalizeHelperAttachmentUid(hero?.attachment_uid)));
+}
+
+function getSnapshotSafeRestoreBlockReason(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return "未找到目标快照，请先刷新阵容快照列表。";
+  }
+  if (!hasSnapshotRestoreFlags(snapshot)) {
+    return "这份快照是旧版结构，缺少安全恢复需要的标记，请先重新读取一份新快照。";
+  }
+  const rawHeroes = getSnapshotRawHeroes(snapshot);
+  if (!rawHeroes.length) {
+    return "这份快照没有可恢复的武将数据，请重新读取一份新快照。";
+  }
+  if (!rawHeroes.some((hero) => Boolean(normalizeHelperAttachmentUid(hero?.attachment_uid)))) {
+    return "这份快照没有记录洗练归属，无法安全恢复到正确武将，请重新读取一份新快照。";
+  }
+  const summaryTechCount = Number(snapshot?.summary?.legion_research_count || 0);
+  if (summaryTechCount > 0 && !hasSnapshotExactLegionResearch(snapshot)) {
+    return "这份快照只记录了科技摘要，没有保存原始科技等级，暂时无法精确恢复科技，请先重新保存当前阵容。";
+  }
+  return "";
+}
+
+function getSnapshotAttachmentOwnershipMap(snapshot) {
+  const currentTeamById = new Map();
+  getSnapshotRawHeroes(snapshot).forEach((hero) => {
+    const heroId = Number(hero?.hero_id || 0);
+    if (heroId > 0) currentTeamById.set(heroId, hero);
+  });
+
+  const byAttachment = new Map();
+  Object.entries(getSnapshotRoleHeroes(snapshot)).forEach(([key, hero]) => {
+    const heroId = Number(hero?.heroId || hero?.id || key || 0);
+    const attachmentUid = normalizeHelperAttachmentUid(hero?.attachmentUid);
+    if (!heroId || !attachmentUid) return;
+    const teamHero = currentTeamById.get(heroId);
+    byAttachment.set(attachmentUid, {
+      attachment_uid: attachmentUid,
+      hero_id: heroId,
+      hero_name:
+        String(teamHero?.hero_name || hero?.heroName || hero?.name || "").trim() ||
+        `武将${heroId}`,
+      slot: teamHero ? Number(teamHero?.slot ?? 0) : null,
+      in_team: Boolean(teamHero),
+    });
+  });
+
+  return {
+    byAttachment,
+  };
+}
+
+function encodeHelperBridgePayload(payload) {
+  try {
+    const json = JSON.stringify(payload || {});
+    const bytes = new TextEncoder().encode(json);
+    let binary = "";
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return window
+      .btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+  } catch (error) {
+    console.error("encodeHelperBridgePayload failed", error);
+    return "";
+  }
+}
+
+function buildHelperRestorePlanFromSnapshot(snapshot) {
+  const summary = snapshot?.summary || {};
+  const teamInfo = getSnapshotCurrentTeamInfo(snapshot);
+  const pearlMap = getSnapshotPearlMap(snapshot);
+  const role = getSnapshotRoleObject(snapshot);
+  const weaponInfo = getSnapshotWeaponInfo(snapshot);
+  const heroes = getSnapshotRawHeroes(snapshot)
+    .map((hero) => {
+      const slot = Number(hero?.slot ?? 0);
+      const teamHero = teamInfo?.[slot] || teamInfo?.[String(slot)] || {};
+      const pearlId = Number(teamHero?.pearlId || 0) || null;
+      const pearlData = pearlId ? pearlMap?.[pearlId] || {} : {};
+      return {
+        position: slot,
+        hero_id: Number(hero?.hero_id || 0),
+        hero_name: String(hero?.hero_name || "").trim(),
+        level: Number(hero?.level || 0) || 0,
+        attachment_uid: normalizeHelperAttachmentUid(hero?.attachment_uid),
+        pearl_id: pearlId,
+        skill_id: Number(pearlData?.skillId || 0) || null,
+      };
+    })
+    .filter((hero) => Number(hero.hero_id || 0) > 0);
+
+  return {
+    snapshot_id: Number(snapshot?.id || 0) || null,
+    snapshot_name: buildHelperSnapshotName(snapshot),
+    team_id: Number(summary?.use_team_id || 0) || 0,
+    role_name: String(summary?.role_name || "").trim(),
+    server: String(summary?.server || "").trim(),
+    weapon_id: Number(weaponInfo?.id || 0) || null,
+    legion_research:
+      role?.legionResearch && typeof role.legionResearch === "object" ? role.legionResearch : {},
+    heroes,
+  };
+}
+
+function getSnapshotRestoreCapabilities(snapshot) {
+  const rawHeroes = getSnapshotRawHeroes(snapshot);
+  const summaryFlags = snapshot?.summary?.restore_flags || {};
+  const role = getSnapshotRoleObject(snapshot);
+  const weaponInfo = getSnapshotWeaponInfo(snapshot);
+  const techCount = getSnapshotLegionResearchCount(snapshot);
+  const attachmentOwnershipCount = getSnapshotAttachmentOwnershipCount(snapshot);
+  const hasHeroes = rawHeroes.length > 0;
+  const hasLevels =
+    Boolean(summaryFlags.hero_levels) || rawHeroes.some((hero) => Number(hero?.level || 0) > 0);
+  const hasAttachmentOwnership =
+    Boolean(summaryFlags.attachment_ownership) || attachmentOwnershipCount > 0;
+  const hasArtifacts =
+    Boolean(summaryFlags.artifacts) ||
+    rawHeroes.some((hero) => Boolean(hero?.artifact_id || hero?.fish_name));
+  const hasPearlSkills =
+    Boolean(summaryFlags.pearl_skills) ||
+    rawHeroes.some((hero) => Boolean(hero?.pearl_skill_name || hero?.skillId));
+  const hasQuench =
+    Boolean(summaryFlags.equipment_quench) ||
+    rawHeroes.some((hero) =>
+      Array.isArray(hero?.equipment)
+        ? hero.equipment.some((part) => Array.isArray(part?.slots) && part.slots.length > 0)
+        : false
+    );
+  const hasResearch =
+    Boolean(summaryFlags.legion_research) && hasSnapshotExactLegionResearch(snapshot);
+  const techSummaryOnly = techCount > 0 && !hasSnapshotExactLegionResearch(snapshot);
+  const hasWeapon = Boolean(summaryFlags.weapon) || Boolean(weaponInfo);
+
+  return [
+    {
+      key: "heroes",
+      label: "武将站位",
+      status: hasHeroes ? "ready" : "missing",
+      note: hasHeroes ? "helper 已有上下阵、换位和阵容槽切换编排" : "当前快照缺少可用武将数据",
+    },
+    {
+      key: "hero_levels",
+      label: "武将等级",
+      status: hasLevels ? "ready" : "missing",
+      note: hasLevels ? "helper 已有升级、进阶、重生回放逻辑" : "当前快照没有可靠等级数据",
+    },
+    {
+      key: "attachment_ownership",
+      label: "洗练归属",
+      status: hasAttachmentOwnership ? "ready" : "missing",
+      note: hasAttachmentOwnership
+        ? `当前快照记录了 ${attachmentOwnershipCount} 个洗练归属标识，helper 会先把对应套装换回目标武将，再继续站位和等级恢复`
+        : "当前快照没有洗练归属标识，无法可靠预演“这套洗练该跟谁走”",
+    },
+    {
+      key: "artifacts",
+      label: "鱼灵佩戴",
+      status: hasArtifacts ? "ready" : "missing",
+      note: hasArtifacts ? "helper 已有鱼灵装卸逻辑" : "当前快照没有鱼灵配置",
+    },
+    {
+      key: "pearl_skills",
+      label: "鱼珠技能",
+      status: hasPearlSkills ? "ready" : "missing",
+      note: hasPearlSkills ? "helper 已有替换、交换、卸下技能逻辑" : "当前快照没有鱼珠技能配置",
+    },
+    {
+      key: "legion_research",
+      label: "俱乐部科技",
+      status: hasResearch ? "ready" : techSummaryOnly ? "recorded" : "missing",
+      note: hasResearch
+        ? `当前快照记录了 ${techCount} 项科技`
+        : techSummaryOnly
+          ? `摘要里显示有 ${techCount} 项科技，但这份快照缺少原始科技等级，请重新保存一次阵容`
+          : "当前快照没有科技数据",
+    },
+    {
+      key: "weapon",
+      label: "主玩具",
+      status: hasWeapon ? "ready" : "missing",
+      note: hasWeapon ? `当前快照记录了 ${weaponInfo?.name || "主玩具"}` : "当前快照没有主玩具数据",
+    },
+    {
+      key: "equipment_quench",
+      label: "装备洗练",
+      status: hasQuench ? "recorded" : "missing",
+      note: hasQuench ? "已记录孔位与属性，helper 有独立淬炼工具，商城暂未接自动恢复" : "当前快照没有洗练孔位数据",
+    },
+  ];
+}
+
+function buildHelperSnapshotRestoreSummaryText(snapshot) {
+  const capabilities = getSnapshotRestoreCapabilities(snapshot);
+  const readyLabels = capabilities
+    .filter((item) => item.status === "ready")
+    .map((item) => item.label);
+  const recordedLabels = capabilities
+    .filter((item) => item.status === "recorded")
+    .map((item) => `${item.label}已记录`);
+  return [...readyLabels, ...recordedLabels].join("、") || "仅完成基础记录";
+}
+
+function buildHelperSnapshotCapabilityMarkup(snapshot) {
+  return getSnapshotRestoreCapabilities(snapshot)
+    .map((item) => {
+      const statusLabel =
+        item.status === "ready" ? "可恢复" : item.status === "recorded" ? "已记录" : "缺数据";
+      return `
+        <article class="helper-capability-card ${item.status}">
+          <div class="helper-capability-head">
+            <strong>${escapeHtml(item.label)}</strong>
+            <span class="helper-capability-state">${escapeHtml(statusLabel)}</span>
+          </div>
+          <div class="helper-capability-note">${escapeHtml(item.note)}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function normalizePreviewHeroMap(snapshot) {
+  const heroes = getSnapshotRawHeroes(snapshot);
+  const byId = new Map();
+  const bySlot = new Map();
+  const byAttachment = new Map();
+  heroes.forEach((hero) => {
+    const heroId = Number(hero?.hero_id || 0);
+    const slot = Number(hero?.slot ?? 0);
+    const attachmentUid = normalizeHelperAttachmentUid(hero?.attachment_uid);
+    if (heroId > 0) byId.set(heroId, hero);
+    bySlot.set(slot, hero);
+    if (attachmentUid) byAttachment.set(attachmentUid, hero);
+  });
+  return { heroes, byId, bySlot, byAttachment };
+}
+
+function compareLegionResearch(targetSnapshot, liveSnapshot) {
+  const targetRole = getSnapshotRoleObject(targetSnapshot);
+  const liveRole = getSnapshotRoleObject(liveSnapshot);
+  const targetResearch =
+    targetRole?.legionResearch && typeof targetRole.legionResearch === "object"
+      ? targetRole.legionResearch
+      : {};
+  const liveResearch =
+    liveRole?.legionResearch && typeof liveRole.legionResearch === "object"
+      ? liveRole.legionResearch
+      : {};
+  const changedIds = new Set(
+    [...Object.keys(targetResearch), ...Object.keys(liveResearch)].filter(
+      (key) => Number(targetResearch[key] || 0) !== Number(liveResearch[key] || 0)
+    )
+  );
+  return {
+    targetCount: Object.keys(targetResearch).length,
+    liveCount: Object.keys(liveResearch).length,
+    changedCount: changedIds.size,
+  };
+}
+
+function buildHelperRestorePreview(targetSnapshot, liveSnapshot) {
+  const targetSummary = targetSnapshot?.summary || {};
+  const liveSummary = liveSnapshot?.summary || {};
+  const target = normalizePreviewHeroMap(targetSnapshot);
+  const live = normalizePreviewHeroMap(liveSnapshot);
+  const liveAttachmentMap = getSnapshotAttachmentOwnershipMap(liveSnapshot);
+  const steps = [];
+  const warnings = [];
+  const safeCounts = {
+    hero_slots: 0,
+    hero_levels: 0,
+    attachment_transfers: 0,
+    artifacts: 0,
+    pearl_skills: 0,
+    weapon: 0,
+    legion_research: 0,
+  };
+  let recordedOnlyCount = 0;
+
+  if (Number(targetSummary?.use_team_id || 0) !== Number(liveSummary?.use_team_id || 0)) {
+    steps.push({
+      type: "safe",
+      label: "阵容槽位",
+      description: `当前识别为阵容 ${liveSummary?.use_team_id || "-"}，目标快照记录的是阵容 ${targetSummary?.use_team_id || "-"}`,
+    });
+    safeCounts.hero_slots += 1;
+  }
+
+  live.heroes.forEach((hero) => {
+    if (!target.byId.has(Number(hero?.hero_id || 0))) {
+      steps.push({
+        type: "safe",
+        label: "下阵武将",
+        description: `当前阵容里多出 ${hero?.hero_name || `武将${hero?.hero_id || "-"}`}，正式恢复时会先将其移出目标阵容。`,
+      });
+      safeCounts.hero_slots += 1;
+    }
+  });
+
+  target.heroes.forEach((targetHero) => {
+    const heroId = Number(targetHero?.hero_id || 0);
+    const targetSlot = Number(targetHero?.slot ?? 0);
+    const targetAttachmentUid = normalizeHelperAttachmentUid(targetHero?.attachment_uid);
+    const currentHero = live.byId.get(heroId);
+    const currentSlotHero = live.bySlot.get(targetSlot);
+    const currentAttachmentHolder = targetAttachmentUid
+      ? liveAttachmentMap.byAttachment.get(targetAttachmentUid)
+      : null;
+
+    if (targetAttachmentUid && currentAttachmentHolder && currentAttachmentHolder.hero_id !== heroId) {
+      const holderLocation = currentAttachmentHolder.in_team
+        ? `${currentAttachmentHolder.hero_name}（当前阵容位置 ${formatHelperBattleSlot(currentAttachmentHolder.slot)}）`
+        : `${currentAttachmentHolder.hero_name}（当前不在上阵位）`;
+      steps.push({
+        type: "ownership",
+        label: "迁移洗练套归属",
+        description: `${targetHero?.hero_name || `武将${heroId}`} 目标绑定的是洗练归属 #${targetAttachmentUid}，这套当前在 ${holderLocation} 身上。真实恢复时 helper 会先通过换将/临时上阵把这套洗练归回 ${targetHero?.hero_name || `武将${heroId}`}，再继续站位和等级操作。`,
+      });
+      safeCounts.attachment_transfers += 1;
+    } else if (targetAttachmentUid && !currentAttachmentHolder) {
+      recordedOnlyCount += 1;
+      warnings.push(
+        `${targetHero?.hero_name || `武将${heroId}`} 目标需要洗练归属 #${targetAttachmentUid}，但当前角色列表里没有找到持有者，正式恢复时可能无法把对应洗练套归回。`
+      );
+    }
+
+    if (!currentHero) {
+      steps.push({
+        type: "safe",
+        label: "上阵武将",
+        description: `需要把 ${targetHero?.hero_name || `武将${heroId}`} 上阵到位置 ${formatHelperBattleSlot(targetSlot)}。`,
+      });
+      safeCounts.hero_slots += 1;
+    } else if (Number(currentHero?.slot ?? 0) !== targetSlot) {
+      steps.push({
+        type: "safe",
+        label: "调整站位",
+        description: `${targetHero?.hero_name || `武将${heroId}`} 当前在位置 ${formatHelperBattleSlot(currentHero?.slot)}，目标位置是 ${formatHelperBattleSlot(targetSlot)}。`,
+      });
+      safeCounts.hero_slots += 1;
+    } else if (currentSlotHero && Number(currentSlotHero?.hero_id || 0) !== heroId) {
+      steps.push({
+        type: "safe",
+        label: "修正站位",
+        description: `位置 ${formatHelperBattleSlot(targetSlot)} 当前是 ${currentSlotHero?.hero_name || `武将${currentSlotHero?.hero_id || "-"}`}，目标应为 ${targetHero?.hero_name || `武将${heroId}`}。`,
+      });
+      safeCounts.hero_slots += 1;
+    }
+
+    const targetLevel = Number(targetHero?.level || 0);
+    const liveLevel = Number(currentHero?.level || 0);
+    if (targetLevel > 0 && targetLevel !== liveLevel) {
+      steps.push({
+        type: "safe",
+        label: "调整等级",
+        description:
+          targetLevel > liveLevel
+            ? `${targetHero?.hero_name || `武将${heroId}`} 需要从 Lv.${liveLevel || 0} 提升到 Lv.${targetLevel}。`
+            : `${targetHero?.hero_name || `武将${heroId}`} 当前 Lv.${liveLevel || 0}，目标快照是 Lv.${targetLevel}，helper 会走重生后再升回的逻辑。`,
+      });
+      safeCounts.hero_levels += 1;
+    }
+
+    const targetFish = String(targetHero?.fish_name || "").trim();
+    const liveFish = String(currentHero?.fish_name || "").trim();
+    if ((targetFish || liveFish) && targetFish !== liveFish) {
+      steps.push({
+        type: "safe",
+        label: "切换鱼灵",
+        description: `${targetHero?.hero_name || `武将${heroId}`} 当前鱼灵是 ${liveFish || "未佩戴"}，目标是 ${targetFish || "未佩戴"}。`,
+      });
+      safeCounts.artifacts += 1;
+    }
+
+    const targetSkill = String(targetHero?.pearl_skill_name || "").trim();
+    const liveSkill = String(currentHero?.pearl_skill_name || "").trim();
+    if ((targetSkill || liveSkill) && targetSkill !== liveSkill) {
+      steps.push({
+        type: "safe",
+        label: "切换鱼珠技能",
+        description: `${targetHero?.hero_name || `武将${heroId}`} 当前鱼珠技能是 ${liveSkill || "未装配"}，目标是 ${targetSkill || "未装配"}。`,
+      });
+      safeCounts.pearl_skills += 1;
+    }
+
+    const targetEquip = JSON.stringify(Array.isArray(targetHero?.equipment) ? targetHero.equipment : []);
+    const liveEquip = JSON.stringify(Array.isArray(currentHero?.equipment) ? currentHero.equipment : []);
+    if (targetEquip !== liveEquip && targetEquip !== "[]") {
+      if (!targetAttachmentUid) {
+        recordedOnlyCount += 1;
+        warnings.push(
+          `${targetHero?.hero_name || `武将${heroId}`} 记录了洗练孔位，但没有洗练归属标识。商城现在无法判断这套洗练该跟着谁走，只能提示人工确认。`
+        );
+      } else if (!currentAttachmentHolder) {
+        recordedOnlyCount += 1;
+        warnings.push(
+          `${targetHero?.hero_name || `武将${heroId}`} 的洗练孔位已记录，但当前没有找到归属 #${targetAttachmentUid} 的持有者，无法确认是否还能按原套装恢复。`
+        );
+      } else if (currentAttachmentHolder.hero_id === heroId) {
+        recordedOnlyCount += 1;
+        warnings.push(
+          `${targetHero?.hero_name || `武将${heroId}`} 当前已经持有洗练归属 #${targetAttachmentUid}，但孔位属性和快照仍有差异。这通常表示原套装内容后来被改过，商城暂时不能把洗练数值回滚到快照状态。`
+        );
+      }
+    }
+  });
+
+  const targetWeapon = getSnapshotWeaponInfo(targetSnapshot);
+  const liveWeapon = getSnapshotWeaponInfo(liveSnapshot);
+  if ((targetWeapon?.id || targetWeapon?.name) && (targetWeapon?.id !== liveWeapon?.id || targetWeapon?.name !== liveWeapon?.name)) {
+    steps.push({
+      type: "safe",
+      label: "切换主玩具",
+      description: `当前主玩具是 ${liveWeapon?.name || "未识别"}，目标快照是 ${targetWeapon?.name || "未识别"}。`,
+    });
+    safeCounts.weapon += 1;
+  }
+
+  const researchDiff = compareLegionResearch(targetSnapshot, liveSnapshot);
+  if (researchDiff.changedCount > 0) {
+    steps.push({
+      type: "safe",
+      label: "同步俱乐部科技",
+      description: `检测到 ${researchDiff.changedCount} 项科技等级差异，helper 已有“重置后重建”的同步逻辑。`,
+    });
+    safeCounts.legion_research = researchDiff.changedCount;
+  }
+
+  return {
+    target_snapshot_id: Number(targetSnapshot?.id || 0),
+    target_snapshot_name: buildHelperSnapshotName(targetSnapshot),
+    target_summary: targetSummary,
+    live_summary: liveSummary,
+    safe_counts: safeCounts,
+    safe_step_count: Object.values(safeCounts).reduce((sum, value) => sum + Number(value || 0), 0),
+    recorded_only_count: recordedOnlyCount,
+    steps,
+    warnings: Array.from(new Set(warnings)),
+  };
+}
+
+function buildHelperFishSlotsMarkup(fishSlots) {
+  if (!Array.isArray(fishSlots) || !fishSlots.length) {
+    return '<div class="stack-item">鱼珠孔位：-</div>';
+  }
+  return `
+    <div class="helper-inline-chip-row">
+      ${fishSlots
+        .map((slot) => {
+          const colorMeta = getHelperSlotColorMeta(slot?.color_id || slot?.colorId || 0);
+          const attrText = `${getHelperAttrName(slot?.attr_id || slot?.attrId || 0)}+${Number(slot?.attr_num || slot?.attrNum || 0)}`;
+          return `<span class="helper-slot-chip ${escapeHtml(colorMeta.tone)}">${escapeHtml(colorMeta.label)} · ${escapeHtml(attrText)}</span>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function buildHelperEquipmentMarkup(equipment) {
+  if (!Array.isArray(equipment) || !equipment.length) {
+    return '<div class="stack-item">洗练：当前快照没有更细的装备孔位数据。</div>';
+  }
+  return equipment
+    .map((part) => {
+      const slots = Array.isArray(part?.slots) ? part.slots : [];
+      const bonusParts = [];
+      if (Number(part?.bonus_attack || 0) > 0) bonusParts.push(`攻+${Number(part.bonus_attack)}`);
+      if (Number(part?.bonus_defense || 0) > 0) bonusParts.push(`防+${Number(part.bonus_defense)}`);
+      if (Number(part?.bonus_hp || 0) > 0) bonusParts.push(`血+${Number(part.bonus_hp)}`);
+      return `
+        <div class="helper-equip-part">
+          <div class="helper-equip-part-head">
+            <strong>${escapeHtml(HELPER_EQUIPMENT_PART_NAMES[Number(part?.part_id || 0)] || `部位${Number(part?.part_id || 0)}`)}</strong>
+            <span>淬炼 ${escapeHtml(Number(part?.quench_times || 0))} 次</span>
+            <span>${escapeHtml(bonusParts.join(" / ") || "暂无额外加成")}</span>
+          </div>
+          <div class="helper-inline-chip-row">
+            ${
+              slots.length
+                ? slots
+                    .map((slot) => {
+                      const colorMeta = getHelperSlotColorMeta(slot?.color_id || 0);
+                      const attrText = `${getHelperAttrName(slot?.attr_id || 0)}+${Number(slot?.attr_num || 0)}`;
+                      const lockText = slot?.is_locked ? " · 锁" : "";
+                      return `<span class="helper-slot-chip ${escapeHtml(colorMeta.tone)}">${escapeHtml(colorMeta.label)} · ${escapeHtml(attrText + lockText)}</span>`;
+                    })
+                    .join("")
+                : '<span class="helper-chip">暂无孔位</span>'
+            }
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function buildHelperFishSlotsSummary(fishSlots) {
+  if (!Array.isArray(fishSlots) || !fishSlots.length) {
+    return "鱼珠孔位未记录";
+  }
+  const colorCounts = new Map();
+  fishSlots.forEach((slot) => {
+    const colorMeta = getHelperSlotColorMeta(slot?.color_id || slot?.colorId || 0);
+    const label = colorMeta.label || "其他";
+    colorCounts.set(label, Number(colorCounts.get(label) || 0) + 1);
+  });
+  const topColors = Array.from(colorCounts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3)
+    .map(([label]) => label)
+    .join(" / ");
+  return topColors || "鱼珠孔位未记录";
+}
+
+function buildHelperEquipmentSummary(equipment) {
+  if (!Array.isArray(equipment) || !equipment.length) {
+    return "洗练细节未记录";
+  }
+  let totalQuench = 0;
+  let totalSlots = 0;
+  let lockedSlots = 0;
+  equipment.forEach((part) => {
+    totalQuench += Number(part?.quench_times || 0);
+    const slots = Array.isArray(part?.slots) ? part.slots : [];
+    totalSlots += slots.length;
+    lockedSlots += slots.filter((slot) => Boolean(slot?.is_locked)).length;
+  });
+  const details = [`淬炼 ${totalQuench}`];
+  if (totalSlots > 0) details.push(`孔位 ${totalSlots}`);
+  if (lockedSlots > 0) details.push(`锁孔 ${lockedSlots}`);
+  return details.join(" · ");
 }
 
 function createImageFallbackSvg(name, kind = "card") {
@@ -201,7 +1050,7 @@ const BUNDLE_COLLAGE_MAP = {
 function getImagePayload(product, kind = product?.item_kind || "card") {
   const placeholder = createImageFallbackSvg(product?.name, kind);
   const fallbacks = getImageFallbackCandidates(product);
-  const src = product?.image_url || fallbacks.shift() || placeholder;
+  const src = getPreferredImageSrc(product, fallbacks) || placeholder;
   return {
     src,
     fallbacks,
@@ -209,9 +1058,30 @@ function getImagePayload(product, kind = product?.item_kind || "card") {
   };
 }
 
+function getPreferredImageSrc(product, fallbacks = []) {
+  const raw = String(product?.image_url || "").trim();
+  if (!raw) return fallbacks.shift() || "";
+  const hdCandidate = getHdImageCandidate(raw);
+  if (hdCandidate) {
+    fallbacks.push(raw);
+    return hdCandidate;
+  }
+  return raw;
+}
+
+function getHdImageCandidate(src) {
+  if (!/legacy-assets\//.test(src)) return "";
+  return src.replace(/(^\.?\/)?legacy-assets\//, "/legacy-assets-hd/");
+}
+
 function getImageFallbackCandidates(product) {
   const candidates = [];
-  const fileName = String(product.image_url || "").split("/").pop();
+  const raw = String(product?.image_url || "").trim();
+  const hdCandidate = getHdImageCandidate(raw);
+  if (hdCandidate) {
+    candidates.push(hdCandidate);
+  }
+  const fileName = raw.split("/").pop();
   if (fileName) {
     candidates.push(`/helper-public/legacy-assets/${fileName}`);
   }
@@ -289,6 +1159,98 @@ function setNotice(text, type = "") {
   bindMessage.className = type ? `notice ${type}` : "notice";
 }
 
+function shouldShowDebugPanel() {
+  const host = String(window.location.host || "");
+  const search = String(window.location.search || "");
+  return host.includes(":8081") || host === "101.34.247.186:8081" || search.includes("debug=1");
+}
+
+function renderDebugPanel() {
+  if (!debugPanel || !debugLines) return;
+  const visible = shouldShowDebugPanel();
+  debugPanel.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  debugLines.innerHTML = Array.from(debugState.entries())
+    .map(
+      ([key, value]) =>
+        `<div class="debug-line"><strong>${escapeHtml(key)}:</strong> ${escapeHtml(value)}</div>`
+    )
+    .join("");
+}
+
+function isHelperScanAuthEnabled() {
+  return Boolean(helperConfig?.enabled && helperConfig?.features?.scan_bind);
+}
+
+function isHelperLineupEnabled() {
+  return Boolean(helperConfig?.enabled && helperConfig?.access?.lineup_allowed !== false);
+}
+
+function getHelperLineupDisabledReason(defaultText = "当前环境未启用阵容中心。") {
+  return String(helperConfig?.access?.reason || defaultText).trim() || defaultText;
+}
+
+function setDebugLine(key, value) {
+  debugState.set(String(key), String(value));
+  renderDebugPanel();
+}
+
+function safeRun(label, fn) {
+  try {
+    const result = fn();
+    if (result && typeof result.then === "function") {
+      return result.catch((error) => {
+        setDebugLine(label, `error: ${error?.message || error}`);
+        throw error;
+      });
+    }
+    setDebugLine(label, "ok");
+    return result;
+  } catch (error) {
+    setDebugLine(label, `error: ${error?.message || error}`);
+    return null;
+  }
+}
+
+function getSessionProfileFallback(session) {
+  if (!session || typeof session !== "object") return null;
+  const source =
+    session.profile && typeof session.profile === "object"
+      ? session.profile
+      : session.user && typeof session.user === "object"
+        ? session.user
+        : null;
+  if (!source) return null;
+  return {
+    ...source,
+    game_role_id: source.game_role_id || "",
+    game_server: source.game_server || "direct",
+    game_role_name: source.game_role_name || "已登录",
+    role: source.role || "user",
+    auth_provider: source.auth_provider || "password",
+    quota_balance: Number(source.quota_balance ?? 0),
+  };
+}
+
+function schedulePostAuthAccountFocus() {
+  try {
+    window.sessionStorage.setItem(POST_AUTH_TARGET_KEY, "account");
+  } catch {
+    // Ignore storage write failures in private or restricted contexts.
+  }
+}
+
+function consumePostAuthAccountFocus() {
+  try {
+    const target = window.sessionStorage.getItem(POST_AUTH_TARGET_KEY);
+    if (target !== "account") return false;
+    window.sessionStorage.removeItem(POST_AUTH_TARGET_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function setAccountMessage(text, type = "") {
   if (!accountMessage) return;
   accountMessage.textContent = text || "";
@@ -343,6 +1305,7 @@ function getDockSections() {
     { key: "products", node: productsSection },
     { key: "discount-products-section", node: discountProductsSection },
     { key: "account", node: accountSection },
+    { key: "helper-lab", node: helperLabSection },
     { key: "auction-zone", node: auctionZoneSection },
     { key: "draw-service-zone", node: drawServiceZoneSection },
   ].filter((entry) => entry.node && !entry.node.classList.contains("hidden"));
@@ -468,8 +1431,2329 @@ function fillBindForm(payload) {
   setNotice("已收到 helper 回传的角色信息，可以直接提交绑定。", "success");
 }
 
+function rememberHelperBridgeIntent(intent) {
+  pendingHelperBridgeIntent = String(intent || "").trim();
+  saveHelperBridgeIntent(pendingHelperBridgeIntent);
+}
+
+function getPreferredHelperBindingStorageKey() {
+  const accountId = String(currentProfile?.id || currentProfile?.game_role_id || "guest").trim() || "guest";
+  return `gongfa_helper_active_binding_v1:${accountId}`;
+}
+
+function loadPreferredHelperBindingId() {
+  try {
+    const stored = window.localStorage.getItem(getPreferredHelperBindingStorageKey());
+    const value = Number(stored || 0);
+    return Number.isInteger(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function savePreferredHelperBindingId(bindingId) {
+  const numericId = Number(bindingId || 0);
+  try {
+    if (numericId > 0) {
+      window.localStorage.setItem(getPreferredHelperBindingStorageKey(), String(numericId));
+    } else {
+      window.localStorage.removeItem(getPreferredHelperBindingStorageKey());
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function getActiveHelperBinding() {
+  const bindings = Array.isArray(currentHelperBindings) ? currentHelperBindings : [];
+  if (!bindings.length) return null;
+  const preferredId = loadPreferredHelperBindingId();
+  const preferredBinding = bindings.find((item) => Number(item?.id || 0) === preferredId);
+  if (preferredBinding) return preferredBinding;
+  return bindings[0] || null;
+}
+
+function syncActiveHelperBindingPreference() {
+  const bindings = Array.isArray(currentHelperBindings) ? currentHelperBindings : [];
+  if (!bindings.length) {
+    savePreferredHelperBindingId(0);
+    return null;
+  }
+  const activeBinding = getActiveHelperBinding();
+  if (activeBinding?.id) {
+    savePreferredHelperBindingId(activeBinding.id);
+  }
+  return activeBinding;
+}
+
+function setActiveHelperBinding(bindingId) {
+  const numericId = Number(bindingId || 0);
+  if (!numericId) return;
+  savePreferredHelperBindingId(numericId);
+  renderHelperBindingPanel();
+  renderHelperTeamSwitchPanel();
+}
+
+function clearPendingHelperBridgeIntent() {
+  pendingHelperBridgeIntent = "";
+  clearHelperBridgeIntent();
+}
+
+function getPendingHelperBridgeIntent() {
+  const storedIntent = String(pendingHelperBridgeIntent || "").trim();
+  if (storedIntent) return storedIntent;
+  return currentProfile ? HELPER_BRIDGE_INTENT_BIND : HELPER_BRIDGE_INTENT_AUTH;
+}
+
+function setHelperAuthMessage(text, type = "") {
+  if (!helperAuthMessage) return;
+  helperAuthMessage.textContent = text || "";
+  helperAuthMessage.className = text ? (type ? `notice ${type}` : "notice") : "notice hidden";
+}
+
+function setHelperBindMessage(text, type = "") {
+  if (!helperBindMessage) return;
+  helperBindMessage.textContent = text || "";
+  helperBindMessage.className = text ? (type ? `notice ${type}` : "notice") : "notice hidden";
+}
+
+function setHelperSnapshotMessage(text, type = "") {
+  if (!helperSnapshotMessage) return;
+  helperSnapshotMessage.textContent = text || "";
+  helperSnapshotMessage.className = text ? (type ? `notice ${type}` : "notice") : "notice hidden";
+}
+
+function setHelperSlotMessage(text, type = "") {
+  if (!helperSlotMessage) return;
+  helperSlotMessage.textContent = text || "";
+  helperSlotMessage.className = text ? (type ? `notice ${type}` : "notice") : "notice hidden";
+}
+
+function setHelperPreviewMessage(text, type = "") {
+  if (!helperPreviewMessage) return;
+  helperPreviewMessage.textContent = text || "";
+  helperPreviewMessage.className = text ? (type ? `notice ${type}` : "notice") : "notice hidden";
+}
+
+function setHelperSwitchMessage(text, type = "") {
+  if (!helperTeamSwitchMessage) return;
+  helperTeamSwitchMessage.textContent = text || "";
+  helperTeamSwitchMessage.className = text ? (type ? `notice ${type}` : "notice") : "notice hidden";
+}
+
+function setHelperRestoreProgress(progress) {
+  currentHelperRestoreProgress = progress && typeof progress === "object" ? { ...progress } : null;
+  renderHelperRestoreProgressPanel();
+}
+
+function buildHelperRestoreProgressMarkup(progress) {
+  if (!progress) return "";
+  const percent = Math.max(0, Math.min(100, Number(progress?.percent || 0)));
+  const status = String(progress?.status || "running").trim() || "running";
+  const label = String(progress?.label || "正在还原").trim() || "正在还原";
+  const detail = String(progress?.detail || "").trim();
+  return `
+    <div class="helper-restore-progress-card ${escapeHtml(status)}">
+      <div class="helper-restore-progress-head">
+        <div>
+          <div class="helper-snapshot-kicker">还原进度</div>
+          <strong class="helper-snapshot-title">${escapeHtml(label)}</strong>
+        </div>
+        <span class="helper-chip">${escapeHtml(`${percent}%`)}</span>
+      </div>
+      <div class="helper-progress-track" aria-hidden="true">
+        <div class="helper-progress-fill" style="width:${percent}%"></div>
+      </div>
+      <div class="helper-status-meta">${escapeHtml(detail || "系统正在执行阵容恢复，请保持页面打开。")}</div>
+    </div>
+  `;
+}
+
+function renderHelperRestoreProgressPanel() {
+  if (!helperRestoreProgressCurrent) return;
+  if (!currentHelperRestoreProgress) {
+    helperRestoreProgressCurrent.innerHTML = "";
+    helperRestoreProgressCurrent.classList.add("hidden");
+    return;
+  }
+  helperRestoreProgressCurrent.innerHTML = buildHelperRestoreProgressMarkup(currentHelperRestoreProgress);
+  helperRestoreProgressCurrent.classList.remove("hidden");
+}
+
+function withHelperCacheBuster(rawUrl, extraSearch = {}) {
+  try {
+    const url = new URL(rawUrl, window.location.origin);
+    url.searchParams.set("v", HELPER_CACHE_BUSTER);
+    Object.entries(extraSearch || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      url.searchParams.set(key, String(value));
+    });
+    return url.toString();
+  } catch {
+    return String(rawUrl || "");
+  }
+}
+
+function renderHelperAuthEntry() {
+  if (!helperOpenAuthPopupBtn || !helperAuthNote) return;
+  const enabled = isHelperScanAuthEnabled();
+  helperOpenAuthPopupBtn.disabled = !enabled;
+  helperAuthNote.textContent = enabled
+    ? "直接用微信扫码选择角色，商城会自动进入对应账号。之后阵容保存和一键还原也会默认跟着这个角色走。"
+    : "当前环境还没有开放扫码进入，请先用密码登录。";
+  if (enabled && helperAuthMessage?.classList.contains("error") && helperAuthMessage.textContent.includes("未开启")) {
+    setHelperAuthMessage("");
+  }
+}
+
+function renderHelperBindingPanel() {
+  if (!helperBindCurrent) return;
+  const bindings = Array.isArray(currentHelperBindings) ? currentHelperBindings : [];
+  const activeBinding = syncActiveHelperBindingPreference();
+  const draft = pendingHelperBridgePayload;
+
+  if (!draft && !activeBinding) {
+    helperBindCurrent.innerHTML = `
+      <div class="helper-status-card">
+        <div class="helper-status-main">
+          <strong>还没有绑定角色</strong>
+          <div class="muted">先扫码一次，后面的阵容保存和一键还原都会自动跟着这个角色走。</div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const parts = [];
+  if (draft) {
+    parts.push(`
+      <div class="helper-status-card pending">
+        <div class="helper-status-main">
+          <span class="helper-status-badge">待确认</span>
+          <strong>${escapeHtml(normalizeHelperDisplayRoleName(draft.game_role_name, draft.game_role_id) || "-")}</strong>
+          <div class="muted">${escapeHtml(draft.game_server || "-")} / 角色 ID ${escapeHtml(draft.game_role_id || "-")}</div>
+        </div>
+        <div class="helper-status-meta">这一步只是把扫码结果带回商城，点“确认绑定”后才会正式生效。</div>
+      </div>
+    `);
+  }
+  if (activeBinding) {
+    parts.push(`
+      <div class="helper-status-card ready helper-status-card-active">
+        <div class="helper-status-main">
+          <span class="helper-status-badge">当前使用</span>
+          <strong>${escapeHtml(normalizeHelperDisplayRoleName(activeBinding.game_role_name, activeBinding.game_role_id) || "-")}</strong>
+          <div class="muted">${escapeHtml(activeBinding.game_server || "-")} / 角色 ID ${escapeHtml(activeBinding.game_role_id || "-")}</div>
+        </div>
+        <div class="helper-status-meta">最近更新：${escapeHtml(formatDate(activeBinding.updated_at))}</div>
+        <div class="actions">
+          <button type="button" class="ghost helper-remove-binding-btn" data-helper-binding-id="${Number(activeBinding.id || 0)}">解绑角色</button>
+        </div>
+      </div>
+    `);
+  }
+  const otherBindings = bindings.filter((item) => Number(item?.id || 0) !== Number(activeBinding?.id || 0));
+  if (otherBindings.length) {
+    parts.push(`
+      <div class="helper-bind-selection">
+        <div class="helper-binding-list-title">已绑定的其他角色</div>
+        <div class="helper-binding-list">
+          ${otherBindings
+            .map(
+              (binding) => `
+                <article class="helper-status-card helper-status-card-compact">
+                  <div class="helper-status-main">
+                    <span class="helper-status-badge">已绑定</span>
+                    <strong>${escapeHtml(normalizeHelperDisplayRoleName(binding.game_role_name, binding.game_role_id) || "-")}</strong>
+                    <div class="muted">${escapeHtml(binding.game_server || "-")} / 角色 ID ${escapeHtml(binding.game_role_id || "-")}</div>
+                  </div>
+                  <div class="helper-status-meta">最近更新：${escapeHtml(formatDate(binding.updated_at))}</div>
+                  <div class="actions">
+                    <button type="button" class="ghost helper-set-active-binding-btn" data-helper-binding-id="${Number(binding.id || 0)}">设为当前使用</button>
+                    <button type="button" class="ghost helper-remove-binding-btn" data-helper-binding-id="${Number(binding.id || 0)}">解绑角色</button>
+                  </div>
+                </article>
+              `
+            )
+            .join("")}
+        </div>
+      </div>
+    `);
+  }
+  helperBindCurrent.innerHTML = parts.join("");
+}
+
+function isHelperInventoryEnabled() {
+  return isHelperLineupEnabled() && Boolean(helperConfig?.features?.legacy_inventory);
+}
+
+function setHelperInventoryMessage(text, type = "") {
+  if (!helperInventoryMessage) return;
+  helperInventoryMessage.textContent = text || "";
+  helperInventoryMessage.className = `notice${type ? ` ${type}` : ""}${text ? "" : " hidden"}`;
+}
+
+function getHelperInventoryBinding(bindingId) {
+  return (currentHelperInventories || []).find(
+    (item) => Number(item?.binding_id || 0) === Number(bindingId || 0)
+  );
+}
+
+function getHelperInventoryImageUrl(item) {
+  const rawUrl = String(item?.image_url || "").trim();
+  if (!rawUrl) return "";
+  if (/^(https?:)?\/\//i.test(rawUrl) || rawUrl.startsWith("/")) return rawUrl;
+  return `/${rawUrl.replace(/^\/+/, "")}`;
+}
+
+function buildHelperInventoryItemMarkup(item, { compact = false } = {}) {
+  const name = String(item?.display_name || "功法").trim() || "功法";
+  const imageUrl = getHelperInventoryImageUrl(item);
+  const subtitle = [`攻 ${Number(item?.attack_value || 0) || "-"}`, `血 ${Number(item?.hp_value || 0) || "-"}`]
+    .filter(Boolean)
+    .join(" / ");
+  const attrSummary = [String(item?.main_attr_text || "").trim(), String(item?.ext_attr_text || "").trim()]
+    .filter((value) => value && value !== "无")
+    .join(" · ");
+  const metaChips = [
+    Number(item?.total_count || 0) > 1 ? `×${Number(item.total_count)}` : "",
+    item?.has_ext ? "带词条" : "",
+    item?.max ? "双满" : "",
+  ]
+    .filter(Boolean)
+    .map((chip) => `<span class="helper-chip">${escapeHtml(chip)}</span>`)
+    .join("");
+  const sourceMarkup = Array.isArray(item?.source_roles)
+    ? `<div class="helper-inventory-sources">${item.source_roles
+        .map(
+          (role) =>
+            `<span class="helper-chip helper-chip-soft">${escapeHtml(role?.role_name || "-")} ×${escapeHtml(role?.count || 1)}</span>`
+        )
+        .join("")}</div>`
+    : "";
+  return `
+    <article class="helper-inventory-item ${compact ? "compact" : ""}">
+      ${
+        imageUrl
+          ? `<img class="helper-inventory-item-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" loading="lazy" />`
+          : `<div class="helper-inventory-item-image placeholder">${escapeHtml(name.slice(0, 2))}</div>`
+      }
+      <div class="helper-inventory-item-body">
+        <div class="helper-inventory-item-name">${escapeHtml(name)}</div>
+        <div class="helper-inventory-item-meta">${escapeHtml(subtitle)}</div>
+        ${attrSummary ? `<div class="helper-inventory-item-attrs">${escapeHtml(attrSummary)}</div>` : ""}
+        ${metaChips ? `<div class="helper-inventory-item-chips">${metaChips}</div>` : ""}
+        ${compact ? "" : sourceMarkup}
+      </div>
+    </article>
+  `;
+}
+
+function renderHelperInventoryPanel() {
+  if (!helperInventoryBindings || !helperInventoryMerged) return;
+  const bindings = Array.isArray(currentHelperBindings) ? currentHelperBindings : [];
+  const activeBinding = getActiveHelperBinding();
+  const inventories = Array.isArray(currentHelperInventories) ? currentHelperInventories : [];
+  const mergedItems = Array.isArray(currentHelperMergedItems) ? currentHelperMergedItems : [];
+
+  if (!currentProfile || !isHelperInventoryEnabled()) {
+    helperInventoryBindings.innerHTML =
+      '<div class="stack-item">绑定多个角色后，就能在这里分别看到每个炉子的功法库存。</div>';
+    helperInventoryMerged.innerHTML =
+      '<div class="stack-item">同步完成后，这里会展示多个炉子合并后的总仓库。</div>';
+    if (helperSyncCurrentInventoryBtn) helperSyncCurrentInventoryBtn.disabled = true;
+    if (helperSyncAllInventoryBtn) helperSyncAllInventoryBtn.disabled = true;
+    setHelperInventoryMessage("", "");
+    return;
+  }
+
+  if (helperSyncCurrentInventoryBtn) {
+    helperSyncCurrentInventoryBtn.disabled = !activeBinding || helperInventorySyncState.running;
+    helperSyncCurrentInventoryBtn.textContent =
+      helperInventorySyncState.running && helperInventorySyncState.mode === "current"
+        ? "同步中..."
+        : "同步当前号功法";
+  }
+  if (helperSyncAllInventoryBtn) {
+    helperSyncAllInventoryBtn.disabled = !bindings.length || helperInventorySyncState.running;
+    helperSyncAllInventoryBtn.textContent =
+      helperInventorySyncState.running && helperInventorySyncState.mode === "all"
+        ? `同步中 ${helperInventorySyncState.completed}/${helperInventorySyncState.total || 0}`
+        : "同步全部炉子";
+  }
+
+  if (!bindings.length) {
+    helperInventoryBindings.innerHTML =
+      '<div class="stack-item">先绑定至少一个游戏角色，才能同步各个炉子的功法库存。</div>';
+  } else {
+    helperInventoryBindings.innerHTML = bindings
+      .map((binding) => {
+        const inventory = getHelperInventoryBinding(binding?.id);
+        const count = Number(inventory?.summary?.legacy_count || (inventory?.items || []).length || 0);
+        const fragmentCount = Number(inventory?.summary?.fragment_count || 0);
+        const updatedAt = inventory?.updated_at || inventory?.summary?.synced_at || binding?.updated_at;
+        const isCurrent = Number(binding?.id || 0) === Number(activeBinding?.id || 0);
+        const syncingThisOne =
+          helperInventorySyncState.running &&
+          Number(helperInventorySyncState.currentBindingId || 0) === Number(binding?.id || 0);
+        return `
+          <article class="helper-inventory-binding-card ${isCurrent ? "active" : ""}">
+            <div class="helper-inventory-binding-head">
+              <div>
+                <div class="helper-snapshot-kicker">${isCurrent ? "当前使用" : "已绑定角色"}</div>
+                <strong>${escapeHtml(normalizeHelperDisplayRoleName(binding?.game_role_name, binding?.game_role_id) || "-")}</strong>
+                <div class="muted">${escapeHtml(binding?.game_server || "-")} / 角色 ID ${escapeHtml(binding?.game_role_id || "-")}</div>
+              </div>
+              <div class="helper-inventory-binding-summary">
+                <strong>${count}</strong>
+                <span>张功法</span>
+              </div>
+            </div>
+            <div class="helper-hero-meta helper-hero-meta-soft">
+              <span class="helper-chip">残卷 ${fragmentCount}</span>
+              <span class="helper-chip">${escapeHtml(updatedAt ? `${formatDate(updatedAt)} 同步` : "未同步")}</span>
+            </div>
+            ${
+              inventory?.items?.length
+                ? `<div class="helper-inventory-binding-preview">${inventory.items
+                    .slice(0, 4)
+                    .map((item) => buildHelperInventoryItemMarkup(item, { compact: true }))
+                    .join("")}</div>`
+                : '<div class="helper-status-meta">还没有同步过这个角色的功法库存。</div>'
+            }
+            <div class="actions">
+              <button type="button" class="ghost helper-sync-binding-inventory-btn" data-helper-binding-id="${Number(binding?.id || 0)}">
+                ${syncingThisOne ? "同步中..." : "同步这个炉子"}
+              </button>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+  }
+
+  if (!mergedItems.length) {
+    helperInventoryMerged.innerHTML =
+      '<div class="stack-item">还没有任何炉子完成同步。先点“同步当前号功法”或“同步全部炉子”，总仓库就会出现在这里。</div>';
+    return;
+  }
+
+  const totalCardCount = mergedItems.reduce((sum, item) => sum + Number(item?.total_count || 0), 0);
+  helperInventoryMerged.innerHTML = `
+    <div class="helper-inventory-merged-head">
+      <div class="helper-snapshot-kicker">合并总仓库</div>
+      <div class="muted">共 ${mergedItems.length} 种功法 / ${totalCardCount} 张，后面自动发货会从这里选对应炉子。</div>
+    </div>
+    <div class="helper-inventory-grid">
+      ${mergedItems.map((item) => buildHelperInventoryItemMarkup(item)).join("")}
+    </div>
+  `;
+}
+
+function buildHelperSnapshotName(snapshot) {
+  const explicitName = String(snapshot?.snapshot_name || "").trim();
+  if (explicitName) return explicitName;
+  const summary = snapshot?.summary || {};
+  const roleName = String(summary?.role_name || summary?.roleName || "阵容").trim() || "阵容";
+  const teamId = Number(summary?.use_team_id || summary?.useTeamId || 0);
+  if (teamId > 0) return `${roleName} · ${teamId}号阵容`;
+  return `${roleName} · 云端存档`;
+}
+
+function formatRelativeTime(value) {
+  const date = new Date(value || 0);
+  if (!Number.isFinite(date.getTime())) return "-";
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes <= 0) return "刚刚保存";
+  if (diffMinutes < 60) return `${diffMinutes} 分钟前保存`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} 小时前保存`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} 天前保存`;
+  return `${formatDate(value)} 保存`;
+}
+
+function formatRelativeActionTime(value) {
+  const date = new Date(value || 0);
+  if (!Number.isFinite(date.getTime())) return "-";
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes <= 0) return "刚刚执行";
+  if (diffMinutes < 60) return `${diffMinutes} 分钟前执行`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} 小时前执行`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} 天前执行`;
+  return `${formatDate(value)} 执行`;
+}
+
+function formatHelperBattleSlot(slot) {
+  const numericSlot = Number(slot);
+  if (!Number.isInteger(numericSlot) || numericSlot < 0) return "-";
+  return String(numericSlot + 1);
+}
+
+function sortHelperSnapshotsList(list) {
+  return [...(list || [])].sort((left, right) => {
+    const pinDiff = Number(Boolean(right?.is_pinned)) - Number(Boolean(left?.is_pinned));
+    if (pinDiff !== 0) return pinDiff;
+    return String(right?.updated_at || right?.created_at || "").localeCompare(
+      String(left?.updated_at || left?.created_at || "")
+    );
+  });
+}
+
+function getHelperSnapshotIdentityKey(snapshot) {
+  const summary = snapshot?.summary || {};
+  return [
+    String(summary?.role_id || summary?.roleId || "").trim(),
+    String(summary?.server || "").trim(),
+    Number(summary?.use_team_id || summary?.useTeamId || 0) || 0,
+  ].join("::");
+}
+
+function getHelperSnapshotFreshnessScore(snapshot) {
+  const summary = snapshot?.summary || {};
+  return (
+    Number(summary?.hero_count || 0) * 1000 +
+    getSnapshotLegionResearchCount(snapshot) * 10 +
+    getSnapshotAttachmentOwnershipCount(snapshot)
+  );
+}
+
+function partitionHelperSnapshots(list) {
+  const ordered = sortHelperSnapshotsList(list);
+  const winnerByKey = new Map();
+
+  ordered.forEach((snapshot) => {
+    const key = getHelperSnapshotIdentityKey(snapshot);
+    const score = getHelperSnapshotFreshnessScore(snapshot);
+    const createdAt = String(snapshot?.created_at || snapshot?.updated_at || "");
+    const current = winnerByKey.get(key);
+    if (!current || score > current.score || (score === current.score && createdAt > current.createdAt)) {
+      winnerByKey.set(key, {
+        id: Number(snapshot?.id || 0),
+        score,
+        createdAt,
+      });
+    }
+  });
+
+  const active = [];
+  const archived = [];
+  ordered.forEach((snapshot) => {
+    const key = getHelperSnapshotIdentityKey(snapshot);
+    const winner = winnerByKey.get(key);
+    if (winner && winner.id === Number(snapshot?.id || 0)) {
+      active.push(snapshot);
+    } else {
+      archived.push(snapshot);
+    }
+  });
+
+  return { active, archived };
+}
+
+function buildHelperSnapshotHeroStripMarkup(snapshot) {
+  const heroes = getSnapshotRawHeroes(snapshot).slice(0, 6);
+  if (!heroes.length) {
+    return '<div class="helper-hero-strip-empty">暂无武将摘要</div>';
+  }
+  return heroes
+    .map((hero) => {
+      const avatarUrl = getHeroAvatarUrl(hero);
+      const heroName = String(hero?.hero_name || "武将").trim() || "武将";
+      const fishName = String(hero?.fish_name || "").trim();
+      const pearlSkillName = String(hero?.pearl_skill_name || "").trim();
+      const miniMeta = fishName || pearlSkillName ? [fishName, pearlSkillName].filter(Boolean).join(" · ") : `Lv.${hero?.level || 0}`;
+      return `
+        <article class="helper-hero-mini">
+          <span class="helper-hero-mini-slot">${escapeHtml(formatHelperBattleSlot(hero?.slot))}号位</span>
+          ${
+            avatarUrl
+              ? `<img class="helper-hero-mini-avatar" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(heroName)}" loading="lazy" />`
+              : `<div class="helper-hero-mini-avatar placeholder">${escapeHtml(heroName.slice(0, 2))}</div>`
+          }
+          <div class="helper-hero-mini-body">
+            <span class="helper-hero-mini-name">${escapeHtml(heroName)}</span>
+            <span class="helper-hero-mini-meta">${escapeHtml(miniMeta)}</span>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function buildHelperSnapshotDetailMarkup(snapshot) {
+  const summary = snapshot?.summary || {};
+  const heroes = getSnapshotRawHeroes(snapshot);
+  const weaponInfo = getSnapshotWeaponInfo(snapshot);
+  const techCount = getSnapshotLegionResearchCount(snapshot);
+  const attachmentOwnershipCount = getSnapshotAttachmentOwnershipCount(snapshot);
+  if (!heroes.length) {
+    return '<div class="stack-item">当前快照没有可展示的武将摘要。</div>';
+  }
+  const overviewCards = [
+    { label: "阵容位", value: `${summary?.use_team_id || 0} 号`, accent: "accent" },
+    { label: "武将", value: `${summary?.hero_count || heroes.length || 0} 名` },
+    { label: "科技", value: techCount > 0 ? `${techCount} 项` : "未记录" },
+    { label: "主玩具", value: weaponInfo?.name || "未记录", accent: weaponInfo ? "success" : "" },
+  ]
+    .map(
+      (item) => `
+        <article class="helper-overview-card ${item.accent || ""}">
+          <div class="helper-overview-label">${escapeHtml(item.label)}</div>
+          <div class="helper-overview-value">${escapeHtml(item.value)}</div>
+        </article>
+      `
+    )
+    .join("");
+  const heroMarkup = heroes
+    .map((hero) => {
+      const avatarUrl = getHeroAvatarUrl(hero);
+      const attachmentUid = normalizeHelperAttachmentUid(hero?.attachment_uid);
+      const topMetaBits = [`Lv.${hero?.level || 0}`, hero?.power ? `${hero.power} 战力` : ""]
+        .filter(Boolean)
+        .join(" · ");
+      const fishAndPearl = [hero?.fish_name || "未佩戴", hero?.pearl_skill_name || "无鱼珠技能"]
+        .filter(Boolean)
+        .join(" · ");
+      const equipSummary = [buildHelperEquipmentSummary(hero?.equipment), `${hero?.red_count || 0} 红淬 / ${hero?.hole_count || 0} 开孔`]
+        .filter(Boolean)
+        .join(" · ");
+      const quickMeta = [
+        { label: "鱼灵 / 鱼珠", value: fishAndPearl },
+        { label: "洗练归属", value: attachmentUid ? `#${attachmentUid}` : "未记录" },
+        { label: "鱼珠孔位", value: buildHelperFishSlotsSummary(hero?.fish_slots) },
+        { label: "洗练 / 开孔", value: equipSummary },
+      ]
+        .map(
+          (item) => `
+            <div class="helper-hero-quick-meta">
+              <span class="helper-hero-quick-label">${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value)}</strong>
+            </div>
+          `
+        )
+        .join("");
+      return `
+        <article class="helper-hero-card">
+          <div class="helper-hero-avatar-wrap">
+            ${
+              avatarUrl
+                ? `<img class="helper-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(hero.hero_name || "武将")}" loading="lazy" />`
+                : `<div class="helper-hero-avatar placeholder">${escapeHtml(String(hero.hero_name || "武将").slice(0, 2))}</div>`
+            }
+            <span class="helper-hero-slot">#${escapeHtml(formatHelperBattleSlot(hero?.slot))}</span>
+          </div>
+          <div class="helper-hero-body">
+            <div class="helper-hero-head">
+              <div class="helper-hero-heading">
+                <strong>${escapeHtml(hero.hero_name || "武将")}</strong>
+                <span class="helper-hero-headline-meta">${escapeHtml(topMetaBits)}</span>
+              </div>
+              <span class="helper-hero-type">${escapeHtml(hero.hero_type || "未知阵营")}</span>
+            </div>
+            <div class="helper-hero-quick-grid">${quickMeta}</div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+  return `
+    <div class="helper-detail-overview">
+      <div class="helper-overview-grid">${overviewCards}</div>
+    </div>
+    <div class="helper-hero-stack">${heroMarkup}</div>
+  `;
+}
+
+function buildHelperPreviewMarkup(preview) {
+  if (!preview) {
+    return '<div class="stack-item">选择某份历史快照后，这里会展示“当前阵容”和“目标快照”之间的恢复步骤预演。</div>';
+  }
+  const safeSummary = [
+    preview?.safe_counts?.hero_slots ? `站位 ${preview.safe_counts.hero_slots}` : "",
+    preview?.safe_counts?.hero_levels ? `等级 ${preview.safe_counts.hero_levels}` : "",
+    preview?.safe_counts?.attachment_transfers ? `归属 ${preview.safe_counts.attachment_transfers}` : "",
+    preview?.safe_counts?.artifacts ? `鱼灵 ${preview.safe_counts.artifacts}` : "",
+    preview?.safe_counts?.pearl_skills ? `鱼珠 ${preview.safe_counts.pearl_skills}` : "",
+    preview?.safe_counts?.legion_research ? `科技 ${preview.safe_counts.legion_research}` : "",
+    preview?.safe_counts?.weapon ? `玩具 ${preview.safe_counts.weapon}` : "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  const warningMarkup =
+    Array.isArray(preview?.warnings) && preview.warnings.length
+      ? `<div class="helper-preview-warning-list">${preview.warnings
+          .map((item) => `<div class="stack-item">${escapeHtml(item)}</div>`)
+          .join("")}</div>`
+      : "";
+  const stepMarkup =
+    Array.isArray(preview?.steps) && preview.steps.length
+      ? `<div class="helper-preview-step-list">${preview.steps
+          .map(
+            (step, index) => `
+              <article class="helper-preview-step ${escapeHtml(step.type || "safe")}">
+                <div class="helper-preview-step-head">
+                  <span class="helper-preview-step-index">步骤 ${index + 1}</span>
+                  <strong>${escapeHtml(step.label || "恢复动作")}</strong>
+                </div>
+                <div class="helper-capability-note">${escapeHtml(step.description || "-")}</div>
+              </article>
+            `
+          )
+          .join("")}</div>`
+      : '<div class="stack-item">当前阵容和目标快照已经非常接近，没有检测到需要执行的安全恢复步骤。</div>';
+
+  return `
+    <div class="helper-snapshot-item">
+      <div class="stack-item"><strong>目标快照：</strong>${escapeHtml(preview?.target_snapshot_name || "-")}</div>
+      <div class="stack-item">当前实时阵容：阵容 ${escapeHtml(preview?.live_summary?.use_team_id || "-")} / ${escapeHtml(preview?.live_summary?.role_name || "-")} / ${escapeHtml(preview?.live_summary?.server || "-")}</div>
+      <div class="stack-item">安全恢复步骤：${escapeHtml(preview?.safe_step_count || 0)} 项${safeSummary ? `（${escapeHtml(safeSummary)}）` : ""}</div>
+      <div class="stack-item">执行顺序：若涉及洗练归属，helper 会先迁移对应套装，再继续站位、等级、鱼灵和科技动作。</div>
+      <div class="stack-item">仅记录未自动恢复：${escapeHtml(preview?.recorded_only_count || 0)} 项</div>
+      ${warningMarkup}
+      ${stepMarkup}
+    </div>
+  `;
+}
+
+function renderHelperSnapshotCard(snapshot, { isLatest = false, isArchived = false } = {}) {
+  const summary = snapshot?.summary || {};
+  const snapshotId = Number(snapshot?.id || 0);
+  const teamId = Number(summary?.use_team_id || 0);
+  const expanded = expandedHelperSnapshotIds.has(snapshotId);
+  const heroes = Array.isArray(summary.heroes) ? summary.heroes : [];
+  const weaponInfo = getSnapshotWeaponInfo(snapshot);
+  const legionResearchCount = getSnapshotLegionResearchCount(snapshot);
+  const safeRestoreBlockReason = getSnapshotSafeRestoreBlockReason(snapshot);
+  const safeRestoreReady = !safeRestoreBlockReason;
+  const heroStripMarkup = buildHelperSnapshotHeroStripMarkup(snapshot);
+  const metaBits = [
+    teamId > 0 ? `${teamId}号阵容` : "",
+    `${summary.hero_count || heroes.length || 0} 名武将`,
+    legionResearchCount > 0 ? `科技 ${legionResearchCount} 项` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const snapshotOverviewMarkup = [
+    { label: "阵容", value: teamId > 0 ? `${teamId} 号` : "未识别" },
+    { label: "武将", value: `${summary.hero_count || heroes.length || 0} 名` },
+    { label: "科技", value: legionResearchCount > 0 ? `${legionResearchCount} 项` : "未记录" },
+    { label: "主玩具", value: weaponInfo?.name || "未记录" },
+  ]
+    .map(
+      (item) => `
+        <div class="helper-snapshot-stat">
+          <span class="helper-snapshot-stat-label">${escapeHtml(item.label)}</span>
+          <strong class="helper-snapshot-stat-value">${escapeHtml(item.value)}</strong>
+        </div>
+      `
+    )
+    .join("");
+  return `
+    <article class="helper-snapshot-card ${isLatest ? "latest" : ""} ${isArchived ? "archived" : ""}">
+      <div class="helper-snapshot-head">
+        <div class="helper-snapshot-title-group">
+          <div class="helper-snapshot-kicker">${escapeHtml(snapshot?.is_pinned ? "已置顶" : isLatest ? "当前保存" : isArchived ? "旧版快照" : "云端阵容")}</div>
+          <strong class="helper-snapshot-title">${escapeHtml(buildHelperSnapshotName(snapshot))}</strong>
+          <div class="helper-snapshot-subtitle">${escapeHtml(summary.role_name || "-")} / ${escapeHtml(summary.server || "-")}</div>
+        </div>
+        <div class="helper-snapshot-time">
+          <div>${escapeHtml(formatRelativeTime(snapshot.created_at || summary.captured_at))}</div>
+          <div>${escapeHtml(formatDate(snapshot.created_at || summary.captured_at))}</div>
+        </div>
+      </div>
+      <div class="helper-snapshot-summary">${escapeHtml(metaBits || "阵容信息已保存")}</div>
+      <div class="helper-snapshot-stage">
+        <div class="helper-hero-mini-strip">${heroStripMarkup}</div>
+      </div>
+      <div class="helper-snapshot-stat-grid">${snapshotOverviewMarkup}</div>
+      <div class="helper-hero-meta helper-hero-meta-soft">
+        ${snapshot?.is_pinned ? '<span class="helper-chip helper-chip-accent">已置顶</span>' : ""}
+        ${isArchived ? '<span class="helper-chip">检测到更新版</span>' : ""}
+        <span class="helper-chip">${escapeHtml(buildHelperSnapshotRestoreSummaryText(snapshot))}</span>
+        ${weaponInfo?.name ? `<span class="helper-chip">主玩具 ${escapeHtml(weaponInfo.name)}</span>` : ""}
+      </div>
+      <div class="actions">
+        ${
+          helperConfig?.features?.team_restore
+            ? `<button type="button" class="primary helper-restore-snapshot-btn" data-helper-snapshot-id="${snapshotId}" ${
+                safeRestoreReady ? "" : "disabled"
+              } title="${escapeHtml(
+                safeRestoreReady ? "按这份阵容执行一键还原" : safeRestoreBlockReason
+              )}">一键还原</button>`
+            : helperConfig?.features?.team_switch && teamId > 0
+              ? `<button type="button" class="primary helper-switch-to-snapshot-btn" data-helper-team-id="${teamId}" data-helper-snapshot-id="${snapshotId}">切回这套阵容</button>`
+              : ""
+        }
+        <button type="button" class="ghost helper-toggle-snapshot-detail-btn" data-helper-snapshot-id="${snapshotId}">
+          ${expanded ? "收起详情" : "查看详情"}
+        </button>
+        <button type="button" class="ghost helper-rename-snapshot-btn" data-helper-snapshot-id="${snapshotId}">
+          重命名
+        </button>
+        <button type="button" class="ghost helper-pin-snapshot-btn" data-helper-snapshot-id="${snapshotId}" data-helper-pin-state="${snapshot?.is_pinned ? "on" : "off"}">
+          ${snapshot?.is_pinned ? "取消置顶" : "置顶阵容"}
+        </button>
+        <button type="button" class="ghost helper-remove-snapshot-btn" data-helper-snapshot-id="${snapshotId}">删除快照</button>
+      </div>
+      ${
+        isArchived
+          ? '<div class="helper-capability-note">这份是同一套阵容的较旧版本，系统已自动优先展示更新、更完整的快照。</div>'
+          : ""
+      }
+      ${
+        helperConfig?.features?.team_restore && !safeRestoreReady
+          ? `<div class="helper-capability-note">${escapeHtml(safeRestoreBlockReason)}</div>`
+          : ""
+      }
+      ${
+        expanded
+          ? `<div class="helper-snapshot-detail">${buildHelperSnapshotDetailMarkup(snapshot)}</div>`
+          : ""
+      }
+    </article>
+  `;
+}
+
+function getHelperLineupPlan() {
+  return {
+    base_slots: Math.max(Number(helperConfig?.plans?.base_slots || 3) || 3, 1),
+    permanent_slot_quota: Math.max(Number(helperConfig?.plans?.permanent_slot_quota || 5000) || 5000, 1),
+    permanent_slot_max: Math.max(Number(helperConfig?.plans?.permanent_slot_max || 7) || 7, 0),
+    seasonal_slot_quota: Math.max(Number(helperConfig?.plans?.seasonal_slot_quota || 1000) || 1000, 1),
+    member_bonus_slots: Math.max(Number(helperConfig?.plans?.member_bonus_slots || 3) || 3, 0),
+    season_label: String(helperConfig?.plans?.season_label || "当前赛季").trim() || "当前赛季",
+    season_expires_at: helperConfig?.plans?.season_expires_at || null,
+  };
+}
+
+function renderHelperSlotSummaryPanel(snapshotCount, snapshotLimit) {
+  if (!helperSlotSummary) return;
+  const plan = getHelperLineupPlan();
+  if (!currentProfile) {
+    helperSlotSummary.innerHTML = '<div class="stack-item">登录后可查看阵容槽位，并购买更多保存栏位。</div>';
+    if (helperBuyPermanentSlotBtn) helperBuyPermanentSlotBtn.disabled = true;
+    if (helperBuySeasonalSlotBtn) helperBuySeasonalSlotBtn.disabled = true;
+    setHelperSlotMessage("", "");
+    return;
+  }
+
+  const baseSlots = Math.max(Number(currentProfile?.lineup_slot_base || plan.base_slots) || plan.base_slots, 1);
+  const permanentSlots = Math.max(Number(currentProfile?.lineup_slot_permanent || 0) || 0, 0);
+  const seasonalSlots = Math.max(Number(currentProfile?.lineup_slot_seasonal || 0) || 0, 0);
+  const memberBonusSlots = Math.max(Number(currentProfile?.lineup_slot_member_bonus || 0) || 0, 0);
+  const availableSlots = Math.max(snapshotLimit - snapshotCount, 0);
+  const seasonLabel = String(currentProfile?.lineup_slot_season_label || plan.season_label).trim() || plan.season_label;
+  const seasonExpiresAt = currentProfile?.lineup_slot_season_expires_at || plan.season_expires_at;
+
+  helperSlotSummary.innerHTML = `
+    <div class="helper-slot-summary-card">
+      <div class="helper-slot-summary-top">
+        <div>
+          <div class="helper-snapshot-kicker">阵容槽位</div>
+          <div class="helper-slot-summary-value">${snapshotCount} / ${snapshotLimit}</div>
+        </div>
+        <div class="helper-slot-summary-caption">当前还可再保存 ${availableSlots} 套</div>
+      </div>
+      <div class="helper-slot-chip-row">
+        <span class="helper-slot-mini-chip">基础 ${baseSlots}</span>
+        <span class="helper-slot-mini-chip">永久 ${permanentSlots}</span>
+        <span class="helper-slot-mini-chip">${escapeHtml(seasonLabel)} ${seasonalSlots}</span>
+        <span class="helper-slot-mini-chip">会员赠送 ${memberBonusSlots}</span>
+      </div>
+      <div class="helper-slot-summary-caption">
+        永久槽 ${plan.permanent_slot_quota} 额度 / 个，最多再买 ${Math.max(plan.permanent_slot_max - Number(currentProfile?.lineup_slot_permanent_purchases || permanentSlots || 0), 0)} 个。
+        赛季槽 ${plan.seasonal_slot_quota} 额度 / 个，持续到 ${escapeHtml(formatDate(seasonExpiresAt || "")) || "赛季结束"}。
+      </div>
+    </div>
+  `;
+
+  if (helperBuyPermanentSlotBtn) {
+    const reachedPermanentCap =
+      Number(currentProfile?.lineup_slot_permanent_purchases || permanentSlots || 0) >= plan.permanent_slot_max;
+    helperBuyPermanentSlotBtn.disabled = reachedPermanentCap;
+    helperBuyPermanentSlotBtn.textContent = reachedPermanentCap
+      ? `永久槽已满 ${plan.permanent_slot_max}/${plan.permanent_slot_max}`
+      : `+1 永久槽（${plan.permanent_slot_quota}）`;
+  }
+  if (helperBuySeasonalSlotBtn) {
+    helperBuySeasonalSlotBtn.disabled = false;
+    helperBuySeasonalSlotBtn.textContent = `+1 ${seasonLabel}槽（${plan.seasonal_slot_quota}）`;
+  }
+}
+
+function renderHelperSnapshotPanel() {
+  const { active, archived } = partitionHelperSnapshots(currentHelperSnapshots);
+  const snapshotLimit = Math.max(Number(helperConfig?.limits?.snapshots_per_user || 3) || 3, 1);
+  const snapshotCount = Array.isArray(currentHelperSnapshots) ? currentHelperSnapshots.length : 0;
+  const snapshotLimitReached = snapshotCount >= snapshotLimit;
+
+  renderHelperSlotSummaryPanel(snapshotCount, snapshotLimit);
+
+  if (helperReadSnapshotBtn) {
+    helperReadSnapshotBtn.disabled = false;
+    helperReadSnapshotBtn.textContent = snapshotLimitReached
+      ? `已满 ${snapshotCount}/${snapshotLimit}`
+      : "保存当前阵容";
+    helperReadSnapshotBtn.title = snapshotLimitReached
+      ? `已达到 ${snapshotLimit} 套阵容上限，请先删除旧阵容`
+      : "保存当前阵容";
+  }
+  if (snapshotLimitReached && helperSnapshotMessage && !String(helperSnapshotMessage.textContent || "").trim()) {
+    setHelperSnapshotMessage(`当前最多保存 ${snapshotLimit} 套阵容，请先删除旧阵容再继续保存。`, "success");
+  }
+
+  if (helperSnapshotCurrent) {
+    const orderedSnapshots = active;
+    const latest = Array.isArray(orderedSnapshots) ? orderedSnapshots[0] : null;
+    if (!latest) {
+      helperSnapshotCurrent.innerHTML = '<div class="stack-item">还没有保存过阵容，点上面的“保存当前阵容”就可以开始。</div>';
+    } else {
+      helperSnapshotCurrent.innerHTML = renderHelperSnapshotCard(latest, { isLatest: true });
+    }
+  }
+
+  if (helperSnapshotList) {
+    const snapshots = showArchivedHelperSnapshots ? [...active.slice(1), ...archived] : active.slice(1);
+    if (!snapshots.length) {
+      helperSnapshotList.innerHTML = archived.length
+        ? `<div class="stack-item">其余都是旧版快照。<button type="button" class="ghost helper-toggle-archived-snapshots-btn" data-helper-archived-state="${showArchivedHelperSnapshots ? "on" : "off"}">${showArchivedHelperSnapshots ? "收起旧版快照" : `显示旧版快照（${archived.length}）`}</button></div>`
+        : "";
+      return;
+    }
+    const archivedIds = new Set(archived.map((snapshot) => Number(snapshot?.id || 0)));
+    helperSnapshotList.innerHTML = `
+      ${
+        archived.length
+          ? `<div class="stack-item">系统已自动隐藏 ${archived.length} 份旧版重复快照。<button type="button" class="ghost helper-toggle-archived-snapshots-btn" data-helper-archived-state="${showArchivedHelperSnapshots ? "on" : "off"}">${showArchivedHelperSnapshots ? "收起旧版快照" : `显示旧版快照（${archived.length}）`}</button></div>`
+          : ""
+      }
+      ${snapshots
+        .slice(0, 6)
+        .map((snapshot) =>
+          renderHelperSnapshotCard(snapshot, {
+            isArchived: archivedIds.has(Number(snapshot?.id || 0)),
+          })
+        )
+        .join("")}
+    `;
+  }
+}
+
+function renderHelperRestorePreviewPanel() {
+  if (!helperPreviewCurrent) return;
+  helperPreviewCurrent.innerHTML = buildHelperPreviewMarkup(currentHelperRestorePreview);
+}
+
+function getLatestHelperTeamId() {
+  const latestAction = Array.isArray(currentHelperActionLogs) ? currentHelperActionLogs[0] : null;
+  const latestSnapshot = Array.isArray(currentHelperSnapshots) ? currentHelperSnapshots[0] : null;
+  const actionTeamId = Number(
+    latestAction?.result_payload?.use_team_id || latestAction?.action_payload?.team_id || 0
+  );
+  if (Number.isInteger(actionTeamId) && actionTeamId > 0) return actionTeamId;
+  const snapshotTeamId = Number(latestSnapshot?.summary?.use_team_id || 0);
+  if (Number.isInteger(snapshotTeamId) && snapshotTeamId > 0) return snapshotTeamId;
+  return 0;
+}
+
+function renderHelperTeamSwitchPanel() {
+  const activeBinding = getActiveHelperBinding();
+  const latestTeamId = getLatestHelperTeamId();
+  const latestAction = Array.isArray(currentHelperActionLogs) ? currentHelperActionLogs[0] : null;
+
+  if (helperTeamSwitchCurrent) {
+    if (!activeBinding) {
+      helperTeamSwitchCurrent.innerHTML =
+        '<div class="stack-item">请先完成 helper 角色绑定，再切换预设阵容。</div>';
+    } else {
+      helperTeamSwitchCurrent.innerHTML = `
+        <div class="helper-snapshot-item">
+          <div class="stack-item"><strong>当前绑定：</strong>${escapeHtml(activeBinding.game_role_name || "-")} / ${escapeHtml(activeBinding.game_server || "-")}</div>
+          <div class="stack-item">已知当前阵容：${escapeHtml(latestTeamId > 0 ? `阵容 ${latestTeamId}` : "暂未识别")}</div>
+          <div class="stack-item">${escapeHtml(latestAction ? "最近一次执行已记录" : "还没有执行记录")}</div>
+        </div>
+      `;
+    }
+  }
+
+  if (helperTeamSwitchControls) {
+    helperTeamSwitchControls.querySelectorAll("[data-helper-team-id]").forEach((button) => {
+      const teamId = Number(button.getAttribute("data-helper-team-id") || 0);
+      button.classList.toggle("active", latestTeamId > 0 && teamId === latestTeamId);
+      button.toggleAttribute("disabled", !activeBinding || !helperConfig?.features?.team_switch);
+    });
+  }
+
+  if (helperTeamSwitchLog) {
+    const logs = Array.isArray(currentHelperActionLogs) ? currentHelperActionLogs : [];
+    if (!logs.length) {
+      helperTeamSwitchLog.innerHTML = '<div class="stack-item">执行记录会显示在这里。</div>';
+      return;
+    }
+    helperTeamSwitchLog.innerHTML = logs
+      .slice(0, 6)
+      .map((log) => {
+        const actionType = String(log?.action_type || "").trim();
+        const requestedTeamId = Number(log?.action_payload?.team_id || 0);
+        const resultTeamId = Number(log?.result_payload?.use_team_id || requestedTeamId || 0);
+        const roleText = [log?.result_payload?.role_name, log?.result_payload?.server]
+          .filter(Boolean)
+          .join(" / ");
+        const restoreCounts = log?.result_payload?.restore_counts || {};
+        const restoreBits = [
+          restoreCounts?.attachment_transfers ? `归属 ${restoreCounts.attachment_transfers}` : "",
+          restoreCounts?.hero_adds || restoreCounts?.hero_moves || restoreCounts?.hero_removes
+            ? `站位 ${Number(restoreCounts?.hero_adds || 0) + Number(restoreCounts?.hero_moves || 0) + Number(restoreCounts?.hero_removes || 0)}`
+            : "",
+          restoreCounts?.hero_level_steps || restoreCounts?.hero_rebirths || restoreCounts?.hero_order_steps
+            ? `等级 ${Number(restoreCounts?.hero_level_steps || 0) + Number(restoreCounts?.hero_rebirths || 0) + Number(restoreCounts?.hero_order_steps || 0)}`
+            : "",
+          restoreCounts?.artifact_loads || restoreCounts?.artifact_unloads
+            ? `鱼灵 ${Number(restoreCounts?.artifact_loads || 0) + Number(restoreCounts?.artifact_unloads || 0)}`
+            : "",
+          restoreCounts?.pearl_skill_changes ? `鱼珠 ${restoreCounts.pearl_skill_changes}` : "",
+          restoreCounts?.legion_steps || restoreCounts?.legion_resets
+            ? `科技 ${Number(restoreCounts?.legion_steps || 0) + Number(restoreCounts?.legion_resets || 0)}`
+            : "",
+          restoreCounts?.weapon_changes ? `玩具 ${restoreCounts.weapon_changes}` : "",
+        ]
+          .filter(Boolean)
+          .join(" / ");
+        const title =
+          actionType === "helper_team_restore"
+            ? `${log?.result_status === "ok" || log?.result_status === "warning" ? "成功" : "失败"}：安全恢复`
+            : `${log?.result_status === "ok" ? "成功" : "失败"}：请求阵容 ${requestedTeamId || "-"} / 当前阵容 ${resultTeamId || "-"}`;
+        return `
+          <div class="helper-snapshot-item">
+            <div class="stack-item"><strong>${escapeHtml(title)}</strong></div>
+            <div class="stack-item">角色：${escapeHtml(roleText || "-")}</div>
+            ${
+              actionType === "helper_team_restore"
+                ? `<div class="stack-item">目标快照：${escapeHtml(log?.action_payload?.snapshot_name || log?.action_payload?.snapshot_id || "-")} / 阵容 ${escapeHtml(resultTeamId || log?.action_payload?.team_id || "-")}</div>`
+                : ""
+            }
+            ${
+              actionType === "helper_team_restore" && restoreBits
+                ? `<div class="stack-item">执行统计：${escapeHtml(restoreBits)}</div>`
+                : ""
+            }
+            <div class="stack-item">时间：${escapeHtml(formatDate(log.created_at))}</div>
+            <div class="stack-item">说明：${escapeHtml(log?.result_payload?.message || "-")}</div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+  renderHelperRestoreResultPanel();
+}
+
+async function loadHelperBindings() {
+  if (!currentProfile || !isHelperLineupEnabled() || !helperConfig?.features?.scan_bind) {
+    currentHelperBindings = [];
+    syncActiveHelperBindingPreference();
+    renderHelperBindingPanel();
+    renderHelperInventoryPanel();
+    return;
+  }
+
+  try {
+    currentHelperBindings = await apiFetch("/helper/bindings/current");
+    syncActiveHelperBindingPreference();
+  } catch (error) {
+    currentHelperBindings = [];
+    syncActiveHelperBindingPreference();
+    setHelperBindMessage(`读取绑定失败：${pickErrorMessage(error, "读取失败")}`, "error");
+  } finally {
+    renderHelperBindingPanel();
+    renderHelperInventoryPanel();
+    renderHelperTeamSwitchPanel();
+  }
+}
+
+async function loadHelperInventories() {
+  if (!currentProfile || !isHelperInventoryEnabled()) {
+    currentHelperInventories = [];
+    currentHelperMergedItems = [];
+    renderHelperInventoryPanel();
+    return;
+  }
+
+  try {
+    const payload = await apiFetch("/helper/inventories");
+    currentHelperInventories = Array.isArray(payload?.inventories) ? payload.inventories : [];
+    currentHelperMergedItems = Array.isArray(payload?.merged_items) ? payload.merged_items : [];
+  } catch (error) {
+    currentHelperInventories = [];
+    currentHelperMergedItems = [];
+    setHelperInventoryMessage(`读取功法仓库失败：${pickErrorMessage(error, "读取失败")}`, "error");
+  } finally {
+    renderHelperInventoryPanel();
+  }
+}
+
+async function loadHelperSnapshots() {
+  if (!currentProfile || !isHelperLineupEnabled() || !helperConfig?.features?.team_snapshot) {
+    currentHelperSnapshots = [];
+    renderHelperSnapshotPanel();
+    currentHelperRestorePreview = null;
+    renderHelperRestorePreviewPanel();
+    return;
+  }
+
+  try {
+    currentHelperSnapshots = await apiFetch("/helper/snapshots");
+  } catch (error) {
+    currentHelperSnapshots = [];
+    setHelperSnapshotMessage(`读取快照失败：${pickErrorMessage(error, "读取失败")}`, "error");
+  } finally {
+    if (
+      currentHelperRestorePreview &&
+      !(currentHelperSnapshots || []).some(
+        (item) => Number(item?.id) === Number(currentHelperRestorePreview?.target_snapshot_id || 0)
+      )
+    ) {
+      currentHelperRestorePreview = null;
+    }
+    renderHelperSnapshotPanel();
+    renderHelperRestorePreviewPanel();
+    renderHelperTeamSwitchPanel();
+  }
+}
+
+function resetHelperInventorySyncState() {
+  helperInventorySyncState = {
+    running: false,
+    mode: "",
+    queue: [],
+    total: 0,
+    completed: 0,
+    failures: [],
+    currentBindingId: null,
+  };
+}
+
+function startNextHelperInventorySyncInQueue() {
+  const nextBinding = helperInventorySyncState.queue.shift() || null;
+  if (!nextBinding) {
+    const failureCount = helperInventorySyncState.failures.length;
+    const total = helperInventorySyncState.total || 0;
+    const completed = helperInventorySyncState.completed || 0;
+    const failureSummary = failureCount
+      ? `，其中 ${failureCount} 个炉子失败：${helperInventorySyncState.failures
+          .map((item) => item?.role_name || "未命名角色")
+          .join("、")}`
+      : "";
+    setHelperInventoryMessage(`功法仓库同步完成，成功 ${completed}/${total}${failureSummary}。`, failureCount ? "error" : "success");
+    resetHelperInventorySyncState();
+    renderHelperInventoryPanel();
+    return;
+  }
+
+  helperInventorySyncState.currentBindingId = Number(nextBinding?.id || 0);
+  renderHelperInventoryPanel();
+  const opened = runHelperBridgeInBackground(
+    buildHelperBridgeLegacyInventoryUrl(nextBinding),
+    "legacyInventory"
+  );
+  if (!opened) {
+    helperInventorySyncState.failures.push({
+      binding_id: Number(nextBinding?.id || 0),
+      role_name: normalizeHelperDisplayRoleName(nextBinding?.game_role_name, nextBinding?.game_role_id),
+      message: "当前页面暂时无法启动功法同步",
+    });
+    startNextHelperInventorySyncInQueue();
+    return;
+  }
+  setHelperInventoryMessage(
+    `正在同步 ${normalizeHelperDisplayRoleName(nextBinding?.game_role_name, nextBinding?.game_role_id) || "该角色"} 的功法库存（${helperInventorySyncState.completed + 1}/${helperInventorySyncState.total}）...`,
+    "success"
+  );
+}
+
+function startHelperInventorySync(bindings, mode = "current") {
+  const filteredBindings = (bindings || []).filter(Boolean);
+  if (!currentProfile) {
+    setHelperInventoryMessage("请先登录商城账号，再同步功法仓库。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  if (!isHelperInventoryEnabled()) {
+    setHelperInventoryMessage(getHelperLineupDisabledReason("当前环境未开启功法仓库同步。"), "error");
+    return;
+  }
+  if (!filteredBindings.length) {
+    setHelperInventoryMessage("请先绑定至少一个游戏角色，再同步功法仓库。", "error");
+    return;
+  }
+  if (helperInventorySyncState.running) {
+    setHelperInventoryMessage("上一轮功法同步还在进行中，请稍等。", "error");
+    return;
+  }
+  helperInventorySyncState = {
+    running: true,
+    mode,
+    queue: [...filteredBindings],
+    total: filteredBindings.length,
+    completed: 0,
+    failures: [],
+    currentBindingId: null,
+  };
+  renderHelperInventoryPanel();
+  startNextHelperInventorySyncInQueue();
+}
+
+function syncCurrentHelperInventory() {
+  const activeBinding = getActiveHelperBinding();
+  if (!activeBinding) {
+    setHelperInventoryMessage("请先选择一个当前使用角色，再同步功法仓库。", "error");
+    return;
+  }
+  startHelperInventorySync([activeBinding], "current");
+}
+
+function syncAllHelperInventories() {
+  const bindings = Array.isArray(currentHelperBindings) ? currentHelperBindings : [];
+  startHelperInventorySync(bindings, "all");
+}
+
+async function loadHelperActionLogs() {
+  if (
+    !currentProfile ||
+    !isHelperLineupEnabled() ||
+    (!helperConfig?.features?.team_switch && !helperConfig?.features?.team_restore)
+  ) {
+    currentHelperActionLogs = [];
+    renderHelperTeamSwitchPanel();
+    return;
+  }
+
+  try {
+    currentHelperActionLogs = await apiFetch("/helper/action-logs?limit=12");
+  } catch (error) {
+    currentHelperActionLogs = [];
+    setHelperSwitchMessage(`读取切换记录失败：${pickErrorMessage(error, "读取失败")}`, "error");
+  } finally {
+    renderHelperTeamSwitchPanel();
+  }
+}
+
+function buildHelperBridgeBindUrl() {
+  const publicBase = String(helperConfig?.public_base || "/xyzw-helper").trim() || "/xyzw-helper";
+  return withHelperCacheBuster(`${publicBase.replace(/\/$/, "")}/tokens`, {
+    importMethod: "wxQrcode",
+    bridge: "1",
+    bridgeFlow: getPendingHelperBridgeIntent(),
+    targetOrigin: window.location.origin,
+  });
+}
+
+function getCurrentSessionToken() {
+  const session = loadSession();
+  return String(session?.token || "").trim();
+}
+
+function buildHelperBridgeSnapshotUrl(binding) {
+  const publicBase = String(helperConfig?.public_base || "/xyzw-helper").trim() || "/xyzw-helper";
+  return withHelperCacheBuster(`${publicBase.replace(/\/$/, "")}/tokens`, {
+    bridge: "1",
+    bridgeAction: "teamSnapshot",
+    bindTokenId: binding?.bind_token_id || "",
+    gameRoleId: binding?.game_role_id || "",
+    gameServer: binding?.game_server || "",
+    gameRoleName: binding?.game_role_name || "",
+    targetOrigin: window.location.origin,
+    mallToken: getCurrentSessionToken(),
+  });
+}
+
+function buildHelperBridgeLegacyInventoryUrl(binding) {
+  const publicBase = String(helperConfig?.public_base || "/xyzw-helper").trim() || "/xyzw-helper";
+  return withHelperCacheBuster(`${publicBase.replace(/\/$/, "")}/tokens`, {
+    bridge: "1",
+    bridgeAction: "legacyInventory",
+    bindingId: binding?.id || "",
+    bindTokenId: binding?.bind_token_id || "",
+    gameRoleId: binding?.game_role_id || "",
+    gameServer: binding?.game_server || "",
+    gameRoleName: binding?.game_role_name || "",
+    targetOrigin: window.location.origin,
+    mallToken: getCurrentSessionToken(),
+  });
+}
+
+function buildHelperBridgeTeamSwitchUrl(binding, teamId) {
+  const publicBase = String(helperConfig?.public_base || "/xyzw-helper").trim() || "/xyzw-helper";
+  return withHelperCacheBuster(`${publicBase.replace(/\/$/, "")}/tokens`, {
+    bridge: "1",
+    bridgeAction: "teamSwitch",
+    bindTokenId: binding?.bind_token_id || "",
+    gameRoleId: binding?.game_role_id || "",
+    gameServer: binding?.game_server || "",
+    gameRoleName: binding?.game_role_name || "",
+    targetTeamId: teamId,
+    targetOrigin: window.location.origin,
+    mallToken: getCurrentSessionToken(),
+  });
+}
+
+function buildHelperBridgeTeamPreviewUrl(binding, snapshotId) {
+  const publicBase = String(helperConfig?.public_base || "/xyzw-helper").trim() || "/xyzw-helper";
+  return withHelperCacheBuster(`${publicBase.replace(/\/$/, "")}/tokens`, {
+    bridge: "1",
+    bridgeAction: "teamPreview",
+    bindTokenId: binding?.bind_token_id || "",
+    gameRoleId: binding?.game_role_id || "",
+    gameServer: binding?.game_server || "",
+    gameRoleName: binding?.game_role_name || "",
+    targetSnapshotId: snapshotId,
+    targetOrigin: window.location.origin,
+    mallToken: getCurrentSessionToken(),
+  });
+}
+
+function buildHelperBridgeTeamRestoreUrl(binding, snapshotId, restorePlan) {
+  const publicBase = String(helperConfig?.public_base || "/xyzw-helper").trim() || "/xyzw-helper";
+  return withHelperCacheBuster(`${publicBase.replace(/\/$/, "")}/tokens`, {
+    bridge: "1",
+    bridgeAction: "teamRestore",
+    bindTokenId: binding?.bind_token_id || "",
+    gameRoleId: binding?.game_role_id || "",
+    gameServer: binding?.game_server || "",
+    gameRoleName: binding?.game_role_name || "",
+    targetSnapshotId: snapshotId,
+    restorePlan: encodeHelperBridgePayload(restorePlan),
+    targetOrigin: window.location.origin,
+    mallToken: getCurrentSessionToken(),
+  });
+}
+
+function resetHelperBridgeFrame(frame) {
+  if (!frame) return;
+  try {
+    frame.src = "about:blank";
+  } catch (error) {
+    console.warn("resetHelperBridgeFrame failed", error);
+  }
+}
+
+function closeHelperBridgeModal() {
+  if (!helperBridgeModal) return;
+  helperBridgeModal.classList.add("hidden");
+  helperBridgeModal.setAttribute("aria-hidden", "true");
+  helperBridgeSurfaceState = {
+    mode: "",
+    interactive: false,
+  };
+  resetHelperBridgeFrame(helperBridgeIframe);
+}
+
+function clearHelperBridgeBackgroundFrame() {
+  if (helperBridgeBackgroundState.timeoutId) {
+    window.clearTimeout(helperBridgeBackgroundState.timeoutId);
+  }
+  helperBridgeBackgroundState = {
+    mode: "",
+    url: "",
+    timeoutId: null,
+  };
+  resetHelperBridgeFrame(helperBridgeHiddenFrame);
+  if (!helperBridgeSurfaceState.interactive) {
+    helperBridgeSurfaceState = {
+      mode: "",
+      interactive: false,
+    };
+  }
+}
+
+function openHelperBridgeModalSurface(url, options = {}) {
+  if (!helperBridgeModal || !helperBridgeIframe) return false;
+  helperBridgeSurfaceState = {
+    mode: String(options.mode || "").trim(),
+    interactive: true,
+  };
+  if (helperBridgeModalTitle) {
+    helperBridgeModalTitle.textContent = options.title || "绑定游戏角色";
+  }
+  if (helperBridgeModalMessage) {
+    helperBridgeModalMessage.textContent =
+      options.message || "在当前页面完成角色绑定，选择后会自动带回商城。";
+  }
+  if (helperBridgeModalHint) {
+    helperBridgeModalHint.textContent =
+      options.hint || "支持扫码或 BIN 导入，完成后会自动返回商城，不需要手动回跳。";
+  }
+  helperBridgeModal.classList.remove("hidden");
+  helperBridgeModal.setAttribute("aria-hidden", "false");
+  resetHelperBridgeFrame(helperBridgeIframe);
+  window.setTimeout(() => {
+    helperBridgeIframe.src = url;
+  }, 20);
+  return true;
+}
+
+function runHelperBridgeInBackground(url, mode = "") {
+  if (!helperBridgeHiddenFrame) return false;
+  if (helperBridgeBackgroundState.timeoutId) {
+    window.clearTimeout(helperBridgeBackgroundState.timeoutId);
+  }
+  helperBridgeSurfaceState = {
+    mode: String(mode || "").trim(),
+    interactive: false,
+  };
+  helperBridgeBackgroundState = {
+    mode: String(mode || "").trim(),
+    url: String(url || "").trim(),
+    timeoutId: null,
+  };
+  resetHelperBridgeFrame(helperBridgeHiddenFrame);
+  window.setTimeout(() => {
+    helperBridgeHiddenFrame.src = url;
+  }, 20);
+  helperBridgeBackgroundState.timeoutId = window.setTimeout(() => {
+    const pendingMode = helperBridgeBackgroundState.mode;
+    const pendingUrl = helperBridgeBackgroundState.url;
+    clearHelperBridgeBackgroundFrame();
+    if (pendingMode === "legacyInventory") {
+      setHelperInventoryMessage("后台同步超过 45 秒没有返回，已切换到可见 helper 页面继续执行。", "error");
+      openHelperBridgeModalSurface(pendingUrl, {
+        mode: "legacyInventory",
+        title: "功法仓库同步",
+        message: "后台同步超时，已切换到可见 helper 页面。这里会继续自动执行，并把错误直接显示出来。",
+        hint: "如果仍然失败，请保留这个页面，我们继续按页面内提示定位。",
+      });
+      return;
+    }
+    if (pendingMode === "teamSnapshot") {
+      setHelperSnapshotMessage("后台读取超过 45 秒没有返回，已切换到可见 helper 页面继续执行。", "error");
+      openHelperBridgeModalSurface(pendingUrl, {
+        mode: "teamSnapshot",
+        title: "读取当前阵容",
+        message: "后台读取超时，已切换到可见 helper 页面。这里会继续自动执行，并把错误直接显示出来。",
+        hint: "如果仍然失败，请保留这个页面，我们继续按页面内提示定位。",
+      });
+    }
+  }, 45000);
+  return true;
+}
+
+function openHelperBindPopup() {
+  if (!currentProfile) {
+    setHelperBindMessage("请先登录商城账号，再绑定游戏角色。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  if (!isHelperLineupEnabled() || !helperConfig?.features?.scan_bind) {
+    setHelperBindMessage(getHelperLineupDisabledReason("当前环境未开启角色绑定。"), "error");
+    return;
+  }
+  rememberHelperBridgeIntent(HELPER_BRIDGE_INTENT_BIND);
+  const opened = openHelperBridgeModalSurface(buildHelperBridgeBindUrl(), {
+    mode: "bind",
+    title: "绑定游戏角色",
+    message: "在当前页面完成角色绑定。你可以扫码，也可以在角色列表里直接选择已有角色。",
+    hint: "完成后会自动回到商城，不需要手动切回。",
+  });
+  if (!opened) {
+    setHelperBindMessage("当前页面暂时无法打开角色绑定层，请稍后重试。", "error");
+    return;
+  }
+  setHelperBindMessage("角色绑定层已打开，请在当前页面完成扫码或选择角色。", "success");
+}
+
+function openHelperAuthPopup() {
+  if (!isHelperScanAuthEnabled()) {
+    setHelperAuthMessage("当前环境未开启扫码注册 / 登录。", "error");
+    return;
+  }
+  rememberHelperBridgeIntent(HELPER_BRIDGE_INTENT_AUTH);
+  const opened = openHelperBridgeModalSurface(buildHelperBridgeBindUrl(), {
+    mode: "auth",
+    title: "扫码注册 / 登录",
+    message: "在当前页面完成扫码或选择游戏角色，系统会自动完成注册 / 登录。",
+    hint: "扫码后选中角色即可，不需要再手动回跳。",
+  });
+  if (!opened) {
+    setHelperAuthMessage("当前页面暂时无法打开扫码登录层，请稍后重试。", "error");
+    return;
+  }
+  setHelperAuthMessage("扫码登录层已打开，请在当前页面扫码并选择角色。", "success");
+}
+
+async function purchaseHelperSlot(purchaseType) {
+  if (!currentProfile) {
+    setHelperSlotMessage("请先登录商城账号，再购买阵容槽位。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  if (!isHelperLineupEnabled()) {
+    setHelperSlotMessage(getHelperLineupDisabledReason("当前环境未开启阵容中心。"), "error");
+    return;
+  }
+
+  const plan = getHelperLineupPlan();
+  const isPermanent = purchaseType === "permanent";
+  const label = isPermanent ? "永久阵容槽" : `${plan.season_label}阵容槽`;
+  const quotaCost = isPermanent ? plan.permanent_slot_quota : plan.seasonal_slot_quota;
+  const balance = Number(currentQuota?.balance ?? currentProfile?.quota_balance ?? 0);
+  if (balance < quotaCost) {
+    setHelperSlotMessage(`额度不足，购买 ${label} 需要 ${quotaCost} 额度，当前只有 ${balance}。`, "error");
+    return;
+  }
+  const note = isPermanent
+    ? `确认花费 ${quotaCost} 额度购买 1 个永久阵容槽吗？`
+    : `确认花费 ${quotaCost} 额度租用 1 个 ${plan.season_label} 阵容槽吗？到 ${formatDate(plan.season_expires_at || "") || "赛季结束"} 自动失效。`;
+  if (!window.confirm(note)) {
+    return;
+  }
+
+  try {
+    const result = await apiFetch("/me/lineup-slots/purchase", {
+      method: "POST",
+      body: JSON.stringify({ purchase_type: purchaseType }),
+    });
+    const session = loadSession();
+    if (session?.token && result?.user) {
+      saveSession({ ...session, profile: result.user });
+    }
+    setHelperSlotMessage(`已购买 ${label}，现在最多可保存 ${Number(result?.user?.lineup_slot_limit || 0)} 套阵容。`, "success");
+    await loadAccount();
+    await loadHelperConfig();
+  } catch (error) {
+    const code = error?.payload?.error || error?.message || "";
+    const message =
+      code === "lineup_slot_permanent_max_reached"
+        ? `永久阵容槽最多购买 ${plan.permanent_slot_max} 个。`
+        : code === "insufficient_quota"
+          ? "额度不足，暂时无法购买阵容槽。"
+          : pickErrorMessage(error, "购买失败");
+    setHelperSlotMessage(`购买失败：${message}`, "error");
+  }
+}
+
+function openHelperSnapshotPopup() {
+  if (!currentProfile) {
+    setHelperSnapshotMessage("请先登录商城账号，再保存阵容。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  if (!isHelperLineupEnabled() || !helperConfig?.features?.team_snapshot) {
+    setHelperSnapshotMessage(getHelperLineupDisabledReason("当前环境未开启阵容保存。"), "error");
+    return;
+  }
+  const activeBinding = getActiveHelperBinding();
+  if (!activeBinding) {
+    setHelperSnapshotMessage("请先完成角色绑定，再保存阵容。", "error");
+    return;
+  }
+  const snapshotLimit = Math.max(Number(helperConfig?.limits?.snapshots_per_user || 3) || 3, 1);
+  const snapshotCount = Array.isArray(currentHelperSnapshots) ? currentHelperSnapshots.length : 0;
+  if (snapshotCount >= snapshotLimit) {
+    const limitMessage = `当前最多保存 ${snapshotLimit} 套阵容，请先删除旧阵容再继续保存。`;
+    setHelperSnapshotMessage(limitMessage, "error");
+    window.alert(limitMessage);
+    return;
+  }
+  if (!activeBinding.bind_token_id) {
+    setHelperSnapshotMessage("当前绑定信息不完整，请重新扫码绑定一次。", "error");
+    return;
+  }
+  const opened = runHelperBridgeInBackground(
+    buildHelperBridgeSnapshotUrl(activeBinding),
+    "teamSnapshot"
+  );
+  if (!opened) {
+    setHelperSnapshotMessage("当前页面暂时无法启动阵容保存，请稍后重试。", "error");
+    return;
+  }
+  setHelperSnapshotMessage("正在保存当前阵容，完成后会自动出现在下方卡片里。", "success");
+}
+
+function openHelperTeamSwitchPopup(teamId) {
+  if (!currentProfile) {
+    setHelperSwitchMessage("请先登录商城账号，再切换预设阵容。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  if (!isHelperLineupEnabled() || !helperConfig?.features?.team_switch) {
+    setHelperSwitchMessage(getHelperLineupDisabledReason("当前环境未开启 helper 预设阵容切换。"), "error");
+    return;
+  }
+  const activeBinding = getActiveHelperBinding();
+  if (!activeBinding) {
+    setHelperSwitchMessage("请先完成 helper 角色绑定，再切换预设阵容。", "error");
+    return;
+  }
+  const normalizedTeamId = Number(teamId || 0);
+  if (!Number.isInteger(normalizedTeamId) || normalizedTeamId < 1 || normalizedTeamId > 4) {
+    setHelperSwitchMessage("目标阵容号无效，只支持 1-4 号预设阵容。", "error");
+    return;
+  }
+  const confirmed = window.confirm(
+    [
+      `将直接切换到阵容 ${normalizedTeamId}。`,
+      "这一步会真正写游戏，不是预演。",
+      "如果你只是想先看差异，请点“先做恢复预演”。",
+    ].join("\n")
+  );
+  if (!confirmed) {
+    setHelperSwitchMessage(`已取消切换到阵容 ${normalizedTeamId}。`, "");
+    return;
+  }
+  const opened = runHelperBridgeInBackground(
+    buildHelperBridgeTeamSwitchUrl(activeBinding, normalizedTeamId),
+    "teamSwitch"
+  );
+  if (!opened) {
+    setHelperSwitchMessage("当前页面暂时无法执行阵容切换，请稍后重试。", "error");
+    return;
+  }
+  setHelperSwitchMessage(`正在切换到阵容 ${normalizedTeamId}，完成后会自动同步结果。`, "success");
+}
+
+function openHelperPreviewPopup(snapshotId) {
+  if (!currentProfile) {
+    setHelperPreviewMessage("请先登录商城账号，再进行恢复预演。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  if (!isHelperLineupEnabled() || !helperConfig?.features?.team_snapshot) {
+    setHelperPreviewMessage(getHelperLineupDisabledReason("当前环境未开启 helper 阵容快照能力。"), "error");
+    return;
+  }
+  const activeBinding = getActiveHelperBinding();
+  if (!activeBinding) {
+    setHelperPreviewMessage("请先完成 helper 角色绑定，再进行恢复预演。", "error");
+    return;
+  }
+  const targetSnapshot = (currentHelperSnapshots || []).find((item) => Number(item?.id) === Number(snapshotId || 0));
+  if (!targetSnapshot) {
+    setHelperPreviewMessage("未找到要预演的目标快照，请先刷新快照列表。", "error");
+    return;
+  }
+  pendingHelperPreviewSnapshotId = Number(snapshotId || 0);
+  const opened = runHelperBridgeInBackground(
+    buildHelperBridgeTeamPreviewUrl(activeBinding, snapshotId),
+    "teamPreview"
+  );
+  if (!opened) {
+    setHelperPreviewMessage("当前页面暂时无法执行恢复预演，请稍后重试。", "error");
+    return;
+  }
+  setHelperPreviewMessage(`系统正在核对“${buildHelperSnapshotName(targetSnapshot)}”的还原步骤。`, "success");
+}
+
+function openHelperRestorePopup(snapshotId) {
+  if (!currentProfile) {
+    setHelperSwitchMessage("请先登录商城账号，再执行安全恢复。", "error");
+    window.location.hash = "bind";
+    return;
+  }
+  if (!isHelperLineupEnabled() || !helperConfig?.features?.team_restore) {
+    setHelperSwitchMessage(getHelperLineupDisabledReason("当前环境未开启 helper 安全恢复 Beta。"), "error");
+    return;
+  }
+  const activeBinding = getActiveHelperBinding();
+  if (!activeBinding) {
+    setHelperSwitchMessage("请先完成 helper 角色绑定，再执行安全恢复。", "error");
+    return;
+  }
+  const targetSnapshot = (currentHelperSnapshots || []).find(
+    (item) => Number(item?.id) === Number(snapshotId || 0)
+  );
+  if (!targetSnapshot) {
+    setHelperSwitchMessage("未找到要恢复的目标快照，请先刷新快照列表。", "error");
+    return;
+  }
+  const restoreBlockReason = getSnapshotSafeRestoreBlockReason(targetSnapshot);
+  if (restoreBlockReason) {
+    setHelperSwitchMessage(restoreBlockReason, "error");
+    return;
+  }
+  const restorePlan = buildHelperRestorePlanFromSnapshot(targetSnapshot);
+  if (!restorePlan.team_id || !Array.isArray(restorePlan.heroes) || !restorePlan.heroes.length) {
+    setHelperSwitchMessage("这份快照缺少足够的恢复信息，请先重新读取一份新快照。", "error");
+    return;
+  }
+  const confirmed = window.confirm(
+    [
+      `确认一键还原到“${buildHelperSnapshotName(targetSnapshot)}”？`,
+      "系统会自动校对洗练归属，再恢复阵容、等级、鱼灵、鱼珠、科技和玩具。",
+      "不会回滚洗练数值本身。",
+    ].join("\n")
+  );
+  if (!confirmed) {
+    setHelperSwitchMessage(`已取消还原“${buildHelperSnapshotName(targetSnapshot)}”。`, "");
+    return;
+  }
+  const opened = runHelperBridgeInBackground(
+    buildHelperBridgeTeamRestoreUrl(activeBinding, snapshotId, restorePlan),
+    "teamRestore"
+  );
+  if (!opened) {
+    setHelperSwitchMessage("当前页面暂时无法执行一键还原，请稍后重试。", "error");
+    return;
+  }
+  setHelperRestoreProgress({
+    status: "running",
+    percent: 0,
+    label: "准备还原",
+    detail: `正在打开“${buildHelperSnapshotName(targetSnapshot)}”的恢复窗口`,
+  });
+  setHelperSwitchMessage(
+    `正在还原“${buildHelperSnapshotName(targetSnapshot)}”，完成后会自动同步最新状态。`,
+    "success"
+  );
+}
+
+async function savePendingHelperBinding() {
+  if (!currentProfile) {
+    setHelperBindMessage("请先登录商城账号。", "error");
+    return;
+  }
+  if (!pendingHelperBridgePayload) {
+    setHelperBindMessage("当前没有待保存的 helper 角色，请先扫码选择角色。", "error");
+    return;
+  }
+  try {
+    const result = await apiFetch("/helper/bindings/current", {
+      method: "POST",
+      body: JSON.stringify({
+        game_role_id: pendingHelperBridgePayload.game_role_id,
+        game_server: pendingHelperBridgePayload.game_server,
+        game_role_name: pendingHelperBridgePayload.game_role_name,
+        bind_token_id: pendingHelperBridgePayload.bind_token_id || "",
+        nickname: pendingHelperBridgePayload.nickname || "",
+        helper_token: pendingHelperBridgePayload.helper_token || "",
+        helper_ws_url: pendingHelperBridgePayload.helper_ws_url || "",
+        helper_import_method: pendingHelperBridgePayload.helper_import_method || "",
+      }),
+    });
+    await Promise.allSettled([loadHelperBindings(), loadHelperInventories()]);
+    setActiveHelperBinding(result?.id);
+    setHelperBindMessage("角色已绑定到当前商城账号。", "success");
+    renderHelperBindingPanel();
+    renderHelperTeamSwitchPanel();
+  } catch (error) {
+    setHelperBindMessage(`绑定失败：${pickErrorMessage(error, "绑定失败")}`, "error");
+  }
+}
+
+async function removeHelperBinding(bindingId) {
+  try {
+    await apiFetch(`/helper/bindings/current/${bindingId}`, {
+      method: "DELETE",
+    });
+    currentHelperBindings = (currentHelperBindings || []).filter(
+      (item) => Number(item?.id || 0) !== Number(bindingId || 0)
+    );
+    syncActiveHelperBindingPreference();
+    await loadHelperInventories();
+    setHelperBindMessage("helper 绑定已解除。", "success");
+    renderHelperBindingPanel();
+    renderHelperTeamSwitchPanel();
+  } catch (error) {
+    setHelperBindMessage(`解绑失败：${pickErrorMessage(error, "解绑失败")}`, "error");
+  }
+}
+
+function clearPendingHelperSelection() {
+  pendingHelperBridgePayload = null;
+  clearHelperBridgeSession();
+  clearPendingHelperBridgeIntent();
+  renderHelperBindingPanel();
+  setHelperBindMessage("已清空刚刚扫码带回来的角色。", "success");
+}
+
+async function autoBindHelperRoleToCurrentSession(payload) {
+  if (!isHelperLineupEnabled() || !helperConfig?.features?.scan_bind) return null;
+  try {
+    const result = await apiFetch("/helper/bindings/current", {
+      method: "POST",
+      body: JSON.stringify({
+        game_role_id: payload.game_role_id,
+        game_server: payload.game_server,
+        game_role_name: payload.game_role_name,
+        bind_token_id: payload.bind_token_id || "",
+        nickname: payload.nickname || "",
+        helper_token: payload.helper_token || "",
+        helper_ws_url: payload.helper_ws_url || "",
+        helper_import_method: payload.helper_import_method || "",
+      }),
+    });
+    await loadHelperBindings();
+    setActiveHelperBinding(result?.id);
+    renderHelperBindingPanel();
+    renderHelperTeamSwitchPanel();
+    return result;
+  } catch (error) {
+    console.warn("auto bind helper role failed", error);
+    return null;
+  }
+}
+
+async function completeHelperScanAuth(payload) {
+  setHelperAuthMessage("正在通过扫码进入商城...", "");
+  try {
+    const result = await apiFetch("/auth/game/bind", {
+      method: "POST",
+      body: JSON.stringify({
+        game_role_id: payload.game_role_id,
+        game_server: payload.game_server,
+        game_role_name: payload.game_role_name,
+        bind_token_id: payload.bind_token_id || "",
+        nickname: payload.nickname || "",
+      }),
+    });
+    saveSession(result);
+    const immediateProfile = getSessionProfileFallback(result);
+    if (immediateProfile) {
+      renderSessionSummary(immediateProfile);
+      renderProfile(immediateProfile, { balance: Number(immediateProfile.quota_balance ?? 0) }, []);
+    }
+    await loadHelperConfig();
+    pendingHelperBridgePayload = null;
+    clearHelperBridgeSession();
+    clearPendingHelperBridgeIntent();
+    await autoBindHelperRoleToCurrentSession(payload);
+    schedulePostAuthAccountFocus();
+    const successMessage = `已进入账号 ${payload.game_role_name}，后续阵容会默认绑定这个角色。`;
+    closeHelperBridgeModal();
+    setHelperAuthMessage(successMessage, "success");
+    setNotice(successMessage, "success");
+    activateAccountTab("overview");
+    window.location.hash = isHelperLineupEnabled() ? "helper-lab" : "account";
+    await Promise.allSettled([loadAccount(), loadHelperBindings(), loadHelperSnapshots(), loadHelperActionLogs()]);
+  } catch (error) {
+    const message = pickErrorMessage(error, "扫码进入失败");
+    setHelperAuthMessage(`扫码进入失败：${message}`, "error");
+    setNotice(`扫码进入失败：${message}`, "error");
+  }
+}
+
+function clearHelperRestorePreview() {
+  currentHelperRestorePreview = null;
+  pendingHelperPreviewSnapshotId = null;
+  renderHelperRestorePreviewPanel();
+  setHelperPreviewMessage("恢复预演结果已清空。", "success");
+}
+
+async function saveHelperInventoryFromBridge(payload) {
+  const created = await apiFetch("/helper/inventories", {
+    method: "POST",
+    body: JSON.stringify({
+      binding_id:
+        payload?.binding_id === undefined || payload?.binding_id === null
+          ? null
+          : Number(payload.binding_id),
+      source_type: "helper_bridge",
+      summary: payload?.summary || {},
+      items: Array.isArray(payload?.items) ? payload.items : [],
+    }),
+  });
+  await loadHelperInventories();
+  return created;
+}
+
+async function saveHelperSnapshotFromBridge(payload) {
+  const activeBinding = getActiveHelperBinding();
+  const snapshotLimit = Math.max(Number(helperConfig?.limits?.snapshots_per_user || 3) || 3, 1);
+  const snapshotCount = Array.isArray(currentHelperSnapshots) ? currentHelperSnapshots.length : 0;
+  if (snapshotCount >= snapshotLimit) {
+    throw new Error(`每个账号最多保存 ${snapshotLimit} 套阵容，请先删除旧阵容。`);
+  }
+  const snapshotName =
+    String(payload?.summary?.role_name || "").trim()
+      ? `${String(payload.summary.role_name).trim()} · 阵容 ${Number(payload?.summary?.use_team_id || 1)}`
+      : "阵容快照";
+  const created = await apiFetch("/helper/snapshots", {
+    method: "POST",
+    body: JSON.stringify({
+      binding_id: activeBinding?.id ?? null,
+      source_type: "helper_bridge",
+      snapshot_name: snapshotName,
+      summary: payload?.summary || {},
+      raw: payload?.raw || {},
+    }),
+  });
+  currentHelperSnapshots = sortHelperSnapshotsList([
+    created,
+    ...(currentHelperSnapshots || []).filter((item) => Number(item.id) !== Number(created.id)),
+  ]);
+  renderHelperSnapshotPanel();
+  return created;
+}
+
+async function saveHelperActionLogFromBridge(payload) {
+  const activeBinding = getActiveHelperBinding();
+  const created = await apiFetch("/helper/action-logs", {
+    method: "POST",
+    body: JSON.stringify({
+      binding_id: activeBinding?.id ?? null,
+      action_type: payload?.action_type || "helper_team_switch",
+      action_payload: payload?.action_payload || {},
+      result_status: payload?.result_status || "ok",
+      result_payload: payload?.result_payload || {},
+    }),
+  });
+  currentHelperActionLogs = [
+    created,
+    ...(currentHelperActionLogs || []).filter((item) => Number(item.id) !== Number(created.id)),
+  ];
+  renderHelperTeamSwitchPanel();
+  return created;
+}
+
+async function removeHelperSnapshot(snapshotId) {
+  try {
+    await apiFetch(`/helper/snapshots/${snapshotId}`, {
+      method: "DELETE",
+    });
+    expandedHelperSnapshotIds.delete(Number(snapshotId || 0));
+    currentHelperSnapshots = (currentHelperSnapshots || []).filter(
+      (item) => Number(item.id) !== Number(snapshotId)
+    );
+    if (Number(currentHelperRestorePreview?.target_snapshot_id || 0) === Number(snapshotId || 0)) {
+      currentHelperRestorePreview = null;
+      renderHelperRestorePreviewPanel();
+    }
+    renderHelperSnapshotPanel();
+    setHelperSnapshotMessage("阵容快照已删除。", "success");
+  } catch (error) {
+    setHelperSnapshotMessage(`删除快照失败：${pickErrorMessage(error, "删除失败")}`, "error");
+  }
+}
+
+async function renameHelperSnapshot(snapshotId) {
+  const targetSnapshot = (currentHelperSnapshots || []).find(
+    (item) => Number(item?.id) === Number(snapshotId || 0)
+  );
+  if (!targetSnapshot) {
+    setHelperSnapshotMessage("没有找到要重命名的阵容。", "error");
+    return;
+  }
+  const currentName = String(targetSnapshot?.snapshot_name || buildHelperSnapshotName(targetSnapshot)).trim();
+  const nextName = window.prompt("给这套阵容起个名字", currentName);
+  if (nextName === null) return;
+  const normalizedName = String(nextName || "").trim();
+  if (!normalizedName) {
+    setHelperSnapshotMessage("阵容名不能为空。", "error");
+    return;
+  }
+  if (normalizedName.length > 40) {
+    setHelperSnapshotMessage("阵容名最多 40 个字。", "error");
+    return;
+  }
+  try {
+    const updated = await updateHelperSnapshotMeta(snapshotId, { snapshot_name: normalizedName });
+    if (updated) {
+      setHelperSnapshotMessage(`阵容已改名为“${normalizedName}”。`, "success");
+    }
+  } catch (error) {
+    setHelperSnapshotMessage(`重命名失败：${pickErrorMessage(error, "保存失败")}`, "error");
+  }
+}
+
+async function updateHelperSnapshotMeta(snapshotId, payload) {
+  const updated = await apiFetch(`/helper/snapshots/${snapshotId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  currentHelperSnapshots = (currentHelperSnapshots || []).map((item) =>
+    Number(item?.id) === Number(snapshotId)
+      ? updated
+      : payload?.is_pinned
+        ? { ...item, is_pinned: false }
+        : item
+  );
+  currentHelperSnapshots = sortHelperSnapshotsList(currentHelperSnapshots);
+  if (Number(currentHelperRestorePreview?.target_snapshot_id || 0) === Number(snapshotId || 0)) {
+    currentHelperRestorePreview = {
+      ...currentHelperRestorePreview,
+      target_snapshot_name: updated.snapshot_name,
+    };
+    renderHelperRestorePreviewPanel();
+  }
+  renderHelperSnapshotPanel();
+  return updated;
+}
+
+async function togglePinHelperSnapshot(snapshotId) {
+  const targetSnapshot = (currentHelperSnapshots || []).find(
+    (item) => Number(item?.id) === Number(snapshotId || 0)
+  );
+  if (!targetSnapshot) {
+    setHelperSnapshotMessage("没有找到要置顶的阵容。", "error");
+    return;
+  }
+  const nextPinned = !Boolean(targetSnapshot?.is_pinned);
+  try {
+    await updateHelperSnapshotMeta(snapshotId, { is_pinned: nextPinned });
+    setHelperSnapshotMessage(
+      nextPinned
+        ? `已将“${buildHelperSnapshotName(targetSnapshot)}”置顶显示。`
+        : `已取消“${buildHelperSnapshotName(targetSnapshot)}”的置顶。`,
+      "success"
+    );
+  } catch (error) {
+    setHelperSnapshotMessage(`置顶保存失败：${pickErrorMessage(error, "保存失败")}`, "error");
+  }
+}
+
+function buildHelperRestoreResultMarkup(log) {
+  if (!log) {
+    return '<div class="stack-item">还没有执行过一键还原。</div>';
+  }
+  const resultPayload = log?.result_payload || {};
+  const restoreCounts = resultPayload?.restore_counts || {};
+  const changedBits = [
+    restoreCounts?.attachment_transfers ? `洗练归属 ${restoreCounts.attachment_transfers} 套` : "",
+    restoreCounts?.hero_adds || restoreCounts?.hero_moves || restoreCounts?.hero_removes
+      ? `武将 ${Number(restoreCounts?.hero_adds || 0) + Number(restoreCounts?.hero_moves || 0) + Number(restoreCounts?.hero_removes || 0)} 名`
+      : "",
+    restoreCounts?.team_attempts > 1 ? `武将重试 ${restoreCounts.team_attempts} 轮` : "",
+    restoreCounts?.hero_verify_mismatches ? `武将待确认 ${restoreCounts.hero_verify_mismatches} 处` : "",
+    restoreCounts?.artifact_loads || restoreCounts?.artifact_unloads
+      ? `鱼灵 ${Number(restoreCounts?.artifact_loads || 0) + Number(restoreCounts?.artifact_unloads || 0)} 次`
+      : "",
+    restoreCounts?.pearl_skill_changes ? `鱼珠 ${restoreCounts.pearl_skill_changes} 处` : "",
+    restoreCounts?.legion_steps || restoreCounts?.legion_resets
+      ? `科技 ${Number(restoreCounts?.legion_steps || 0) + Number(restoreCounts?.legion_resets || 0)} 步`
+      : "",
+    restoreCounts?.legion_attempts > 1 ? `科技重试 ${restoreCounts.legion_attempts} 轮` : "",
+    restoreCounts?.legion_verify_mismatches ? `科技待确认 ${restoreCounts.legion_verify_mismatches} 项` : "",
+    restoreCounts?.weapon_changes ? `玩具 ${restoreCounts.weapon_changes} 次` : "",
+  ].filter(Boolean);
+  const warnings = Array.isArray(resultPayload?.warnings) ? resultPayload.warnings : [];
+  const resultCards = [
+    { label: "恢复目标", value: log?.action_payload?.snapshot_name || "阵容还原" },
+    {
+      label: "当前落点",
+      value: `${resultPayload?.role_name || "-"} / ${resultPayload?.use_team_id ? `${resultPayload.use_team_id} 号阵容` : "目标阵容"}`,
+    },
+    {
+      label: "本次动作",
+      value: changedBits.length ? changedBits.slice(0, 3).join(" · ") : "没有明显变更",
+    },
+    {
+      label: "待确认项",
+      value: warnings.length ? `${warnings.length} 条` : "无",
+      accent: warnings.length ? "warning" : "success",
+    },
+  ]
+    .map(
+      (item) => `
+        <article class="helper-restore-stat ${item.accent || ""}">
+          <div class="helper-restore-stat-label">${escapeHtml(item.label)}</div>
+          <div class="helper-restore-stat-value">${escapeHtml(item.value)}</div>
+        </article>
+      `
+    )
+    .join("");
+  return `
+    <div class="helper-restore-result-card ${escapeHtml(log?.result_status || "ok")}">
+      <div class="helper-restore-result-head">
+        <div>
+          <div class="helper-snapshot-kicker">最近一次还原</div>
+          <strong class="helper-snapshot-title">${escapeHtml(log?.action_payload?.snapshot_name || "阵容还原")}</strong>
+        </div>
+        <div class="helper-snapshot-time">
+          <div>${escapeHtml(formatRelativeActionTime(log?.created_at))}</div>
+          <div>${escapeHtml(formatDate(log?.created_at))}</div>
+        </div>
+      </div>
+      <div class="helper-snapshot-summary">已恢复到 ${escapeHtml(resultPayload?.role_name || "-")} / ${escapeHtml(resultPayload?.server || "-")} / ${escapeHtml(resultPayload?.use_team_id ? `${resultPayload.use_team_id}号阵容` : "目标阵容")}</div>
+      <div class="helper-restore-stat-grid">${resultCards}</div>
+      <div class="helper-hero-meta helper-hero-meta-soft">
+        ${
+          changedBits.length
+            ? changedBits.map((item) => `<span class="helper-chip">${escapeHtml(item)}</span>`).join("")
+            : '<span class="helper-chip">本次没有检测到明显变更</span>'
+        }
+      </div>
+      <div class="helper-status-meta helper-restore-message">${escapeHtml(resultPayload?.message || "阵容还原已执行。")}</div>
+      ${
+        warnings.length
+          ? `<div class="helper-restore-warning-list">${warnings
+              .map((item) => `<div class="helper-restore-warning-item">${escapeHtml(item)}</div>`)
+              .join("")}</div>`
+          : '<div class="helper-status-meta">仅记录未处理项：无</div>'
+      }
+    </div>
+  `;
+}
+
+function renderHelperRestoreResultPanel() {
+  if (!helperRestoreResultCurrent) return;
+  const latestRestoreLog = (currentHelperActionLogs || []).find(
+    (item) => String(item?.action_type || "").trim() === "helper_team_restore"
+  );
+  helperRestoreResultCurrent.innerHTML = buildHelperRestoreResultMarkup(latestRestoreLog);
+}
+
+function handleHelperBridgeMessage(event) {
+  const data = event?.data;
+  if (!data) {
+    return false;
+  }
+  if (typeof data?.type === "string" && data.type.startsWith("gongfa_helper_")) {
+    setDebugLine("helper.message", data.type);
+  }
+  if (data.type === "gongfa_helper_team_switch_result") {
+    clearHelperBridgeBackgroundFrame();
+    saveHelperActionLogFromBridge(data.payload || {})
+      .then((created) => {
+        const fallbackMessage =
+          created?.result_status === "ok"
+            ? `已切换到阵容 ${created?.result_payload?.use_team_id || created?.action_payload?.team_id || "-"}.`
+            : `切换到阵容 ${created?.action_payload?.team_id || "-"} 失败。`;
+        setHelperSwitchMessage(created?.result_payload?.message || fallbackMessage, created?.result_status === "ok" ? "success" : "error");
+        loadHelperActionLogs();
+        window.location.hash = "helper-lab";
+      })
+      .catch((error) => {
+        setHelperSwitchMessage(`切换记录保存失败：${pickErrorMessage(error, "保存失败")}`, "error");
+      });
+    return true;
+  }
+  if (data.type === "gongfa_helper_legacy_inventory") {
+    clearHelperBridgeBackgroundFrame();
+    saveHelperInventoryFromBridge(data.payload || {})
+      .then((created) => {
+        helperInventorySyncState.completed += 1;
+        const bindingRoleName =
+          normalizeHelperDisplayRoleName(
+            created?.binding?.game_role_name || created?.summary?.role_name,
+            created?.binding?.game_role_id || created?.summary?.role_id
+          ) || "该角色";
+        setHelperInventoryMessage(
+          `已同步 ${bindingRoleName} 的功法库存，当前共 ${Number(created?.summary?.legacy_count || created?.items?.length || 0)} 张功法。`,
+          "success"
+        );
+        if (helperInventorySyncState.running) {
+          startNextHelperInventorySyncInQueue();
+        }
+        window.location.hash = "helper-lab";
+      })
+      .catch((error) => {
+        helperInventorySyncState.failures.push({
+          binding_id: Number(data?.payload?.binding_id || 0),
+          role_name: String(data?.payload?.summary?.role_name || "").trim() || "未命名角色",
+          message: pickErrorMessage(error, "保存失败"),
+        });
+        setHelperInventoryMessage(`功法库存保存失败：${pickErrorMessage(error, "保存失败")}`, "error");
+        if (helperInventorySyncState.running) {
+          startNextHelperInventorySyncInQueue();
+        }
+      });
+    return true;
+  }
+  if (data.type === "gongfa_helper_legacy_inventory_error") {
+    clearHelperBridgeBackgroundFrame();
+    helperInventorySyncState.failures.push({
+      binding_id: Number(data?.payload?.binding_id || 0),
+      role_name: String(data?.payload?.role_name || "").trim() || "未命名角色",
+      message: String(data?.payload?.message || "功法库存同步失败").trim(),
+    });
+    setHelperInventoryMessage(
+      String(data?.payload?.message || "功法库存同步失败").trim() || "功法库存同步失败",
+      "error"
+    );
+    if (helperInventorySyncState.running) {
+      startNextHelperInventorySyncInQueue();
+    }
+    return true;
+  }
+  if (data.type === "gongfa_helper_team_snapshot") {
+    clearHelperBridgeBackgroundFrame();
+    saveHelperSnapshotFromBridge(data.payload || {})
+      .then((created) => {
+        setHelperSnapshotMessage(
+          `阵容已保存：${buildHelperSnapshotName(created)}。`,
+          "success"
+        );
+        loadHelperSnapshots();
+        window.location.hash = "helper-lab";
+      })
+      .catch((error) => {
+        setHelperSnapshotMessage(`快照保存失败：${pickErrorMessage(error, "保存失败")}`, "error");
+      });
+    return true;
+  }
+  if (data.type === "gongfa_helper_team_restore_result") {
+    clearHelperBridgeBackgroundFrame();
+    saveHelperActionLogFromBridge(data.payload || {})
+      .then((created) => {
+        const fallbackMessage =
+          created?.result_status === "ok" || created?.result_status === "warning"
+            ? "阵容还原已执行。"
+            : "阵容还原失败。";
+        const resultPayload = created?.result_payload || {};
+        setHelperRestoreProgress({
+          status:
+            created?.result_status === "error"
+              ? "error"
+              : created?.result_status === "warning"
+                ? "warning"
+                : "success",
+          percent: 100,
+          label:
+            created?.result_status === "error"
+              ? "恢复失败"
+              : created?.result_status === "warning"
+                ? "恢复完成，仍有待确认项"
+                : "恢复完成",
+          detail: resultPayload?.message || fallbackMessage,
+        });
+        setHelperSwitchMessage(
+          resultPayload?.message || fallbackMessage,
+          created?.result_status === "ok" || created?.result_status === "warning" ? "success" : "error"
+        );
+        currentHelperRestorePreview = null;
+        renderHelperRestorePreviewPanel();
+        loadHelperSnapshots();
+        loadHelperActionLogs();
+        window.location.hash = "helper-lab";
+      })
+      .catch((error) => {
+        setHelperSwitchMessage(`恢复记录保存失败：${pickErrorMessage(error, "保存失败")}`, "error");
+      });
+    return true;
+  }
+  if (data.type === "gongfa_helper_team_restore_progress") {
+    setHelperRestoreProgress(data.payload || null);
+    window.location.hash = "helper-lab";
+    return true;
+  }
+  if (data.type === "gongfa_helper_team_preview") {
+    clearHelperBridgeBackgroundFrame();
+    const snapshotId = Number(data?.payload?.snapshot_id || pendingHelperPreviewSnapshotId || 0);
+    const targetSnapshot = (currentHelperSnapshots || []).find((item) => Number(item?.id) === snapshotId);
+    if (!targetSnapshot) {
+      setHelperPreviewMessage("收到预演结果，但目标快照已不存在或尚未加载。", "error");
+      return true;
+    }
+    currentHelperRestorePreview = buildHelperRestorePreview(targetSnapshot, data?.payload?.live_snapshot || {});
+    pendingHelperPreviewSnapshotId = null;
+    renderHelperRestorePreviewPanel();
+      setHelperPreviewMessage(
+      `系统已完成还原核对：${currentHelperRestorePreview.safe_step_count || 0} 项可自动处理，${currentHelperRestorePreview.recorded_only_count || 0} 项仅记录。`,
+      "success"
+    );
+    window.location.hash = "helper-lab";
+    return true;
+  }
+  if (data.type !== "gongfa_helper_bind_role") {
+    return false;
+  }
+  const payload = normalizeBindPayload(data.payload || data);
+  if (!payload) {
+    const pendingIntent = getPendingHelperBridgeIntent();
+    if (pendingIntent === HELPER_BRIDGE_INTENT_AUTH) {
+      setHelperAuthMessage("收到的 helper 回传数据不完整，请重新选择角色。", "error");
+    } else {
+      setHelperBindMessage("收到的 helper 回传数据不完整，请重新选择角色。", "error");
+    }
+    return true;
+  }
+  const pendingIntent = getPendingHelperBridgeIntent();
+  if (pendingIntent === HELPER_BRIDGE_INTENT_AUTH) {
+    completeHelperScanAuth(payload);
+    return true;
+  }
+  closeHelperBridgeModal();
+  pendingHelperBridgePayload = {
+    ...payload,
+    helper_token: data.payload?.helper_token || "",
+    helper_ws_url: data.payload?.helper_ws_url || "",
+    helper_import_method: data.payload?.helper_import_method || "wxQrcode",
+  };
+  saveHelperBridgeSession(pendingHelperBridgePayload);
+  clearPendingHelperBridgeIntent();
+  fillBindForm(payload);
+  renderHelperBindingPanel();
+  renderHelperRestorePreviewPanel();
+  setHelperBindMessage(`已接收角色：${payload.game_role_name}，确认后可绑定到当前商城账号。`, "success");
+  window.location.hash = "helper-lab";
+  return true;
+}
+
+function renderHelperLab() {
+  const enabled = isHelperLineupEnabled();
+  const features = helperConfig?.features || {};
+  const publicBase = String(helperConfig?.public_base || "/xyzw-helper").trim() || "/xyzw-helper";
+  const accessReason = getHelperLineupDisabledReason();
+
+  helperLabSection?.classList.toggle("hidden", !enabled);
+  helperLabDockItem?.classList.toggle("hidden", !enabled);
+  if (helperLabBadge) {
+    helperLabBadge.textContent = enabled ? "可用" : helperConfig?.access?.whitelist_active ? "白名单中" : "未启用";
+  }
+  if (helperLabNote) {
+    helperLabNote.textContent = enabled
+      ? "保存一次当前阵容，之后就能直接从云端卡片里一键切回。系统会自动处理还原前的校验，不需要你手动预演。"
+      : accessReason;
+  }
+  if (helperEntryNote) {
+    helperEntryNote.textContent = enabled
+      ? "当前环境已启用 helper 实验入口，建议只在测试服账号上联调。"
+      : helperConfig?.access?.whitelist_active
+        ? "阵容中心正在灰度开放中，只有白名单账号会显示这个入口。"
+        : "当前主流程不依赖 helper，这里只保留给历史兼容或调试使用。";
+  }
+  if (helperLabOpenLink) {
+    helperLabOpenLink.href = withHelperCacheBuster(`${publicBase.replace(/\/$/, "")}/`);
+    helperLabOpenLink.classList.toggle("hidden", String(currentProfile?.role || "").trim() !== "admin");
+  }
+  renderHelperAuthEntry();
+  renderHelperBindingPanel();
+  renderHelperInventoryPanel();
+  renderHelperSnapshotPanel();
+  renderHelperRestoreProgressPanel();
+  renderHelperRestorePreviewPanel();
+  renderHelperTeamSwitchPanel();
+}
+
+async function loadHelperConfig() {
+  try {
+    const result = await apiFetch("/helper/config");
+    helperConfig = {
+      ...helperConfig,
+      ...(result || {}),
+      features: {
+        ...helperConfig.features,
+        ...(result?.features || {}),
+      },
+      plans: {
+        ...helperConfig.plans,
+        ...(result?.plans || {}),
+      },
+      access: {
+        ...helperConfig.access,
+        ...(result?.access || {}),
+      },
+    };
+    const defaultOrigin = String(helperConfig.public_base || "/xyzw-helper").trim() || "/xyzw-helper";
+    const resolvedOrigin = ensureHelperOrigin(defaultOrigin);
+    helperOriginInput.value = resolvedOrigin;
+  } catch (error) {
+    console.warn("helper config load failed", error);
+  } finally {
+    renderHelperLab();
+    loadHelperBindings();
+    loadHelperInventories();
+    loadHelperSnapshots();
+    loadHelperActionLogs();
+  }
+}
+
 function renderSessionSummary(profile) {
   updateShellVisibility(profile);
+  renderHelperAuthEntry();
   if (!profile) {
     sessionSummary.textContent = "未登录";
     sessionRole.textContent = "请先登录账号再充值或下单。";
@@ -533,6 +3817,13 @@ function getSeasonDisplayText(product) {
   const scheduleId = Number(product?.schedule_id || 0);
   if (!scheduleId) return "老卡";
   return isCurrentSeasonProduct(product) ? `S${scheduleId} 当前赛季` : `S${scheduleId} 老卡`;
+}
+
+function getSeasonCompactLabel(product) {
+  if (isBundle(product)) return "套餐";
+  const scheduleId = Number(product?.schedule_id || 0);
+  if (!scheduleId) return "往季";
+  return isCurrentSeasonProduct(product) ? `S${scheduleId} 本季` : `S${scheduleId} 往季`;
 }
 
 function getProductCategory(product) {
@@ -1290,6 +4581,18 @@ function renderTermBadge(badge) {
   return `<span class="term-badge ${escapeHtml(badge.kind || "term")}">${escapeHtml(badge.label || "")}</span>`;
 }
 
+function renderProductTermRow(termBadges, limit = 2) {
+  if (!termBadges.length) return "";
+  const visibleBadges = termBadges.slice(0, limit);
+  const overflow = termBadges.length - visibleBadges.length;
+  return `
+    <div class="term-row compact">
+      ${visibleBadges.map((badge) => renderTermBadge(badge)).join("")}
+      ${overflow > 0 ? `<span class="term-badge plain term-more">+${overflow}</span>` : ""}
+    </div>
+  `;
+}
+
 function renderProductVisual(product, variant = "grid") {
   if (isBundle(product) && !product?.image_url) {
     return renderBundleCollage(product, variant);
@@ -1348,14 +4651,10 @@ function renderDiscountPagination() {
 
 function renderProductCard(product) {
   const termBadges = parseTermBadges(product.ext_attrs, product);
-  const stockLabel =
-    product.stock === null || product.stock === undefined
-      ? "不限量"
-      : `库存 ${Number(product.stock || 0)}`;
   const cashPriceText = getProductCashPriceText(product);
   const subtitle = isBundle(product)
-    ? `${getTierLabel(product)} / ${escapeHtml(product.uid || "")}`
-    : `${getTierLabel(product)} / ID ${product.legacy_id} / ${escapeHtml(getSeasonDisplayText(product))}`;
+    ? `${getTierLabel(product)} / 套餐`
+    : `${getTierLabel(product)} / ${escapeHtml(getSeasonCompactLabel(product))}`;
   const bodyHtml = isBundle(product)
     ? `<div class="product-meta">${escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>`
     : `
@@ -1371,28 +4670,26 @@ function renderProductCard(product) {
     <article class="product-card ${discounted ? "discounted" : ""}">
       <div class="product-cover">${renderProductVisual(product, "grid")}</div>
       <div class="product-summary">
-        <div class="product-headline">
-          <div class="discount-title-line">
-            <div class="product-name">${escapeHtml(product.name)}</div>
-            ${discounted ? `<span class="chip discount">${escapeHtml(product.discount_label || "限时折扣")}</span>` : ""}
-          </div>
-          <div class="product-type-chip">${subtitle}</div>
+      <div class="product-headline">
+        <div class="discount-title-line">
+          <div class="product-name">${escapeHtml(product.name)}</div>
+          ${discounted ? `<span class="chip discount">${escapeHtml(product.discount_label || "限时折扣")}</span>` : ""}
         </div>
-        ${bodyHtml}
-        <div class="term-row">
-          ${
-            termBadges.length > 0
-              ? termBadges.map((badge) => renderTermBadge(badge)).join("")
-              : '<span class="term-empty">无额外词条</span>'
-          }
-        </div>
+        <div class="product-type-chip">${subtitle}</div>
+      </div>
+      ${bodyHtml}
+      ${renderProductTermRow(termBadges)}
       </div>
       <div class="chip-row">
-        ${discounted ? `<span class="chip original-price">原价 ${formatCompactNumber(originalPriceQuota)}</span>` : ""}
-        <span class="chip ${discounted ? "accent" : ""}">现价 ${formatCompactNumber(product.price_quota || 0)}</span>
-        ${cashPriceText ? `<span class="chip accent">${escapeHtml(cashPriceText)}</span>` : ""}
+        ${discounted ? `<span class="chip original-price">原 ${formatCompactNumber(originalPriceQuota)}</span>` : ""}
+        <span class="chip ${discounted ? "accent" : "strong"}">残卷 ${formatCompactNumber(product.price_quota || 0)}</span>
+        ${cashPriceText ? `<span class="chip accent soft">${escapeHtml(cashPriceText)}</span>` : ""}
         ${discounted && Number(product.discount_saved_quota || 0) > 0 ? `<span class="chip discount">立省 ${formatCompactNumber(product.discount_saved_quota)}</span>` : ""}
-        <span class="chip">${escapeHtml(product.stock_label || stockLabel)}</span>
+        ${
+          product.stock !== null && product.stock !== undefined && Number(product.stock) <= 1
+            ? `<span class="chip subtle">余量 ${Number(product.stock || 0)}</span>`
+            : ""
+        }
       </div>
       <div class="actions">
         <button class="ghost detail-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">详情</button>
@@ -2479,7 +5776,7 @@ function getRechargeQuoteSummary(profile, rechargeConfig, amountYuan, orderType 
   const normalizedAmount = Math.max(Number(amountYuan) || 0, 0);
   const baseQuota = Math.round(
     (normalizedAmount * Number(rechargeConfig?.exchange_quota || 0)) /
-      Math.max(Number(rechargeConfig?.exchange_yuan || 1), 1)
+      Math.max(Number(rechargeConfig?.exchange_yuan || 1), 0.01)
   );
   const bonusQuota = profile?.season_member_active
     ? Math.floor(baseQuota * Number(rechargeConfig?.season_member_bonus_rate || 0))
@@ -3017,14 +6314,18 @@ function startDirectPurchase(itemId, itemKind = "card") {
 
 async function loadProducts(options = {}) {
   const { resetPage = false } = options;
+  setDebugLine("products.load", "requesting");
   try {
     const meta = await apiFetch("/products/meta");
     publicRechargeConfig = meta?.recharge_config || publicRechargeConfig;
+    setDebugLine("products.meta", "ok");
   } catch (error) {
     // Keep product list usable even if the public pricing meta is temporarily unavailable.
+    setDebugLine("products.meta", `error: ${error?.message || error}`);
   }
   const products = await apiFetch("/products");
   allProducts = products;
+  setDebugLine("products.count", String(Array.isArray(products) ? products.length : 0));
   applyProductView({ resetPage });
   applyDiscountView({ resetPage });
 }
@@ -3032,6 +6333,7 @@ async function loadProducts(options = {}) {
 async function loadAccount() {
   const session = loadSession();
   if (!session?.token) {
+    setDebugLine("account.session", "missing");
     currentRechargeConfig = null;
     currentRechargeOrders = [];
     currentProfile = null;
@@ -3045,7 +6347,33 @@ async function loadAccount() {
     renderDrawServiceZone(null, null);
     currentAuctionBidSummaries = [];
     renderAuctionZone(null);
+    currentHelperBindings = [];
+    currentHelperInventories = [];
+    currentHelperMergedItems = [];
+    currentHelperSnapshots = [];
+    currentHelperActionLogs = [];
+    currentHelperRestoreProgress = null;
+    resetHelperInventorySyncState();
+    renderHelperBindingPanel();
+    renderHelperInventoryPanel();
+    renderHelperSnapshotPanel();
+    renderHelperRestoreProgressPanel();
+    renderHelperTeamSwitchPanel();
     return;
+  }
+
+  const sessionProfileFallback = getSessionProfileFallback(session);
+  if (sessionProfileFallback) {
+    setDebugLine(
+      "account.session",
+      `${sessionProfileFallback.game_role_id || "-"} / ${sessionProfileFallback.game_role_name || "-"}`
+    );
+    currentProfile = sessionProfileFallback;
+    currentQuota = {
+      balance: Number(sessionProfileFallback.quota_balance ?? 0),
+    };
+    renderSessionSummary(sessionProfileFallback);
+    renderProfile(sessionProfileFallback, currentQuota, []);
   }
 
   try {
@@ -3064,12 +6392,26 @@ async function loadAccount() {
     currentQuota = quota;
     renderSessionSummary(profile);
     renderProfile(profile, quota, orders || []);
+    setDebugLine("account.profile", `${profile?.game_role_id || "-"} / ${profile?.game_role_name || "-"}`);
+    setDebugLine("account.quota", String(quota?.balance ?? profile?.quota_balance ?? 0));
+    setDebugLine("account.orders", String(Array.isArray(orders) ? orders.length : 0));
     renderBeginnerGuide(profile, orders || [], rechargeOrders || []);
     renderRechargeSection(profile, rechargeConfig, rechargeOrders || []);
     renderDrawServiceZone(profile, quota);
+    loadHelperBindings();
+    loadHelperInventories();
+    loadHelperSnapshots();
+    loadHelperActionLogs();
     await loadAuctions();
+    if (consumePostAuthAccountFocus()) {
+      window.location.hash = "account";
+      activateAccountTab("overview");
+      scrollSectionIntoView(accountSection);
+      setActiveDockTarget("account");
+    }
     setNotice("");
   } catch (error) {
+    setDebugLine("account.error", error?.message || String(error));
     if (error.status === 401 || error.status === 403) {
       clearSession();
       currentRechargeConfig = null;
@@ -3085,6 +6427,17 @@ async function loadAccount() {
       renderDrawServiceZone(null, null);
       currentAuctionBidSummaries = [];
       renderAuctionZone(null);
+      currentHelperBindings = [];
+      currentHelperInventories = [];
+      currentHelperMergedItems = [];
+      currentHelperSnapshots = [];
+      currentHelperActionLogs = [];
+      currentHelperRestoreProgress = null;
+      resetHelperInventorySyncState();
+      renderHelperBindingPanel();
+      renderHelperInventoryPanel();
+      renderHelperSnapshotPanel();
+      renderHelperRestoreProgressPanel();
       setNotice("登录状态已失效，请重新登录。", "error");
       return;
     }
@@ -3197,6 +6550,13 @@ async function bindAccount(event) {
       }),
     });
     saveSession(result);
+    const immediateProfile = getSessionProfileFallback(result);
+    if (immediateProfile) {
+      renderSessionSummary(immediateProfile);
+      renderProfile(immediateProfile, { balance: Number(immediateProfile.quota_balance ?? 0) }, []);
+    }
+    await loadHelperConfig();
+    schedulePostAuthAccountFocus();
     setNotice("绑定成功，已保存登录状态。", "success");
     activateAccountTab("overview");
     window.location.hash = "account";
@@ -3218,6 +6578,13 @@ async function loginAccount(event) {
       }),
     });
     saveSession(result);
+    const immediateProfile = getSessionProfileFallback(result);
+    if (immediateProfile) {
+      renderSessionSummary(immediateProfile);
+      renderProfile(immediateProfile, { balance: Number(immediateProfile.quota_balance ?? 0) }, []);
+    }
+    await loadHelperConfig();
+    schedulePostAuthAccountFocus();
     setNotice("登录成功。", "success");
     loginPasswordInput.value = "";
     activateAccountTab("overview");
@@ -3362,6 +6729,7 @@ async function changeAccountPassword(event) {
 
 function logoutCurrentSession(options = {}) {
   clearSession();
+  loadHelperConfig().catch(() => {});
   currentRechargeConfig = null;
   currentRechargeOrders = [];
   selectedRechargePaymentChannel = "alipay_qr";
@@ -3384,7 +6752,7 @@ function openHelper() {
     return;
   }
   setHelperOrigin(origin);
-  window.open(origin, "_blank");
+  window.open(withHelperCacheBuster(origin), "_blank");
 }
 
 function applyIncomingPayload(payload) {
@@ -3421,6 +6789,13 @@ async function handleRegisterSubmit(event) {
       }),
     });
     saveSession(result);
+    const immediateProfile = getSessionProfileFallback(result);
+    if (immediateProfile) {
+      renderSessionSummary(immediateProfile);
+      renderProfile(immediateProfile, { balance: Number(immediateProfile.quota_balance ?? 0) }, []);
+    }
+    await loadHelperConfig();
+    schedulePostAuthAccountFocus();
     setNotice("注册成功，已自动登录。", "success");
     registerPasswordInput.value = "";
     registerPasswordConfirmInput.value = "";
@@ -3488,6 +6863,141 @@ document.getElementById("save-helper-origin-btn").addEventListener("click", () =
   setNotice("helper 地址已保存。", "success");
 });
 document.getElementById("open-helper-btn").addEventListener("click", openHelper);
+helperOpenBindPopupBtn?.addEventListener("click", openHelperBindPopup);
+helperOpenAuthPopupBtn?.addEventListener("click", openHelperAuthPopup);
+helperSaveBindBtn?.addEventListener("click", savePendingHelperBinding);
+helperClearBindBtn?.addEventListener("click", clearPendingHelperSelection);
+helperSyncCurrentInventoryBtn?.addEventListener("click", syncCurrentHelperInventory);
+helperSyncAllInventoryBtn?.addEventListener("click", syncAllHelperInventories);
+helperBuyPermanentSlotBtn?.addEventListener("click", () => purchaseHelperSlot("permanent"));
+helperBuySeasonalSlotBtn?.addEventListener("click", () => purchaseHelperSlot("seasonal"));
+helperReadSnapshotBtn?.addEventListener("click", openHelperSnapshotPopup);
+helperClearPreviewBtn?.addEventListener("click", clearHelperRestorePreview);
+helperTeamSwitchControls?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-helper-team-id]");
+  if (!button) return;
+  openHelperTeamSwitchPopup(button.getAttribute("data-helper-team-id"));
+});
+helperBindCurrent?.addEventListener("click", (event) => {
+  const activateButton = event.target.closest(".helper-set-active-binding-btn");
+  if (activateButton) {
+    setActiveHelperBinding(activateButton.getAttribute("data-helper-binding-id"));
+    setHelperBindMessage("已切换当前使用角色，后续保存阵容和一键还原都会跟着这个角色走。", "success");
+    return;
+  }
+  const button = event.target.closest(".helper-remove-binding-btn");
+  if (!button) return;
+  removeHelperBinding(button.getAttribute("data-helper-binding-id"));
+});
+helperInventoryBindings?.addEventListener("click", (event) => {
+  const button = event.target.closest(".helper-sync-binding-inventory-btn");
+  if (!button) return;
+  const bindingId = Number(button.getAttribute("data-helper-binding-id") || 0);
+  const binding = (currentHelperBindings || []).find((item) => Number(item?.id || 0) === bindingId);
+  if (!binding) {
+    setHelperInventoryMessage("没有找到要同步的炉子角色。", "error");
+    return;
+  }
+  startHelperInventorySync([binding], "single");
+});
+helperBridgeHiddenFrame?.addEventListener("load", () => {
+  setDebugLine("helper.hiddenFrame", helperBridgeHiddenFrame.getAttribute("src") || "loaded");
+});
+helperSnapshotCurrent?.addEventListener("click", (event) => {
+  const archivedToggleButton = event.target.closest(".helper-toggle-archived-snapshots-btn");
+  if (archivedToggleButton) {
+    showArchivedHelperSnapshots = !showArchivedHelperSnapshots;
+    renderHelperSnapshotPanel();
+    return;
+  }
+  const toggleButton = event.target.closest(".helper-toggle-snapshot-detail-btn");
+  if (toggleButton) {
+    const snapshotId = Number(toggleButton.getAttribute("data-helper-snapshot-id") || 0);
+    if (expandedHelperSnapshotIds.has(snapshotId)) {
+      expandedHelperSnapshotIds.delete(snapshotId);
+    } else {
+      expandedHelperSnapshotIds.add(snapshotId);
+    }
+    renderHelperSnapshotPanel();
+    return;
+  }
+  const switchButton = event.target.closest(".helper-switch-to-snapshot-btn");
+  if (switchButton) {
+    openHelperTeamSwitchPopup(switchButton.getAttribute("data-helper-team-id"));
+    return;
+  }
+  const restoreButton = event.target.closest(".helper-restore-snapshot-btn");
+  if (restoreButton) {
+    openHelperRestorePopup(restoreButton.getAttribute("data-helper-snapshot-id"));
+    return;
+  }
+  const previewButton = event.target.closest(".helper-preview-snapshot-btn");
+  if (previewButton) {
+    openHelperPreviewPopup(previewButton.getAttribute("data-helper-snapshot-id"));
+    return;
+  }
+  const renameButton = event.target.closest(".helper-rename-snapshot-btn");
+  if (renameButton) {
+    renameHelperSnapshot(renameButton.getAttribute("data-helper-snapshot-id"));
+    return;
+  }
+  const pinButton = event.target.closest(".helper-pin-snapshot-btn");
+  if (pinButton) {
+    togglePinHelperSnapshot(pinButton.getAttribute("data-helper-snapshot-id"));
+    return;
+  }
+  const removeButton = event.target.closest(".helper-remove-snapshot-btn");
+  if (removeButton) {
+    removeHelperSnapshot(removeButton.getAttribute("data-helper-snapshot-id"));
+  }
+});
+helperSnapshotList?.addEventListener("click", (event) => {
+  const archivedToggleButton = event.target.closest(".helper-toggle-archived-snapshots-btn");
+  if (archivedToggleButton) {
+    showArchivedHelperSnapshots = !showArchivedHelperSnapshots;
+    renderHelperSnapshotPanel();
+    return;
+  }
+  const toggleButton = event.target.closest(".helper-toggle-snapshot-detail-btn");
+  if (toggleButton) {
+    const snapshotId = Number(toggleButton.getAttribute("data-helper-snapshot-id") || 0);
+    if (expandedHelperSnapshotIds.has(snapshotId)) {
+      expandedHelperSnapshotIds.delete(snapshotId);
+    } else {
+      expandedHelperSnapshotIds.add(snapshotId);
+    }
+    renderHelperSnapshotPanel();
+    return;
+  }
+  const switchButton = event.target.closest(".helper-switch-to-snapshot-btn");
+  if (switchButton) {
+    openHelperTeamSwitchPopup(switchButton.getAttribute("data-helper-team-id"));
+    return;
+  }
+  const restoreButton = event.target.closest(".helper-restore-snapshot-btn");
+  if (restoreButton) {
+    openHelperRestorePopup(restoreButton.getAttribute("data-helper-snapshot-id"));
+    return;
+  }
+  const previewButton = event.target.closest(".helper-preview-snapshot-btn");
+  if (previewButton) {
+    openHelperPreviewPopup(previewButton.getAttribute("data-helper-snapshot-id"));
+    return;
+  }
+  const renameButton = event.target.closest(".helper-rename-snapshot-btn");
+  if (renameButton) {
+    renameHelperSnapshot(renameButton.getAttribute("data-helper-snapshot-id"));
+    return;
+  }
+  const pinButton = event.target.closest(".helper-pin-snapshot-btn");
+  if (pinButton) {
+    togglePinHelperSnapshot(pinButton.getAttribute("data-helper-snapshot-id"));
+    return;
+  }
+  const button = event.target.closest(".helper-remove-snapshot-btn");
+  if (!button) return;
+  removeHelperSnapshot(button.getAttribute("data-helper-snapshot-id"));
+});
 document.getElementById("logout-btn").addEventListener("click", () => logoutCurrentSession());
 accountLogoutBtn?.addEventListener("click", () => logoutCurrentSession());
 accountSwitchLink?.addEventListener("click", (event) => {
@@ -3495,6 +7005,12 @@ accountSwitchLink?.addEventListener("click", (event) => {
   logoutCurrentSession({ toBind: true });
 });
 document.getElementById("close-product-detail-btn").addEventListener("click", closeProductModal);
+closeHelperBridgeModalBtn?.addEventListener("click", closeHelperBridgeModal);
+helperBridgeModal?.addEventListener("click", (event) => {
+  if (event.target === helperBridgeModal) {
+    closeHelperBridgeModal();
+  }
+});
 
 bindForm.addEventListener("submit", bindAccount);
 registerForm.addEventListener("submit", handleRegisterSubmit);
@@ -3510,6 +7026,7 @@ authTabButtons.forEach((button) => {
     activateAuthTab(button.getAttribute("data-auth-tab"));
   });
 });
+window.__gongfaAuthBound = true;
 accountTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
     activateAccountTab(button.getAttribute("data-account-tab"));
@@ -3757,24 +7274,46 @@ window.addEventListener("keydown", (event) => {
     closeProductModal();
   }
 });
-window.addEventListener("message", (event) => applyIncomingPayload(event.data));
+window.addEventListener("message", (event) => {
+  if (handleHelperBridgeMessage(event)) return;
+  applyIncomingPayload(event.data);
+});
 window.addEventListener("storage", (event) => {
   if (event.key === "gongfa_session_v1") loadAccount();
 });
 window.addEventListener("hashchange", syncAccountTabWithHash);
 window.addEventListener("scroll", syncDockWithViewport, { passive: true });
 window.addEventListener("resize", syncDockWithViewport);
+window.addEventListener("error", (event) => {
+  setDebugLine("window.error", event?.message || "unknown");
+});
+window.addEventListener("unhandledrejection", (event) => {
+  setDebugLine("window.rejection", event?.reason?.message || String(event?.reason || "unknown"));
+});
 
-activateAuthTab(activeAuthTab);
-activateAccountTab(activeAccountTab);
-syncAccountTabWithHash();
-syncDockWithViewport();
-setActiveGuidePage("tutorial");
-helperOriginInput.value = getHelperOrigin();
-renderBeginnerGuide(null, [], []);
-renderRecentSales([]);
-loadProducts().catch((error) => setNotice(`商品加载失败：${error.message}`, "error"));
-loadAuctions();
-loadRecentSales();
-loadAccount();
+setDebugLine("boot", "module_loaded");
+safeRun("startup.activateAuthTab", () => activateAuthTab(activeAuthTab));
+safeRun("startup.activateAccountTab", () => activateAccountTab(activeAccountTab));
+safeRun("startup.syncHash", () => syncAccountTabWithHash());
+safeRun("startup.syncDock", () => syncDockWithViewport());
+safeRun("startup.guidePage", () => setActiveGuidePage("tutorial"));
+safeRun("startup.helperOrigin", () => {
+  if (helperOriginInput) helperOriginInput.value = getHelperOrigin();
+});
+safeRun("startup.helperConfig", () => loadHelperConfig());
+safeRun("startup.helperPanel", () => renderHelperBindingPanel());
+safeRun("startup.helperInventory", () => renderHelperInventoryPanel());
+safeRun("startup.helperSnapshots", () => renderHelperSnapshotPanel());
+safeRun("startup.helperPreview", () => renderHelperRestorePreviewPanel());
+safeRun("startup.beginnerGuide", () => renderBeginnerGuide(null, [], []));
+safeRun("startup.recentSalesRender", () => renderRecentSales([]));
+safeRun("startup.products", () =>
+  loadProducts().catch((error) => {
+    setNotice(`商品加载失败：${error.message}`, "error");
+    throw error;
+  })
+);
+safeRun("startup.auctions", () => loadAuctions());
+safeRun("startup.recentSales", () => loadRecentSales());
+safeRun("startup.account", () => loadAccount());
 window.setInterval(updateAuctionCountdowns, AUCTION_COUNTDOWN_TICK_MS);

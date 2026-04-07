@@ -26,7 +26,7 @@
         <div class="section-head">
           <div>
             <div class="card-title">管理员会话</div>
-            <div class="card-sub">支持在后台页直接登录。当前账号需要具备 `admin` 或 `poster_admin` 角色。</div>
+            <div class="card-sub">支持在后台页直接登录。`admin` 拥有完整后台权限，`poster_admin` 可查看后台并确认订单。</div>
           </div>
           <button id="reload-admin-btn" class="ghost" type="button">刷新后台数据</button>
         </div>
@@ -255,7 +255,7 @@
           </label>
           <label>
             兑换比例：元
-            <input id="admin-recharge-exchange-yuan" type="number" min="1" step="1" />
+            <input id="admin-recharge-exchange-yuan" type="number" min="0.01" step="0.01" />
           </label>
           <label>
             兑换比例：额度
@@ -263,7 +263,7 @@
           </label>
           <label>
             最低充值（元）
-            <input id="admin-recharge-min-yuan" type="number" min="1" step="1" />
+            <input id="admin-recharge-min-yuan" type="number" min="0.01" step="0.01" />
           </label>
           <label>
             开启残卷转赠
@@ -309,7 +309,7 @@
           </label>
           <label>
             会员价格（元）
-            <input id="admin-season-member-price" type="number" min="1" step="1" />
+            <input id="admin-season-member-price" type="number" min="0.01" step="0.01" />
           </label>
           <label>
             会员开通额度
@@ -318,6 +318,26 @@
           <label>
             会员加成比例
             <input id="admin-season-member-bonus-rate" type="number" min="0" max="1" step="0.01" />
+          </label>
+          <label>
+            阵容基础槽位
+            <input id="admin-lineup-base-slots" type="number" min="1" step="1" />
+          </label>
+          <label>
+            永久槽价格（额度）
+            <input id="admin-lineup-permanent-slot-quota" type="number" min="1" step="1" />
+          </label>
+          <label>
+            永久槽最多购买
+            <input id="admin-lineup-permanent-slot-max" type="number" min="0" step="1" />
+          </label>
+          <label>
+            赛季槽价格（额度）
+            <input id="admin-lineup-seasonal-slot-quota" type="number" min="1" step="1" />
+          </label>
+          <label>
+            会员赠送临时槽位
+            <input id="admin-lineup-member-bonus-slots" type="number" min="0" step="1" />
           </label>
           <label>
             快捷金额（英文逗号分隔）
@@ -478,7 +498,7 @@
 
     <aside id="admin-debug-panel" class="debug-panel">
       <div class="debug-title">后台调试</div>
-      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260401b</div>
+      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260404-fix1</div>
       <div id="admin-debug-action" class="debug-line">action: page_loaded</div>
       <div id="admin-debug-session" class="debug-line">session: unknown</div>
       <div id="admin-debug-error" class="debug-line">error: none</div>
@@ -488,6 +508,6 @@
     <script>
       window.__adminModuleReady = false;
     </script>
-    <script type="module" src="./admin.js?v=20260401b"></script>
+    <script type="module" src="./admin.js?v=20260404-fix1"></script>
   </body>
 </html>

@@ -22,12 +22,6 @@ async function applyQuotaChange(
   const balance = Number(result.rows[0]?.balance || 0);
   const nextBalance = balance + Number(changeAmount);
 
-  if (nextBalance < 0) {
-    const err = new Error("insufficient_quota");
-    err.statusCode = 400;
-    throw err;
-  }
-
   await db.query(
     "UPDATE user_quota_accounts SET balance=$2, updated_at=NOW() WHERE user_id=$1",
     [userId, nextBalance]

@@ -5,6 +5,18 @@ function parsePositiveInteger(value, fallback) {
   return normalized > 0 ? normalized : fallback;
 }
 
+function parseNonNegativeInteger(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const normalized = Math.floor(numeric);
+  return normalized >= 0 ? normalized : fallback;
+}
+
+function parsePositiveMoney(value, fallback) {
+  const parsed = parseMoneyAmount(value);
+  return parsed === null ? fallback : parsed;
+}
+
 function parseMoneyAmount(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return null;
@@ -31,19 +43,19 @@ function parseText(value, fallback) {
 function parsePresetAmounts(value, minimumAmount, exchangeYuan) {
   const source = String(value || "")
     .split(",")
-    .map((item) => parsePositiveInteger(item.trim(), 0))
-    .filter((item) => item >= minimumAmount);
+    .map((item) => parseMoneyAmount(item.trim()))
+    .filter((item) => item !== null && item >= minimumAmount);
 
   if (source.length > 0) {
-    return [...new Set(source)];
+    return [...new Set(source.map((item) => Number(item.toFixed(2))))];
   }
 
   const base = Math.max(exchangeYuan, minimumAmount, 1);
-  return [1, 2, 5, 10, 20].map((multiplier) => base * multiplier);
+  return [1, 2, 5, 10, 20].map((multiplier) => Number((base * multiplier).toFixed(2)));
 }
 
 function buildDefaultRechargeConfig() {
-  const exchangeYuan = parsePositiveInteger(process.env.RECHARGE_EXCHANGE_YUAN, 12);
+  const exchangeYuan = parsePositiveMoney(process.env.RECHARGE_EXCHANGE_YUAN, 12);
   const exchangeQuota = parsePositiveInteger(
     process.env.RECHARGE_EXCHANGE_QUOTA,
     10000
@@ -56,7 +68,7 @@ function buildDefaultRechargeConfig() {
     process.env.SEASON_MEMBER_EXPIRES_AT,
     "2026-04-10T00:00:00+08:00"
   );
-  const seasonMemberPriceYuan = parsePositiveInteger(
+  const seasonMemberPriceYuan = parsePositiveMoney(
     process.env.SEASON_MEMBER_PRICE_YUAN,
     30
   );
@@ -69,12 +81,29 @@ function buildDefaultRechargeConfig() {
     0.05
   );
   const minAmountYuan = Math.max(
-    parsePositiveInteger(process.env.RECHARGE_MIN_YUAN, exchangeYuan),
+    parsePositiveMoney(process.env.RECHARGE_MIN_YUAN, exchangeYuan),
     exchangeYuan
   );
   const residualQuotaPerUnit = parsePositiveInteger(
     process.env.RESIDUAL_QUOTA_PER_UNIT,
     1
+  );
+  const lineupBaseSlots = parsePositiveInteger(process.env.LINEUP_BASE_SLOTS, 3);
+  const lineupPermanentSlotQuota = parsePositiveInteger(
+    process.env.LINEUP_PERMANENT_SLOT_QUOTA,
+    5000
+  );
+  const lineupPermanentSlotMax = parseNonNegativeInteger(
+    process.env.LINEUP_PERMANENT_SLOT_MAX,
+    7
+  );
+  const lineupSeasonalSlotQuota = parsePositiveInteger(
+    process.env.LINEUP_SEASONAL_SLOT_QUOTA,
+    1000
+  );
+  const lineupMemberBonusSlots = parseNonNegativeInteger(
+    process.env.LINEUP_MEMBER_BONUS_SLOTS,
+    3
   );
 
   return {
@@ -107,6 +136,11 @@ function buildDefaultRechargeConfig() {
     season_member_price_yuan: seasonMemberPriceYuan,
     season_member_quota: seasonMemberQuota,
     season_member_bonus_rate: seasonMemberBonusRate,
+    lineup_base_slots: lineupBaseSlots,
+    lineup_permanent_slot_quota: lineupPermanentSlotQuota,
+    lineup_permanent_slot_max: lineupPermanentSlotMax,
+    lineup_seasonal_slot_quota: lineupSeasonalSlotQuota,
+    lineup_member_bonus_slots: lineupMemberBonusSlots,
     preset_amounts: parsePresetAmounts(
       process.env.RECHARGE_PRESETS || "",
       minAmountYuan,
@@ -137,9 +171,9 @@ function buildDefaultRechargeConfig() {
 
 function normalizeRechargeConfig(rawConfig = {}) {
   const defaults = buildDefaultRechargeConfig();
-  const exchangeYuan = parsePositiveInteger(rawConfig.exchange_yuan, defaults.exchange_yuan);
+  const exchangeYuan = parsePositiveMoney(rawConfig.exchange_yuan, defaults.exchange_yuan);
   const exchangeQuota = parsePositiveInteger(rawConfig.exchange_quota, defaults.exchange_quota);
-  const seasonMemberPriceYuan = parsePositiveInteger(
+  const seasonMemberPriceYuan = parsePositiveMoney(
     rawConfig.season_member_price_yuan,
     defaults.season_member_price_yuan
   );
@@ -152,12 +186,32 @@ function normalizeRechargeConfig(rawConfig = {}) {
     defaults.season_member_bonus_rate
   );
   const minAmountYuan = Math.max(
-    parsePositiveInteger(rawConfig.min_amount_yuan, defaults.min_amount_yuan),
+    parsePositiveMoney(rawConfig.min_amount_yuan, defaults.min_amount_yuan),
     1
   );
   const residualQuotaPerUnit = parsePositiveInteger(
     rawConfig.residual_quota_per_unit,
     defaults.residual_quota_per_unit
+  );
+  const lineupBaseSlots = parsePositiveInteger(
+    rawConfig.lineup_base_slots,
+    defaults.lineup_base_slots
+  );
+  const lineupPermanentSlotQuota = parsePositiveInteger(
+    rawConfig.lineup_permanent_slot_quota,
+    defaults.lineup_permanent_slot_quota
+  );
+  const lineupPermanentSlotMax = parseNonNegativeInteger(
+    rawConfig.lineup_permanent_slot_max,
+    defaults.lineup_permanent_slot_max
+  );
+  const lineupSeasonalSlotQuota = parsePositiveInteger(
+    rawConfig.lineup_seasonal_slot_quota,
+    defaults.lineup_seasonal_slot_quota
+  );
+  const lineupMemberBonusSlots = parseNonNegativeInteger(
+    rawConfig.lineup_member_bonus_slots,
+    defaults.lineup_member_bonus_slots
   );
 
   const normalized = {
@@ -204,6 +258,11 @@ function normalizeRechargeConfig(rawConfig = {}) {
     season_member_quota: seasonMemberQuota,
     season_member_bonus_rate: seasonMemberBonusRate,
     season_member_bonus_percent: Number((seasonMemberBonusRate * 100).toFixed(2)),
+    lineup_base_slots: lineupBaseSlots,
+    lineup_permanent_slot_quota: lineupPermanentSlotQuota,
+    lineup_permanent_slot_max: lineupPermanentSlotMax,
+    lineup_seasonal_slot_quota: lineupSeasonalSlotQuota,
+    lineup_member_bonus_slots: lineupMemberBonusSlots,
     preset_amounts: parsePresetAmounts(
       Array.isArray(rawConfig.preset_amounts)
         ? rawConfig.preset_amounts.join(",")

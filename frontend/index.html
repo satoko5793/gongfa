@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
-    <link rel="stylesheet" href="styles.css?v=20260401a" />
+    <link rel="stylesheet" href="styles.css?v=20260407-warehouse-ui1" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -27,15 +27,14 @@
     <main class="container">
       <section class="hero card">
         <div>
-          <div class="eyebrow">Web MVP</div>
+          <div class="eyebrow">25000 Store</div>
           <h1>25000 繁星功法商城</h1>
           <p class="hero-text">
-            当前提供商品浏览、账号登录、额度充值、额度购买和订单管理。新用户按教学完成注册、充值和首单后，
-            还会额外拿到 1000 额度奖励。
+            按卡图直购，支持额度购买、转账锁卡和残卷下单。
           </p>
           <div class="hero-badges">
-            <span class="hero-badge">新手教学奖励 1000 额度</span>
-            <span class="hero-badge">会员充值与残卷转赠额外 +5%</span>
+            <span class="hero-badge">新手完成三步奖励 1000</span>
+            <span class="hero-badge">会员与残卷转赠额外 +5%</span>
           </div>
         </div>
         <div class="hero-side">
@@ -45,36 +44,27 @@
             <div id="session-role" class="muted">请先登录账号再充值或下单。</div>
           </div>
           <div class="quick-links">
-            <a class="quick-link" href="#products">查看商品</a>
-            <a class="quick-link" href="#bind">注册登录</a>
-            <a class="quick-link" href="#account" data-account-tab-target="recharge">前往充值</a>
-            <a class="quick-link" href="#account" data-account-tab-target="orders">加群咨询</a>
+            <a class="quick-link" href="#products">进入商城</a>
+            <a class="quick-link" href="#bind">登录</a>
+            <a class="quick-link" href="#account" data-account-tab-target="recharge">充值</a>
+            <a class="quick-link" href="#account" data-account-tab-target="orders">订单</a>
           </div>
           <div class="hero-scene" aria-hidden="true">
-            <svg viewBox="0 0 320 220" class="hero-scene-svg">
-              <defs>
-                <linearGradient id="heroCardGlow" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stop-color="#f7d9a6" />
-                  <stop offset="100%" stop-color="#cf6b3f" />
-                </linearGradient>
-                <linearGradient id="heroPanelGlow" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stop-color="#224d52" />
-                  <stop offset="100%" stop-color="#5f8b8f" />
-                </linearGradient>
-              </defs>
-              <rect x="14" y="36" width="180" height="118" rx="24" fill="url(#heroCardGlow)" opacity="0.95" />
-              <rect x="126" y="72" width="164" height="104" rx="24" fill="url(#heroPanelGlow)" opacity="0.92" />
-              <circle cx="248" cy="54" r="28" fill="#f6efe2" />
-              <path d="M248 33 252 45 265 45 254 53 259 66 248 58 237 66 242 53 231 45 244 45Z" fill="#d9783a" />
-              <path d="M45 90h116M45 112h86M45 134h102" stroke="#fff8ec" stroke-width="10" stroke-linecap="round" opacity="0.88" />
-              <path d="M154 106c12 0 22 10 22 22s-10 22-22 22-22-10-22-22 10-22 22-22Z" fill="#fff7ea" opacity="0.92" />
-              <path d="M154 115 157 124 166 124 159 130 162 139 154 133 146 139 149 130 142 124 151 124Z" fill="#c4552d" />
-              <path d="M188 104h70M188 126h58M188 148h42" stroke="#d7eceb" stroke-width="8" stroke-linecap="round" opacity="0.82" />
-              <circle cx="48" cy="42" r="5" fill="#d9783a" />
-              <circle cx="86" cy="28" r="4" fill="#224d52" />
-              <circle cx="295" cy="30" r="4" fill="#d9783a" />
-              <circle cx="282" cy="193" r="6" fill="#224d52" />
-            </svg>
+            <div class="hero-stage">
+              <div class="hero-stage-glow hero-stage-glow-warm"></div>
+              <div class="hero-stage-glow hero-stage-glow-cool"></div>
+              <div class="hero-stage-floor"></div>
+              <div class="hero-stage-art" id="hero-stage-trigger" role="button" tabindex="0" aria-label="切换展示卡图">
+                <img
+                  id="hero-stage-image"
+                  src="./hero-assets/mahoupao.svg"
+                  alt=""
+                  data-hero-sources="./hero-assets/mahoupao.svg|./hero-assets/suibianzhang.svg|./hero-assets/yunqijue.svg|./hero-assets/qiankun-clean.png|./hero-assets/zhedeng1.svg"
+                  data-hero-scales="0.9|1.14|1.18|0.88|1.42"
+                  data-hero-shifts="2|10|8|2|16"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -139,8 +129,8 @@
       <section id="products" class="card dock-target-section">
         <div class="section-head">
           <div>
-            <div class="card-title">商品列表</div>
-            <div class="card-sub">这里只展示已上架商品，购买前请先登录账号。</div>
+            <div class="card-title">在售商品</div>
+            <div class="card-sub">先筛选，再直接购买或转账锁卡。</div>
           </div>
           <button id="reload-products-btn" class="ghost">刷新商品</button>
         </div>
@@ -193,7 +183,7 @@
 
       <section id="bind" class="card">
         <div class="card-title">账号登录与注册</div>
-        <div class="card-sub">先用注册或密码登录。手动绑定和 helper 暂时归到“更多方式”，避免新用户被无关入口干扰。</div>
+        <div class="card-sub">可以直接用密码，也可以扫码把商城账号和游戏角色对应起来。未登录时扫码会自动注册或进入对应账号。</div>
 
         <div class="auth-entry-grid">
           <div class="panel guide-panel">
@@ -203,6 +193,19 @@
           </div>
 
           <div class="panel auth-entry-panel">
+            <div class="panel auth-scan-panel">
+              <div class="panel-title">扫码注册 / 登录</div>
+              <div id="helper-auth-note" class="muted">
+                直接用微信扫码选择角色，商城会自动进入对应账号。之后阵容保存和一键还原也会默认跟着这个角色走。
+              </div>
+              <div class="actions">
+                <button id="helper-open-auth-popup-btn" type="button" class="primary">扫码 / BIN 登录</button>
+              </div>
+              <div id="helper-auth-message" class="notice hidden"></div>
+            </div>
+
+            <div class="section-divider-text">或者使用密码</div>
+
             <div class="section-tabs compact">
               <button class="section-tab active" type="button" data-auth-tab="register">快速注册</button>
               <button class="section-tab" type="button" data-auth-tab="login">密码登录</button>
@@ -261,16 +264,16 @@
               <summary>更多方式</summary>
               <div class="method-grid">
                 <div class="panel muted-panel">
-                  <div class="panel-title">helper 工具入口</div>
+                  <div class="panel-title">调试工具入口</div>
                   <label>
-                    helper 地址
+                    工具地址
                     <input id="helper-origin-input" type="text" placeholder="例如 http://localhost:3000" />
                   </label>
                   <div class="actions">
                     <button id="save-helper-origin-btn" class="ghost">保存地址</button>
-                    <button id="open-helper-btn" class="ghost">打开 helper</button>
+                    <button id="open-helper-btn" class="ghost">打开工具页</button>
                   </div>
-                  <div class="muted">当前主流程不依赖 helper，这里只保留给历史兼容或调试使用。</div>
+                  <div id="helper-entry-note" class="muted">这里仅保留给历史兼容或调试使用，正常用户不需要单独打开此页。</div>
                 </div>
 
                 <div class="panel muted-panel">
@@ -307,6 +310,93 @@
         </div>
 
         <div id="bind-message" class="notice"></div>
+      </section>
+
+      <section id="helper-lab" class="card dock-target-section hidden">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Lineup Cloud</div>
+            <div class="card-title">阵容中心</div>
+            <div class="card-sub">
+              保存你当前的游戏阵容，之后在商城里直接一键还原。复杂的校验和对比会由系统自动处理，不需要你手动操作。
+            </div>
+          </div>
+          <span id="helper-lab-badge" class="teaser-chip">未启用</span>
+        </div>
+        <div class="helper-hub-grid">
+          <div class="panel">
+            <div class="panel-title">阵容云同步</div>
+            <div id="helper-lab-note" class="muted">
+              先绑定角色，再把当前阵容保存成云端卡片。需要切回时，直接点一键还原即可。
+            </div>
+            <div class="actions">
+              <a id="helper-lab-open-link" class="ghost-link hidden" href="/xyzw-helper/" target="_blank" rel="noreferrer">调试打开工具页</a>
+              <a class="ghost-link" href="#account">回到我的账户</a>
+            </div>
+          </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">绑定游戏角色</div>
+            <div id="helper-bind-current" class="stack-list">
+              <div class="stack-item">当前还没有绑定角色。</div>
+            </div>
+            <div class="actions">
+              <button id="helper-open-bind-popup-btn" type="button" class="primary">绑定游戏角色</button>
+              <button id="helper-save-bind-btn" type="button" class="ghost">确认绑定</button>
+              <button id="helper-clear-bind-btn" type="button" class="ghost">清空选择</button>
+            </div>
+            <div id="helper-bind-message" class="notice"></div>
+          </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">功法仓库</div>
+            <div class="muted">把每个炉子号背包里的功法同步到商城，下面会自动合并成总仓库，后面做自动发货也会基于这里。</div>
+            <div class="actions">
+              <button id="helper-sync-current-inventory-btn" type="button" class="ghost">同步当前号功法</button>
+              <button id="helper-sync-all-inventory-btn" type="button" class="primary">同步全部炉子</button>
+            </div>
+            <div id="helper-inventory-message" class="notice"></div>
+            <div id="helper-inventory-bindings" class="stack-list">
+              <div class="stack-item">绑定多个角色后，就能在这里分别看到每个炉子的功法库存。</div>
+            </div>
+            <div id="helper-inventory-merged" class="stack-list">
+              <div class="stack-item">同步完成后，这里会展示多个炉子合并后的总仓库。</div>
+            </div>
+          </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">我的阵容</div>
+            <div class="muted">把当前正在使用的阵容保存成卡片，后面可以直接从这里切回去。</div>
+            <div id="helper-slot-summary" class="stack-list">
+              <div class="stack-item">登录后可查看当前阵容槽位。</div>
+            </div>
+            <div class="actions">
+              <button id="helper-buy-permanent-slot-btn" type="button" class="ghost">+1 永久槽</button>
+              <button id="helper-buy-seasonal-slot-btn" type="button" class="ghost">+1 赛季槽</button>
+              <button id="helper-read-snapshot-btn" type="button" class="primary">保存当前阵容</button>
+            </div>
+            <div id="helper-slot-message" class="notice hidden"></div>
+            <div id="helper-snapshot-message" class="notice"></div>
+            <div id="helper-snapshot-current" class="stack-list">
+              <div class="stack-item">还没有保存过阵容。</div>
+            </div>
+            <div id="helper-snapshot-list" class="stack-list">
+              <div class="stack-item">保存过的阵容会显示在这里。</div>
+            </div>
+          </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">最近一次还原</div>
+            <div class="muted">每次执行一键还原后，这里会显示本次恢复到了哪套阵容，以及实际动了哪些内容。</div>
+            <div id="helper-restore-progress-current" class="stack-list hidden"></div>
+            <div id="helper-restore-result-current" class="stack-list">
+              <div class="stack-item">还没有执行过一键还原。</div>
+            </div>
+          </div>
+        </div>
+        <div id="helper-preview-message" class="notice hidden"></div>
+        <div id="helper-preview-current" class="hidden"></div>
+        <div id="helper-team-switch-current" class="hidden"></div>
+        <div id="helper-team-switch-controls" class="hidden"></div>
+        <div id="helper-team-switch-message" class="notice hidden"></div>
+        <div id="helper-team-switch-log" class="hidden"></div>
+        <button id="helper-clear-preview-btn" type="button" class="hidden">清空预演</button>
       </section>
 
       <section id="account" class="card dock-target-section">
@@ -464,6 +554,11 @@
       </section>
     </main>
 
+    <aside id="debug-panel" class="debug-panel hidden">
+      <div class="debug-title">Staging Debug</div>
+      <div id="debug-lines" class="stack-list"></div>
+    </aside>
+
     <div id="product-detail-modal" class="modal-backdrop hidden" aria-hidden="true">
       <div
         class="modal-card product-detail-modal"
@@ -483,16 +578,244 @@
       </div>
     </div>
 
+    <div id="helper-bridge-modal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-card helper-bridge-modal" role="dialog" aria-modal="true" aria-labelledby="helper-bridge-modal-title">
+        <div class="modal-head">
+          <div>
+            <div class="card-title" id="helper-bridge-modal-title">绑定游戏角色</div>
+            <div id="helper-bridge-modal-message" class="card-sub">
+              在当前页面完成角色绑定，选择后会自动带回商城。
+            </div>
+          </div>
+          <button id="close-helper-bridge-modal-btn" class="ghost" type="button">关闭</button>
+        </div>
+        <div class="helper-bridge-modal-body">
+          <iframe
+            id="helper-bridge-iframe"
+            class="helper-bridge-iframe"
+            title="游戏角色绑定"
+            src="about:blank"
+            loading="eager"
+            referrerpolicy="strict-origin-when-cross-origin"
+          ></iframe>
+        </div>
+        <div id="helper-bridge-modal-hint" class="muted">
+          支持扫码或 BIN 导入，完成后会自动返回商城，不需要手动回跳。
+        </div>
+      </div>
+    </div>
+    <iframe
+      id="helper-bridge-hidden-frame"
+      class="helper-bridge-hidden-frame"
+      title="阵容同步后台帧"
+      src="about:blank"
+      tabindex="-1"
+      aria-hidden="true"
+    ></iframe>
+
     <footer class="footer">当前先把网页商城主流程跑通，支付与更多自动化能力后续再补。</footer>
 
     <nav class="page-dock" aria-label="页面快捷切换">
       <button class="page-dock-item active" type="button" data-dock-target="products">商城</button>
       <button class="page-dock-item hidden" type="button" data-dock-target="discount-products-section">打折</button>
       <button class="page-dock-item" type="button" data-dock-target="account">我的信息</button>
+      <button id="helper-lab-dock-item" class="page-dock-item hidden" type="button" data-dock-target="helper-lab">阵容</button>
       <button class="page-dock-item" type="button" data-dock-target="auction-zone">拍卖</button>
       <button class="page-dock-item" type="button" data-dock-target="draw-service-zone">代抽专区</button>
       <button id="mobile-admin-link" class="page-dock-item mobile-admin-shortcut hidden" type="button">后台</button>
     </nav>
-    <script type="module" src="./app.js?v=20260401a"></script>
+    <script type="module" src="./app.js?v=20260407-warehouse-ui1"></script>
+    <script>
+      (() => {
+        const SESSION_KEY = "gongfa_session_v1";
+        const POST_AUTH_TARGET_KEY = "gongfa_post_auth_target_v1";
+
+        const setNotice = (text, type = "") => {
+          const notice = document.getElementById("bind-message");
+          if (!notice) return;
+          notice.textContent = text || "";
+          notice.className = type ? `notice ${type}` : "notice";
+        };
+
+        const activateAuthTab = (tab) => {
+          const activeTab = tab === "login" ? "login" : "register";
+          document.querySelectorAll("[data-auth-tab]").forEach((button) => {
+            button.classList.toggle("active", button.getAttribute("data-auth-tab") === activeTab);
+          });
+          document.querySelectorAll("[data-auth-panel]").forEach((panel) => {
+            panel.classList.toggle("hidden", panel.getAttribute("data-auth-panel") !== activeTab);
+          });
+        };
+
+        const saveSession = (session) => {
+          window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        };
+
+        const schedulePostAuthAccountFocus = () => {
+          try {
+            window.sessionStorage.setItem(POST_AUTH_TARGET_KEY, "account");
+          } catch {
+            // Ignore restricted storage environments.
+          }
+        };
+
+        const bindFallbackAuth = () => {
+          if (window.__gongfaAuthBound) return;
+
+          const registerForm = document.getElementById("register-form");
+          const loginForm = document.getElementById("login-form");
+          const logoutBtn = document.getElementById("logout-btn");
+          const registerRoleIdInput = document.getElementById("register-role-id");
+          const registerRoleNameInput = document.getElementById("register-role-name");
+          const registerPasswordInput = document.getElementById("register-password");
+          const registerPasswordConfirmInput = document.getElementById("register-password-confirm");
+          const loginRoleIdInput = document.getElementById("login-role-id");
+          const loginPasswordInput = document.getElementById("login-password");
+
+          document.querySelectorAll("[data-auth-tab]").forEach((button) => {
+            button.addEventListener("click", () => {
+              activateAuthTab(button.getAttribute("data-auth-tab"));
+            });
+          });
+
+          registerForm?.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const roleId = registerRoleIdInput?.value.trim() || "";
+            const roleName = registerRoleNameInput?.value.trim() || "";
+            const password = registerPasswordInput?.value || "";
+            const passwordConfirm = registerPasswordConfirmInput?.value || "";
+
+            if (!roleId || !roleName || !password || !passwordConfirm) {
+              setNotice("请先把注册信息填写完整。", "error");
+              return;
+            }
+            if (password !== passwordConfirm) {
+              setNotice("两次输入的密码不一致，请重新确认。", "error");
+              registerPasswordConfirmInput?.focus();
+              return;
+            }
+
+            setNotice("正在注册...", "");
+            try {
+              const response = await fetch("/auth/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  game_role_id: roleId,
+                  game_role_name: roleName,
+                  password,
+                }),
+              });
+              const payload = await response.json();
+              if (!response.ok) {
+                throw new Error(payload?.error || "注册失败");
+              }
+              saveSession(payload);
+              schedulePostAuthAccountFocus();
+              setNotice("注册成功，正在进入账号页。", "success");
+              window.location.hash = "account";
+              window.location.reload();
+            } catch (error) {
+              setNotice(`注册失败：${error.message || "注册失败"}`, "error");
+            }
+          });
+
+          loginForm?.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const roleId = loginRoleIdInput?.value.trim() || "";
+            const password = loginPasswordInput?.value || "";
+            if (!roleId || !password) {
+              setNotice("请填写游戏 ID 和密码。", "error");
+              return;
+            }
+
+            setNotice("正在登录...", "");
+            try {
+              const response = await fetch("/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  game_role_id: roleId,
+                  password,
+                }),
+              });
+              const payload = await response.json();
+              if (!response.ok) {
+                throw new Error(payload?.error || "登录失败");
+              }
+              saveSession(payload);
+              schedulePostAuthAccountFocus();
+              setNotice("登录成功，正在进入账号页。", "success");
+              window.location.hash = "account";
+              window.location.reload();
+            } catch (error) {
+              setNotice(`登录失败：${error.message || "登录失败"}`, "error");
+            }
+          });
+
+          logoutBtn?.addEventListener("click", () => {
+            window.localStorage.removeItem(SESSION_KEY);
+            setNotice("已退出登录。", "success");
+          });
+
+          activateAuthTab("register");
+        };
+
+        window.setTimeout(bindFallbackAuth, 1200);
+      })();
+    </script>
+    <script>
+      (() => {
+        const trigger = document.getElementById("hero-stage-trigger");
+        const image = document.getElementById("hero-stage-image");
+        if (!trigger || !image) return;
+
+        const sources = String(image.dataset.heroSources || "")
+          .split("|")
+          .map((item) => item.trim())
+          .filter(Boolean);
+        const scales = String(image.dataset.heroScales || "")
+          .split("|")
+          .map((item) => Number(item.trim() || 1));
+        const shifts = String(image.dataset.heroShifts || "")
+          .split("|")
+          .map((item) => Number(item.trim() || 0));
+
+        if (sources.length <= 1) return;
+
+        let index = 0;
+        let timer = null;
+
+        const apply = () => {
+          image.src = sources[index] || sources[0];
+          image.style.setProperty("--hero-art-scale", String(scales[index] || 1));
+          image.style.setProperty("--hero-art-shift-y", `${shifts[index] || 0}px`);
+        };
+
+        const schedule = () => {
+          window.clearInterval(timer);
+          timer = window.setInterval(() => {
+            index = (index + 1) % sources.length;
+            apply();
+          }, 10000);
+        };
+
+        const next = () => {
+          index = (index + 1) % sources.length;
+          apply();
+          schedule();
+        };
+
+        trigger.addEventListener("click", next);
+        trigger.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          next();
+        });
+
+        apply();
+        schedule();
+      })();
+    </script>
   </body>
 </html>

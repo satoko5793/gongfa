@@ -31,6 +31,21 @@
 - [18-iteration-1-execution-plan.md](18-iteration-1-execution-plan.md)
   第一期可直接执行的改造任务清单。
 
+- [21-helper-integration-staging-plan.md](21-helper-integration-staging-plan.md)
+  Helper 接入方案，强调测试服优先、正式服隔离、扫码绑定与阵容快照分阶段落地。
+
+- [22-staging-auth-helper-smoke-tests.md](22-staging-auth-helper-smoke-tests.md)
+  测试服登录、商品列表、按钮交互、账号展示、helper 入口的标准冒烟流程。
+
+- [23-helper-capability-audit-and-restore-roadmap.md](23-helper-capability-audit-and-restore-roadmap.md)
+  Helper 现有读写能力审计，一键还原可以先做到哪一步，哪些字段适合先展示、再恢复。
+
+- [24-helper-staging-handoff-and-production-rollout.md](24-helper-staging-handoff-and-production-rollout.md)
+  Helper 联调在测试服当前已经做到哪一步，正式服建议先开什么、后开什么，以及快速回滚方式。
+
+- [25-multi-furnace-inventory-and-auto-fulfillment-plan.md](25-multi-furnace-inventory-and-auto-fulfillment-plan.md)
+  多炉子仓库、残卷流水识别、自动发货的分阶段方案，强调先做多绑定和库存展示，再做自动发货。
+
 ## 按问题查文档
 
 - 价格规则：
@@ -47,6 +62,22 @@
 
 - 第一期实施清单：
   [18-iteration-1-execution-plan.md](18-iteration-1-execution-plan.md)
+
+- Helper 接入方案：
+  [21-helper-integration-staging-plan.md](21-helper-integration-staging-plan.md)
+
+- 测试服登录与 helper 冒烟：
+  包含接口冒烟和前端按钮交互冒烟。
+  [22-staging-auth-helper-smoke-tests.md](22-staging-auth-helper-smoke-tests.md)
+
+- Helper 能力审计与一键还原路线：
+  [23-helper-capability-audit-and-restore-roadmap.md](23-helper-capability-audit-and-restore-roadmap.md)
+
+- Helper 测试服交接与正式服处理建议：
+  [24-helper-staging-handoff-and-production-rollout.md](24-helper-staging-handoff-and-production-rollout.md)
+
+- 多炉子仓库与自动发货路线：
+  [25-multi-furnace-inventory-and-auto-fulfillment-plan.md](25-multi-furnace-inventory-and-auto-fulfillment-plan.md)
 
 - 旧小程序路径和归档：
   [07-miniapp-plan.md](/c:/Users/Administrator/Desktop/内包/gongfa/docs/07-miniapp-plan.md)

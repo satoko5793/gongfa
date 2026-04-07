@@ -15,6 +15,7 @@ const {
   validateProfileUpdateInput,
   validatePasswordChangeInput,
   validateRechargeOrderCreate,
+  validateLineupSlotPurchaseInput,
 } = require("../services/validate");
 const { hashPassword, verifyPassword } = require("../services/password-auth");
 
@@ -114,6 +115,22 @@ meRouter.post("/recharge-orders", async (req, res, next) => {
     }
 
     return res.status(501).json({ error: "recharge_order_not_supported_in_db_mode" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+meRouter.post("/lineup-slots/purchase", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateLineupSlotPurchaseInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+    if (!useFileStore()) {
+      return res.status(501).json({ error: "lineup_slot_not_supported_in_db_mode" });
+    }
+    return res.json(devStore.purchaseLineupSlot(req.user.id, body.purchase_type));
   } catch (error) {
     return next(error);
   }
