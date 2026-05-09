@@ -1,4 +1,35 @@
+const {
+  sanitizeAdminRechargeConfig,
+} = require("../../../config/recharge-config");
 const { getAdminRechargeConfigRepository } = require("./repository");
+
+function stripUnsupportedNoTermFieldsFromPricingControls(pricingControls) {
+  if (!pricingControls || typeof pricingControls !== "object" || Array.isArray(pricingControls)) {
+    return pricingControls;
+  }
+  const nextPricingControls = {
+    ...pricingControls,
+    tiers:
+      pricingControls.tiers && typeof pricingControls.tiers === "object"
+        ? { ...pricingControls.tiers }
+        : pricingControls.tiers,
+  };
+
+  if (nextPricingControls.tiers && typeof nextPricingControls.tiers === "object") {
+    for (const tierKey of ["green", "blue", "purple", "orange", "red"]) {
+      const tier = nextPricingControls.tiers[tierKey];
+      if (!tier || typeof tier !== "object" || Array.isArray(tier)) continue;
+      const nextTier = { ...tier };
+      delete nextTier.no_term_min_quota;
+      delete nextTier.no_term_full_attack_quota;
+      delete nextTier.no_term_double_full_quota;
+      delete nextTier.no_term_hp_bonus_start_value;
+      nextPricingControls.tiers[tierKey] = nextTier;
+    }
+  }
+
+  return nextPricingControls;
+}
 
 function buildRechargeConfigPatch(body = {}) {
   return {
@@ -27,21 +58,26 @@ function buildRechargeConfigPatch(body = {}) {
     qr_image_url: body.qr_image_url,
     payee_name: body.payee_name,
     payee_hint: body.payee_hint,
+    wechat_qr_image_url: body.wechat_qr_image_url,
+    wechat_payee_name: body.wechat_payee_name,
+    wechat_payee_hint: body.wechat_payee_hint,
     instructions: body.instructions,
     residual_instructions: body.residual_instructions,
+    pricing_controls: stripUnsupportedNoTermFieldsFromPricingControls(body.pricing_controls),
   };
 }
 
 async function getAdminRechargeConfig() {
   const repository = getAdminRechargeConfigRepository();
-  return await repository.getRechargeConfig();
+  return sanitizeAdminRechargeConfig(await repository.getRechargeConfig());
 }
 
-async function updateAdminRechargeConfig(actorUser, body = {}) {
+async function updateAdminRechargeConfig(actorUser, body = {}, requestId = null) {
   const repository = getAdminRechargeConfigRepository();
   return await repository.updateRechargeConfig({
     patch: buildRechargeConfigPatch(body),
     actorUserId: actorUser.id,
+    requestId,
   });
 }
 

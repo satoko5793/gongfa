@@ -1,7 +1,7 @@
-const devStore = require("../../services/dev-store");
+const ordersStore = require("../../domain/store/repositories/orders-file-store");
 
 async function reviewRechargeOrder({ rechargeOrderId, status, adminRemark, actorUserId }) {
-  const updated = devStore.reviewRechargeOrder(
+  const updated = ordersStore.reviewRechargeOrder(
     rechargeOrderId,
     {
       status,
@@ -22,10 +22,12 @@ async function updateOrderStatus({
   status,
   remark,
   actorUserId,
+  requestId = null,
   returnedCardsText,
   bestGoldCard,
 }) {
-  const updated = devStore.updateOrderStatus(orderId, status, remark, actorUserId, {
+  const updated = ordersStore.updateOrderStatus(orderId, status, remark, actorUserId, {
+    requestId,
     returnedCardsText,
     bestGoldCard,
   });
@@ -38,7 +40,7 @@ async function updateOrderStatus({
 }
 
 async function updateOrderRemark({ orderId, remark, actorUserId }) {
-  const updated = devStore.updateOrderRemark(orderId, remark, actorUserId);
+  const updated = ordersStore.updateOrderRemark(orderId, remark, actorUserId);
   if (!updated) {
     const err = new Error("order_not_found");
     err.statusCode = 404;

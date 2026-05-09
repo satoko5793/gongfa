@@ -1,0 +1,81 @@
+const helperStore = require("../../domain/store/repositories/helper-file-store");
+const usersStore = require("../../domain/store/repositories/users-file-store");
+const { getRechargeConfig } = require("../../config/recharge-config");
+
+function getHelperRechargeConfig() {
+  return getRechargeConfig(usersStore.getRechargeConfig());
+}
+
+function getHelperSnapshotLimitForUser(userId) {
+  return helperStore.getHelperSnapshotLimitForUser(userId);
+}
+
+function listHelperBindings(userId) {
+  return helperStore.listHelperBindings(userId);
+}
+
+function resolveHelperBinding(userId, criteria) {
+  return helperStore.resolveHelperBinding(userId, criteria);
+}
+
+function upsertHelperBinding(userId, payload) {
+  return helperStore.upsertHelperBinding(userId, payload);
+}
+
+function removeHelperBinding(userId, bindingId) {
+  return helperStore.removeHelperBinding(userId, bindingId);
+}
+
+function listHelperSnapshots(userId) {
+  return helperStore.listHelperSnapshots(userId);
+}
+
+function createHelperSnapshot(userId, payload) {
+  return helperStore.createHelperSnapshot(userId, payload);
+}
+
+function updateHelperSnapshot(userId, snapshotId, payload) {
+  return helperStore.updateHelperSnapshot(userId, snapshotId, payload);
+}
+
+function removeHelperSnapshot(userId, snapshotId) {
+  return helperStore.removeHelperSnapshot(userId, snapshotId);
+}
+
+function listHelperInventories(userId) {
+  return helperStore.listHelperInventories(userId);
+}
+
+function listMergedHelperInventoryItems(userId) {
+  return helperStore.listMergedHelperInventoryItems(userId);
+}
+
+function upsertHelperInventory(userId, payload) {
+  return helperStore.upsertHelperInventory(userId, payload);
+}
+
+function listHelperActionLogs(userId, options) {
+  return helperStore.listHelperActionLogs(userId, options);
+}
+
+function createHelperActionLog(userId, payload) {
+  return helperStore.createHelperActionLog(userId, payload);
+}
+
+module.exports = {
+  getHelperRechargeConfig,
+  getHelperSnapshotLimitForUser,
+  listHelperBindings,
+  resolveHelperBinding,
+  upsertHelperBinding,
+  removeHelperBinding,
+  listHelperSnapshots,
+  createHelperSnapshot,
+  updateHelperSnapshot,
+  removeHelperSnapshot,
+  listHelperInventories,
+  listMergedHelperInventoryItems,
+  upsertHelperInventory,
+  listHelperActionLogs,
+  createHelperActionLog,
+};

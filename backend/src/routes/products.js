@@ -2,8 +2,17 @@ const express = require("express");
 const { pool } = require("../db/pool");
 const { useFileStore } = require("../services/runtime");
 const { ensureBundleSeeds } = require("../services/bundle-catalog");
-const devStore = require("../services/dev-store");
 const { getRechargeConfig } = require("../config/recharge-config");
+const { applyCardSeasonMeta, getConfiguredCurrentSeasonScheduleId } = require("../config/season-meta");
+const { attachQuotaPurchasePolicy } = require("../domain/purchase-policy");
+const { buildDynamicBundles, findDynamicBundleById } = require("../domain/dynamic-bundles");
+const {
+  getProductsRechargeConfig,
+  getPublicProductById,
+  listPublicAuctions,
+  listPublicProducts,
+  listPublicRecentOrders,
+} = require("../modules/products/file-service");
 
 const productsRouter = express.Router();
 
@@ -11,6 +20,29 @@ function normalizeRecentSalesLimit(value) {
   const limit = Number(value);
   if (!Number.isFinite(limit)) return 8;
   return Math.min(Math.max(Math.floor(limit), 1), 20);
+}
+
+function getActiveSeasonScheduleId() {
+  const rechargeConfig = useFileStore()
+    ? getProductsRechargeConfig()
+    : getRechargeConfig();
+  return getConfiguredCurrentSeasonScheduleId(rechargeConfig);
+}
+
+function normalizePublicProductRow(row, currentSeasonScheduleId) {
+  if (!row || row.item_kind === "bundle") return row;
+  return applyCardSeasonMeta(row, { currentScheduleId: currentSeasonScheduleId });
+}
+
+function withPublicPurchasePolicy(row, rechargeConfig) {
+  return attachQuotaPurchasePolicy(row, rechargeConfig);
+}
+
+function stripPublicPricingMeta(row) {
+  if (!row || typeof row !== "object") return row;
+  const next = { ...row };
+  delete next.pricing_meta;
+  return next;
 }
 
 function maskPublicBuyerLabel(order) {
@@ -136,7 +168,7 @@ function mapPublicRecentSale(order) {
 productsRouter.get("/meta", async (req, res, next) => {
   try {
     const rechargeConfig = useFileStore()
-      ? getRechargeConfig(devStore.getRechargeConfig())
+      ? getProductsRechargeConfig()
       : getRechargeConfig();
 
     return res.json({
@@ -172,12 +204,13 @@ productsRouter.get("/meta", async (req, res, next) => {
 productsRouter.get("/", async (req, res, next) => {
   try {
     if (useFileStore()) {
+      const rechargeConfig = getProductsRechargeConfig();
       return res.json(
-        devStore.listProducts({
+        listPublicProducts({
           keyword: req.query.keyword,
           sort: req.query.sort,
           publicOnly: true,
-        })
+        }).map((item) => stripPublicPricingMeta(withPublicPurchasePolicy(item, rechargeConfig)))
       );
     }
 
@@ -274,7 +307,14 @@ productsRouter.get("/", async (req, res, next) => {
       values
     );
 
-    return res.json(result.rows);
+    const rechargeConfig = getRechargeConfig();
+    const currentSeasonScheduleId = getConfiguredCurrentSeasonScheduleId(rechargeConfig);
+    const publicRows = result.rows.map((row) =>
+      stripPublicPricingMeta(
+        withPublicPurchasePolicy(normalizePublicProductRow(row, currentSeasonScheduleId), rechargeConfig)
+      )
+    );
+    return res.json([...publicRows, ...buildDynamicBundles(publicRows)]);
   } catch (error) {
     return next(error);
   }
@@ -287,9 +327,9 @@ productsRouter.get("/recent-sales", async (req, res, next) => {
 
     if (useFileStore()) {
       const items = diversifyRecentSales(
-        devStore
-          .listOrders({ status: "confirmed", limit: fetchLimit })
-          .filter((order) => Array.isArray(order.items) && order.items.length > 0),
+        listPublicRecentOrders(fetchLimit).filter(
+          (order) => Array.isArray(order.items) && order.items.length > 0
+        ),
         limit
       ).map(mapPublicRecentSale);
       return res.json({ items, total: items.length });
@@ -338,7 +378,7 @@ productsRouter.get("/auctions", async (req, res, next) => {
   try {
     const status = String(req.query.status || "all").trim() || "all";
     if (useFileStore()) {
-      const items = devStore.listAuctions({ status, publicView: true });
+      const items = listPublicAuctions(status);
       return res.json({ items, total: items.length });
     }
 
@@ -352,14 +392,59 @@ productsRouter.get("/:id", async (req, res, next) => {
   try {
     const itemKind = req.query.item_kind === "bundle" ? "bundle" : "card";
     if (useFileStore()) {
-      const product = devStore.getProductById(req.params.id, { publicOnly: true, itemKind });
+      const product = getPublicProductById(req.params.id, { publicOnly: true, itemKind });
       if (!product) {
         return res.status(404).json({ error: "product_not_found" });
       }
-      return res.json(product);
+      return res.json(
+        stripPublicPricingMeta(withPublicPurchasePolicy(product, getProductsRechargeConfig()))
+      );
     }
     await ensureBundleSeeds(pool);
     if (itemKind === "bundle") {
+      if (Number(req.params.id) < 0) {
+        const productsResult = await pool.query(
+          `SELECT
+            id,
+            'card'::text AS item_kind,
+            id AS item_id,
+            legacy_id,
+            uid,
+            name,
+            image_url,
+            schedule_id,
+            current_schedule_id,
+            is_current_season,
+            season_tag,
+            season_label,
+            season_display,
+            attack_value,
+            hp_value,
+            main_attrs,
+            ext_attrs,
+            price_quota,
+            stock,
+            status,
+            created_at,
+            updated_at
+           FROM products
+           WHERE status='on_sale' AND stock > 0`
+        );
+        const rechargeConfig = getRechargeConfig();
+        const currentSeasonScheduleId = getConfiguredCurrentSeasonScheduleId(rechargeConfig);
+        const bundle = findDynamicBundleById(
+          productsResult.rows.map((row) =>
+            stripPublicPricingMeta(
+              withPublicPurchasePolicy(normalizePublicProductRow(row, currentSeasonScheduleId), rechargeConfig)
+            )
+          ),
+          req.params.id
+        );
+        if (!bundle) {
+          return res.status(404).json({ error: "product_not_found" });
+        }
+        return res.json(bundle);
+      }
       const result = await pool.query(
         `SELECT
           id,
@@ -398,7 +483,9 @@ productsRouter.get("/:id", async (req, res, next) => {
         return res.status(404).json({ error: "product_not_found" });
       }
 
-      return res.json(result.rows[0]);
+      return res.json(
+        stripPublicPricingMeta(withPublicPurchasePolicy(result.rows[0], getRechargeConfig()))
+      );
     }
     const result = await pool.query(
       `SELECT
@@ -434,7 +521,14 @@ productsRouter.get("/:id", async (req, res, next) => {
       return res.status(404).json({ error: "product_not_found" });
     }
 
-    return res.json(result.rows[0]);
+    return res.json(
+      stripPublicPricingMeta(
+        withPublicPurchasePolicy(
+          normalizePublicProductRow(result.rows[0], getActiveSeasonScheduleId()),
+          getRechargeConfig()
+        )
+      )
+    );
   } catch (error) {
     return next(error);
   }

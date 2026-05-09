@@ -1,6 +1,7 @@
 const { pool } = require("../../db/pool");
 const { writeAuditLog } = require("../../services/audit");
 const { ensureBundleSeeds } = require("../../services/bundle-catalog");
+const { AUDIT_ACTIONS } = require("../../domain/audit-actions");
 
 function notFoundError(message) {
   const err = new Error(message);
@@ -54,7 +55,7 @@ async function updateBundle({ bundleId, patch, actorUserId }) {
     actorUserId,
     targetType: "product",
     targetId: Number(bundleId),
-    action: "bundle_update",
+    action: AUDIT_ACTIONS.BUNDLE_UPDATE,
     detail: patch,
   });
 
@@ -79,7 +80,7 @@ async function updateBundleStatus({ bundleId, status, actorUserId }) {
     actorUserId,
     targetType: "product",
     targetId: Number(bundleId),
-    action: "bundle_status_update",
+    action: AUDIT_ACTIONS.BUNDLE_STATUS_UPDATE,
     detail: { status },
   });
 

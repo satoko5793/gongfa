@@ -1,7 +1,10 @@
 const express = require("express");
 const { authRequired, adminReadOnly, adminWriteOnly } = require("../middlewares/auth");
+const { ADMIN_ROLES } = require("../domain/admin-roles");
 const {
   validateImportInput,
+  validateBatchImportInput,
+  validateHelperInventoryBatchImportInput,
   validateProductStatus,
   validateProductUpdate,
   validateBundleUpdate,
@@ -10,6 +13,7 @@ const {
   validateExternalOrderCreate,
   validateRechargeReviewInput,
   validateRechargeConfigUpdateInput,
+  validateHelperCapabilitiesUpdateInput,
   validateAuctionCreate,
   validateAuctionCancelInput,
 } = require("../services/validate");
@@ -20,11 +24,13 @@ const {
 } = require("../modules/admin/orders/service");
 const {
   listAdminProducts,
+  listAdminBundles,
   listAdminUsers,
   listAdminOrders,
   listAdminRechargeOrders,
   listAdminQuotaLogs,
   listAdminAuditLogs,
+  getAdminOverview,
 } = require("../modules/admin/queries/service");
 const {
   bulkUpdateProductStatus,
@@ -38,9 +44,9 @@ const {
 const {
   changeUserQuota,
   updateUserStatus,
+  updateUserHelperCapabilities,
 } = require("../modules/admin/users/service");
 const {
-  listAdminBundles,
   updateBundle,
   updateBundleStatus,
 } = require("../modules/admin/bundles/service");
@@ -48,7 +54,12 @@ const {
   getAdminRechargeConfig,
   updateAdminRechargeConfig,
 } = require("../modules/admin/recharge-config/service");
-const { importCardsJson } = require("../modules/admin/imports/service");
+const {
+  importCardsJson,
+  importCardsJsonBatch,
+  importCurrentUserHelperInventories,
+  importManualHelperInventories,
+} = require("../modules/admin/imports/service");
 const { recalculatePricing } = require("../modules/admin/pricing/service");
 const { createExternalOrder } = require("../modules/admin/external-orders/service");
 const {
@@ -74,9 +85,43 @@ adminRouter.post("/imports/cards-json", adminWriteOnly, async (req, res, next) =
   }
 });
 
+adminRouter.post("/imports/cards-json-batch", adminWriteOnly, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateBatchImportInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+    return res.json(await importCardsJsonBatch(req.user, body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.post("/imports/helper-inventories", adminWriteOnly, async (req, res, next) => {
+  try {
+    return res.json(await importCurrentUserHelperInventories(req.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.post("/imports/helper-inventories-json-batch", adminWriteOnly, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateHelperInventoryBatchImportInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+    return res.json(await importManualHelperInventories(req.user, body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 adminRouter.get("/products", async (req, res, next) => {
   try {
-    return res.json(await listAdminProducts());
+    return res.json(await listAdminProducts(req.query || {}));
   } catch (error) {
     return next(error);
   }
@@ -96,7 +141,7 @@ adminRouter.patch("/products/bulk-status", adminWriteOnly, async (req, res, next
     if (normalizedIds.length === 0) {
       return res.status(400).json({ error: "product_ids_required" });
     }
-    return res.json(await bulkUpdateProductStatus(req.user, normalizedIds, status));
+    return res.json(await bulkUpdateProductStatus(req.user, normalizedIds, status, req.requestId));
   } catch (error) {
     return next(error);
   }
@@ -124,7 +169,7 @@ adminRouter.patch("/products/bulk-update", adminWriteOnly, async (req, res, next
     if (normalizedIds.length === 0) {
       return res.status(400).json({ error: "product_ids_required" });
     }
-    return res.json(await bulkUpdateProducts(req.user, normalizedIds, body));
+    return res.json(await bulkUpdateProducts(req.user, normalizedIds, body, req.requestId));
   } catch (error) {
     return next(error);
   }
@@ -167,7 +212,7 @@ adminRouter.patch("/products/:id/status", adminWriteOnly, async (req, res, next)
 
 adminRouter.get("/bundles", async (req, res, next) => {
   try {
-    return res.json(await listAdminBundles());
+    return res.json(await listAdminBundles(req.query || {}));
   } catch (error) {
     return next(error);
   }
@@ -202,7 +247,15 @@ adminRouter.patch("/bundles/:id/status", adminWriteOnly, async (req, res, next) 
 
 adminRouter.get("/users", async (req, res, next) => {
   try {
-    return res.json(await listAdminUsers());
+    return res.json(await listAdminUsers(req.query || {}));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/overview", async (req, res, next) => {
+  try {
+    return res.json(await getAdminOverview());
   } catch (error) {
     return next(error);
   }
@@ -234,6 +287,20 @@ adminRouter.patch("/users/:id/status", adminWriteOnly, async (req, res, next) =>
   }
 });
 
+adminRouter.patch("/users/:id/helper-capabilities", adminWriteOnly, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateHelperCapabilitiesUpdateInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+
+    return res.json(await updateUserHelperCapabilities(req.user, req.params.id, body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 adminRouter.get("/orders", async (req, res, next) => {
   try {
     return res.json(await listAdminOrders(req.query || {}));
@@ -258,7 +325,7 @@ adminRouter.patch("/recharge-config", adminWriteOnly, async (req, res, next) => 
       return res.status(400).json({ error: "invalid_input", details: errors });
     }
 
-    return res.json(await updateAdminRechargeConfig(req.user, body));
+    return res.json(await updateAdminRechargeConfig(req.user, body, req.requestId));
   } catch (error) {
     return next(error);
   }
@@ -295,7 +362,7 @@ adminRouter.get("/quota-logs", async (req, res, next) => {
 
 adminRouter.post("/pricing/recalculate", adminWriteOnly, async (req, res, next) => {
   try {
-    return res.json(await recalculatePricing(req.user));
+    return res.json(await recalculatePricing(req.user, req.requestId));
   } catch (error) {
     return next(error);
   }
@@ -322,11 +389,11 @@ adminRouter.patch("/orders/:id/status", async (req, res, next) => {
       return res.status(400).json({ error: "best_gold_card_invalid" });
     }
     const role = String(req.user?.role || "").trim();
-    const canConfirmOnly = role === "poster_admin" && String(status || "") === "confirmed";
-    if (role !== "admin" && !canConfirmOnly) {
+    const canConfirmOnly = role === ADMIN_ROLES.POSTER_ADMIN && String(status || "") === "confirmed";
+    if (role !== ADMIN_ROLES.ADMIN && !canConfirmOnly) {
       return res.status(403).json({ error: "admin_write_only" });
     }
-    return res.json(await updateOrderStatus(req.user, req.params.id, req.body || {}));
+    return res.json(await updateOrderStatus(req.user, req.params.id, req.body || {}, req.requestId));
   } catch (error) {
     return next(error);
   }

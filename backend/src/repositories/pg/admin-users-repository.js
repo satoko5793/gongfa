@@ -1,6 +1,8 @@
 const { pool } = require("../../db/pool");
 const { applyQuotaChange, ensureQuotaAccount } = require("../../services/quota");
 const { writeAuditLog } = require("../../services/audit");
+const { QUOTA_LOG_TYPES } = require("../../domain/quota-log-types");
+const { AUDIT_ACTIONS } = require("../../domain/audit-actions");
 
 function notFoundError(message) {
   const err = new Error(message);
@@ -23,7 +25,7 @@ async function changeUserQuota({ userId, changeAmount, remark, actorUserId }) {
     const nextBalance = await applyQuotaChange(client, {
       userId: Number(userId),
       changeAmount,
-      type: changeAmount > 0 ? "admin_add" : "admin_subtract",
+      type: changeAmount > 0 ? QUOTA_LOG_TYPES.ADMIN_ADD : QUOTA_LOG_TYPES.ADMIN_SUBTRACT,
       remark,
     });
 
@@ -32,7 +34,7 @@ async function changeUserQuota({ userId, changeAmount, remark, actorUserId }) {
         actorUserId,
         targetType: "user",
         targetId: Number(userId),
-        action: "user_quota_change",
+        action: AUDIT_ACTIONS.USER_QUOTA_CHANGE,
         detail: { change_amount: changeAmount, next_balance: nextBalance },
       },
       client
@@ -65,15 +67,22 @@ async function updateUserStatus({ userId, status, actorUserId }) {
     actorUserId,
     targetType: "user",
     targetId: Number(userId),
-    action: "user_status_update",
+    action: AUDIT_ACTIONS.USER_STATUS_UPDATE,
     detail: { status },
   });
 
   return result.rows[0];
 }
 
+async function updateUserHelperCapabilities() {
+  const err = new Error("helper_capabilities_not_supported_in_db_mode");
+  err.statusCode = 501;
+  throw err;
+}
+
 module.exports = {
   mode: "pg",
   changeUserQuota,
   updateUserStatus,
+  updateUserHelperCapabilities,
 };

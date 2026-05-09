@@ -1,5 +1,5 @@
 const express = require("express");
-const { authRequired } = require("../middlewares/auth");
+const { authRequired, authOptional } = require("../middlewares/auth");
 const {
   validateOrderCreate,
   validateGuestTransferOrderCreate,
@@ -26,14 +26,14 @@ function sendValidationError(res, errors) {
   return res.status(400).json({ error: "invalid_input", details: errors });
 }
 
-ordersRouter.post("/guest-transfer", async (req, res, next) => {
+ordersRouter.post("/guest-transfer", authOptional, async (req, res, next) => {
   try {
     const body = req.body || {};
     const errors = validateGuestTransferOrderCreate(body);
     if (errors.length) {
       return sendValidationError(res, errors);
     }
-    return res.json(await createGuestTransferOrder(body));
+    return res.json(await createGuestTransferOrder(req.user || null, body));
   } catch (error) {
     return next(error);
   }

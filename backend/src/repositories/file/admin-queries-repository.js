@@ -1,76 +1,68 @@
-const devStore = require("../../services/dev-store");
-
-function paginate(items, limit, offset) {
-  const normalizedOffset = Math.max(Number(offset) || 0, 0);
-  const normalizedLimit = Math.max(Number(limit) || 0, 0);
-  return items.slice(normalizedOffset, normalizedOffset + normalizedLimit);
-}
+const adminQueriesStore = require("../../domain/store/repositories/admin-queries-file-store");
 
 async function listOrders({ userId, status, keyword, limit, offset }) {
-  const allOrders = devStore.listOrders({
+  return adminQueriesStore.queryAdminOrders({
     userId,
     status,
     keyword,
-    limit: null,
+    limit,
+    offset,
   });
-  return {
-    items: paginate(allOrders, limit, offset),
-    total: allOrders.length,
-  };
 }
 
-async function listProducts() {
-  return devStore.listAdminProducts();
+async function listProducts(filters = {}) {
+  return adminQueriesStore.queryAdminProducts(filters);
 }
 
-async function listUsers() {
-  return devStore.listUsers();
+async function listBundles({ limit, offset }) {
+  return adminQueriesStore.queryAdminBundles({ limit, offset });
+}
+
+async function listUsers({ keyword, limit, offset }) {
+  return adminQueriesStore.queryAdminUsers({ keyword, limit, offset });
 }
 
 async function listRechargeOrders({ userId, status, keyword, limit, offset }) {
-  const allOrders = devStore.listRechargeOrders({
+  return adminQueriesStore.queryAdminRechargeOrders({
     userId,
     status,
     keyword,
-    limit: null,
+    limit,
+    offset,
   });
-  return {
-    items: paginate(allOrders, limit, offset),
-    total: allOrders.length,
-  };
 }
 
 async function listQuotaLogs({ userId, keyword, type, limit, offset }) {
-  const allLogs = devStore.listQuotaLogs({
+  return adminQueriesStore.queryAdminQuotaLogs({
     userId,
     keyword,
     type,
-    limit: null,
+    limit,
+    offset,
   });
-  return {
-    items: paginate(allLogs, limit, offset),
-    total: allLogs.length,
-  };
 }
 
 async function listAuditLogs({ keyword, action, limit, offset }) {
-  const allLogs = devStore.listAuditLogs({
+  return adminQueriesStore.queryAdminAuditLogs({
     keyword,
     action,
-    limit: null,
+    limit,
+    offset,
   });
-  return {
-    items: paginate(allLogs, limit, offset),
-    total: allLogs.length,
-  };
+}
+
+async function getOverview() {
+  return adminQueriesStore.getAdminOverview();
 }
 
 module.exports = {
   mode: "file",
   listProducts,
+  listBundles,
   listUsers,
   listOrders,
   listRechargeOrders,
   listQuotaLogs,
   listAuditLogs,
+  getOverview,
 };

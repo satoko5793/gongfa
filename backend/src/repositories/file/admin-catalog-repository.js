@@ -1,4 +1,4 @@
-const devStore = require("../../services/dev-store");
+const productsStore = require("../../domain/store/repositories/products-file-store");
 
 function notFoundError(message) {
   const err = new Error(message);
@@ -6,16 +6,16 @@ function notFoundError(message) {
   return err;
 }
 
-async function bulkUpdateProductStatus({ productIds, status, actorUserId }) {
-  return devStore.bulkUpdateProductStatus(productIds, status, actorUserId);
+async function bulkUpdateProductStatus({ productIds, status, actorUserId, requestId = null }) {
+  return productsStore.bulkUpdateProductStatus(productIds, status, actorUserId, requestId);
 }
 
-async function bulkUpdateProducts({ productIds, patch, actorUserId }) {
-  return devStore.bulkUpdateProducts(productIds, patch, actorUserId);
+async function bulkUpdateProducts({ productIds, patch, actorUserId, requestId = null }) {
+  return productsStore.bulkUpdateProducts(productIds, patch, actorUserId, requestId);
 }
 
 async function updateProduct({ productId, patch, actorUserId }) {
-  const updated = devStore.updateProduct(productId, patch, actorUserId);
+  const updated = productsStore.updateProduct(productId, patch, actorUserId);
   if (!updated) {
     throw notFoundError("product_not_found");
   }
@@ -23,7 +23,7 @@ async function updateProduct({ productId, patch, actorUserId }) {
 }
 
 async function clearProductManualPrice({ productId, actorUserId }) {
-  const updated = devStore.clearProductManualPrice(productId, actorUserId);
+  const updated = productsStore.clearProductManualPrice(productId, actorUserId);
   if (!updated) {
     throw notFoundError("product_not_found");
   }
@@ -31,7 +31,7 @@ async function clearProductManualPrice({ productId, actorUserId }) {
 }
 
 async function updateProductStatus({ productId, status, actorUserId }) {
-  const updated = devStore.updateProductStatus(productId, status, actorUserId);
+  const updated = productsStore.updateProductStatus(productId, status, actorUserId);
   if (!updated) {
     throw notFoundError("product_not_found");
   }

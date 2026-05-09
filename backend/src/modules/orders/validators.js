@@ -28,6 +28,17 @@ function validateOrderCreate(body) {
   ) {
     errors.push("item_kind_invalid");
   }
+  if (body.remark !== undefined && !optionalString(body.remark)) {
+    errors.push("remark_invalid");
+  }
+  if (
+    body.bundle_selection !== undefined &&
+    (body.bundle_selection === null ||
+      typeof body.bundle_selection !== "object" ||
+      Array.isArray(body.bundle_selection))
+  ) {
+    errors.push("bundle_selection_invalid");
+  }
   return errors;
 }
 
@@ -65,6 +76,14 @@ function validateGuestTransferOrderCreate(body) {
   }
   if (body.payer_note !== undefined && !optionalString(body.payer_note)) {
     errors.push("payer_note_invalid");
+  }
+  if (
+    body.bundle_selection !== undefined &&
+    (body.bundle_selection === null ||
+      typeof body.bundle_selection !== "object" ||
+      Array.isArray(body.bundle_selection))
+  ) {
+    errors.push("bundle_selection_invalid");
   }
   return [...new Set(errors)];
 }

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>25000 繁星功法商城 - 功法检测</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260410-fix1" />
+    <link rel="stylesheet" href="styles.css?v=20260409-home-trim1" />
+    <link rel="stylesheet" href="styles/base.css?v=release-20260421-194048" />
+  </head>
+  <body data-page-entry="script">
+    <div class="bg-gradient"></div>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">G</span>
+        <div>
+          <div class="brand-title">功法卡片商城</div>
+          <div class="brand-sub">多页面拆分进行中</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a data-page-link="shop" href="shop.html">商城</a>
+        <a id="nav-bind-link" data-page-link="login" href="login.html">登录</a>
+        <a data-page-link="script" href="script.html">功法检测</a>
+        <a data-page-link="auction" href="auction.html">拍卖代抽</a>
+        <a data-page-link="me" href="me.html">个人后台</a>
+        <a id="nav-admin-link" class="hidden" href="admin.html">后台</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="site-banner card" role="status" aria-live="polite">
+        <div class="site-banner-title">数据异常说明</div>
+        <div class="site-banner-copy">
+          4月9日正式服发布过程中出现数据异常，部分账号信息、额度、阵容槽及相关记录可能出现回退或显示不一致。
+        </div>
+        <div class="site-banner-copy">
+          如果你发现自己的信息和实际情况对不上，请加群或直接联系我们，我们会逐一核实处理；确认异常后会协助恢复额度和阵容槽，并统一补偿
+          3000 额度。
+        </div>
+      </section>
+
+      <section id="helper-lab" class="card dock-target-section hidden">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Lineup Cloud</div>
+            <div class="card-title">功法检测</div>
+            <div class="card-sub">
+              功法检测、功法仓库同步和阵容快照都集中在这个独立页面里处理，不再占用个人后台的启动链路。
+            </div>
+          </div>
+          <span id="helper-lab-badge" class="teaser-chip">未启用</span>
+        </div>
+        <div class="helper-hub-grid">
+            <div class="panel">
+              <div class="panel-title">阵容云同步</div>
+              <div id="helper-lab-note" class="muted">
+                先绑定角色，再把当前阵容保存成云端卡片。需要切回时，直接点一键还原即可。
+              </div>
+              <div class="actions">
+                <a id="helper-lab-open-link" class="ghost-link hidden" href="/xyzw-helper/" target="_blank" rel="noreferrer">调试打开工具页</a>
+                <a class="ghost-link" href="me.html">回到个人后台</a>
+              </div>
+            </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">绑定游戏角色</div>
+            <div id="helper-bind-current" class="stack-list">
+              <div class="stack-item">当前还没有绑定角色。</div>
+            </div>
+            <div class="actions">
+              <button id="helper-open-bind-popup-btn" type="button" class="primary">绑定游戏角色</button>
+              <button id="helper-save-bind-btn" type="button" class="ghost">确认绑定</button>
+              <button id="helper-clear-bind-btn" type="button" class="ghost">清空选择</button>
+            </div>
+            <div id="helper-bind-message" class="notice"></div>
+          </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">功法仓库</div>
+            <div class="muted">把每个炉子号背包里的功法同步到商城，下面会自动合并成总仓库，后面做自动发货也会基于这里。</div>
+            <div class="actions">
+              <button id="helper-sync-current-inventory-btn" type="button" class="ghost">同步当前号功法</button>
+              <button id="helper-sync-all-inventory-btn" type="button" class="primary">同步全部炉子</button>
+            </div>
+            <div id="helper-inventory-message" class="notice"></div>
+            <div id="helper-inventory-bindings" class="stack-list">
+              <div class="stack-item">绑定多个角色后，就能在这里分别看到每个炉子的功法库存。</div>
+            </div>
+            <div id="helper-inventory-merged" class="stack-list">
+              <div class="stack-item">同步完成后，这里会展示多个炉子合并后的总仓库。</div>
+            </div>
+          </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">游戏脚本</div>
+            <div class="muted">开放 helper 里低风险的单次脚本动作，循环爬塔和一键补差暂时不放出来。</div>
+            <div id="helper-game-feature-list" class="stack-list">
+              <div class="stack-item">测试服授权后会显示可用脚本。</div>
+            </div>
+            <div id="helper-game-feature-message" class="notice"></div>
+          </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">我的阵容</div>
+            <div class="muted">把当前正在使用的阵容保存成卡片，后面可以直接从这里切回去。</div>
+            <div id="helper-slot-summary" class="stack-list">
+              <div class="stack-item">登录后可查看当前阵容槽位。</div>
+            </div>
+            <div class="actions">
+              <button id="helper-buy-permanent-slot-btn" type="button" class="ghost">+1 永久槽</button>
+              <button id="helper-buy-seasonal-slot-btn" type="button" class="ghost">+1 赛季槽</button>
+              <button id="helper-read-snapshot-btn" type="button" class="primary">保存当前阵容</button>
+            </div>
+            <div id="helper-slot-message" class="notice hidden"></div>
+            <div id="helper-snapshot-message" class="notice"></div>
+            <div id="helper-snapshot-current" class="stack-list">
+              <div class="stack-item">还没有保存过阵容。</div>
+            </div>
+            <div id="helper-snapshot-list" class="stack-list">
+              <div class="stack-item">保存过的阵容会显示在这里。</div>
+            </div>
+          </div>
+          <div class="panel helper-binding-panel">
+            <div class="panel-title">最近一次还原</div>
+            <div class="muted">每次执行一键还原后，这里会显示本次恢复到了哪套阵容，以及实际动了哪些内容。</div>
+            <div id="helper-restore-progress-current" class="stack-list hidden"></div>
+            <div id="helper-restore-result-current" class="stack-list">
+              <div class="stack-item">还没有执行过一键还原。</div>
+            </div>
+          </div>
+        </div>
+        <div id="helper-preview-message" class="notice hidden"></div>
+        <div id="helper-preview-current" class="hidden"></div>
+        <div id="helper-team-switch-current" class="hidden"></div>
+        <div id="helper-team-switch-controls" class="hidden"></div>
+        <div id="helper-team-switch-message" class="notice hidden"></div>
+        <div id="helper-team-switch-log" class="hidden"></div>
+        <button id="helper-clear-preview-btn" type="button" class="hidden">清空预演</button>
+      </section>
+    </main>
+
+<div id="helper-bridge-modal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-card helper-bridge-modal" role="dialog" aria-modal="true" aria-labelledby="helper-bridge-modal-title">
+        <div class="modal-head">
+          <div>
+            <div class="card-title" id="helper-bridge-modal-title">绑定游戏角色</div>
+            <div id="helper-bridge-modal-message" class="card-sub">
+              在当前页面完成角色绑定，选择后会自动带回商城。
+            </div>
+          </div>
+          <button id="close-helper-bridge-modal-btn" class="ghost" type="button">关闭</button>
+        </div>
+        <div class="helper-bridge-modal-body">
+          <iframe
+            id="helper-bridge-iframe"
+            class="helper-bridge-iframe"
+            title="游戏角色绑定"
+            src="about:blank"
+            loading="eager"
+            referrerpolicy="strict-origin-when-cross-origin"
+          ></iframe>
+        </div>
+        <div id="helper-bridge-modal-hint" class="muted">
+          支持扫码或 BIN 导入，完成后会自动返回商城，不需要手动回跳。
+        </div>
+      </div>
+    </div>
+    <iframe
+      id="helper-bridge-hidden-frame"
+      class="helper-bridge-hidden-frame"
+      title="阵容同步后台帧"
+      src="about:blank"
+      tabindex="-1"
+      aria-hidden="true"
+    ></iframe>
+
+    <footer class="footer">当前先把网页商城主流程跑通，支付与更多自动化能力后续再补。</footer>
+    <script type="module" src="./script-entry.js?v=release-20260509-160631"></script>
+
+</body>
+</html>

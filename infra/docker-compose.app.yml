@@ -10,10 +10,12 @@ services:
     restart: unless-stopped
     env_file:
       - ../.env.production
+    environment:
+      DEV_STORE_DATA_PATH: /app/runtime-data/dev-data.json
     expose:
       - "8090"
     volumes:
-      - ../backend/dev-data.json:/app/backend/dev-data.json
+      - /opt/gongfa-data:/app/runtime-data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
       interval: 30s

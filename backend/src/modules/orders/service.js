@@ -3,12 +3,14 @@ const { toAuctionBidSummaryResponse, toOrderDetail } = require("./mapper");
 const { ensureCanReadOrder } = require("./policy");
 const { getOrdersRepository } = require("./repository");
 
-async function createGuestTransferOrder(body) {
+async function createGuestTransferOrder(user, body) {
   const repository = getOrdersRepository();
   return toOrderDetail(
     await repository.createGuestTransferOrder({
+      userId: user?.id || null,
       itemId: body.item_id ?? body.product_id,
       itemKind: body.item_kind || "card",
+      bundleSelection: body.bundle_selection || null,
       body,
     })
   );
@@ -21,6 +23,8 @@ async function createOrder(user, body) {
       userId: user.id,
       itemId: body.item_id ?? body.product_id,
       itemKind: body.item_kind || "card",
+      bundleSelection: body.bundle_selection || null,
+      remark: body.remark || null,
     })
   );
 }

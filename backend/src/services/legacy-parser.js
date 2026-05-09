@@ -15,6 +15,7 @@ const legacyLocalNameById = {
   602: "\u73cd \u8fde\u73af\u9a6c\u540e\u70ae",
   603: "\u73cd \u4e7e\u5764\u4e00\u63b7",
 };
+const { buildCardSeasonMeta } = require("../config/season-meta");
 
 const scaledTermAttrIds = new Set([604, 605]);
 
@@ -151,27 +152,17 @@ function normalizeLegacyEntries(source) {
   return [];
 }
 
-function buildSeasonMeta(entry) {
-  const scheduleId = Number(entry?.scheduleId || 0);
-  const currentScheduleId = Number(entry?.__currentScheduleId || 0);
-  const isCurrentSeason =
-    scheduleId > 0 && currentScheduleId > 0 && scheduleId === currentScheduleId;
-
-  return {
-    schedule_id: scheduleId || null,
-    current_schedule_id: currentScheduleId || null,
-    is_current_season: isCurrentSeason,
-    season_tag: isCurrentSeason ? "current" : "legacy",
-    season_label: scheduleId > 0 ? `S${scheduleId}` : "-",
-    season_display: isCurrentSeason
-      ? `S${scheduleId} \u5f53\u524d\u8d5b\u5b63`
-      : scheduleId > 0
-        ? `S${scheduleId} \u8001\u5361`
-        : "\u672a\u77e5\u8d5b\u5b63",
-  };
+function buildSeasonMeta(entry, options = {}) {
+  return buildCardSeasonMeta({
+    scheduleId: Number(entry?.scheduleId || 0) || null,
+    currentScheduleId:
+      options.currentScheduleId === undefined
+        ? Number(entry?.__currentScheduleId || 0) || null
+        : options.currentScheduleId,
+  });
 }
 
-function parseLegacyProducts(source) {
+function parseLegacyProducts(source, options = {}) {
   const entries = normalizeLegacyEntries(source);
   const grouped = new Map();
 
@@ -192,7 +183,7 @@ function parseLegacyProducts(source) {
         ext_attrs: formatTermSummary(terms),
         fire_signature: terms.fireValues.join(","),
         calm_signature: terms.calmValues.join(","),
-        ...buildSeasonMeta(entry),
+        ...buildSeasonMeta(entry, options),
       };
     })
     .filter((item) => item.legacy_id > 0)
@@ -224,4 +215,61 @@ function parseLegacyProducts(source) {
   return [...grouped.values()];
 }
 
-module.exports = { parseLegacyProducts };
+function inferRoleIdFromLegacyEntries(entries) {
+  const firstUid = String(entries?.[0]?.uId || entries?.[0]?.uid || "").trim();
+  if (!firstUid) return "";
+  const [roleId] = firstUid.split("-");
+  return String(roleId || "").trim();
+}
+
+function parseLegacyHelperInventory(source, options = {}) {
+  const entries = normalizeLegacyEntries(source);
+  const roleScheduleId = Number(source?.roleLegacy?.scheduleId || source?.scheduleId || 0) || null;
+  const roleId =
+    String(options.roleId || "").trim() || inferRoleIdFromLegacyEntries(entries) || "";
+  const roleName = String(options.roleName || source?.roleName || source?.gameRoleName || "").trim();
+  const server = String(options.server || source?.server || source?.gameServer || "").trim();
+  const syncedAt = String(options.syncedAt || "").trim() || new Date().toISOString();
+  const items = entries
+    .map((entry) => {
+      const storageId = Number(entry?.__storageKey || 0);
+      const legacyId = Number(entry?.legacyId || storageId || 0);
+      if (!legacyId) return null;
+      const terms = getTermValues(entry);
+      return {
+        row_key: String(entry?.__storageKey || entry?.uId || entry?.uid || "").trim(),
+        uid: String(entry?.uId || entry?.uid || "").trim(),
+        legacy_id: legacyId,
+        display_name: legacyLocalNameById[legacyId] || `功法 ${legacyId}`,
+        attack_value: getAttackValue(entry),
+        hp_value: getHpValue(entry),
+        main_attr_text: "",
+        ext_attr_text: formatTermSummary(terms),
+        has_ext: terms.fireValues.length > 0 || terms.calmValues.length > 0,
+        is_locked: Boolean(entry?.isLocked),
+        max: Boolean(entry?.max),
+        image_url: getLocalAssetUrl(legacyId),
+        schedule_id: Number(entry?.scheduleId || 0) || null,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    summary: {
+      role_id: roleId,
+      role_name: roleName,
+      server,
+      current_schedule_id: roleScheduleId,
+      role_schedule_id: roleScheduleId,
+      legacy_count: items.length,
+      fragment_count: 0,
+      synced_at: syncedAt,
+    },
+    items,
+  };
+}
+
+module.exports = {
+  parseLegacyProducts,
+  parseLegacyHelperInventory,
+};

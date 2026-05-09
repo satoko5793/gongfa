@@ -1,187 +1,202 @@
-﻿import { apiFetch, clearSession, formatDate, loadSession, saveSession } from "./shared.js?v=20260404-fix1";
+﻿import { createAdminApi } from "./admin-services/api.js?v=release-20260509-160631";
+import { loadAdminPageData, bindAdminPageEvents, renderAdminPage } from "./admin-pages/index.js?v=release-20260509-160631";
+import { renderPendingImportEntriesView, renderPendingHelperInventoryEntriesView } from "./admin-renderers/imports.js?v=release-20260509-160631";
+import { renderSessionView, renderOverviewSection, renderAdminAlertsSection, clearAdminAlertsSection } from "./admin-renderers/overview.js?v=release-20260509-160631";
+import { renderPricingSummaryView } from "./admin-renderers/pricing.js?v=release-20260509-160631";
+import {
+  renderCatalogProductsSection,
+  renderBundlesSection,
+  openProductModalView,
+  closeProductModalView,
+} from "./admin-renderers/products.js?v=release-20260509-160631";
+import { renderOrdersListSection, renderLinkedOrderUserState as renderLinkedOrderUserStateSection } from "./admin-renderers/orders.js?v=release-20260509-160631";
+import {
+  renderRechargeOrdersSection,
+  renderRechargeConfigSection,
+  renderPricingControlsSection,
+  formatRechargeChannelLabel,
+} from "./admin-renderers/recharge.js?v=release-20260509-160631";
+import { renderUsersSection } from "./admin-renderers/users.js?v=release-20260509-160631";
+import { renderAuditsSection, renderQuotaLogsSection } from "./admin-renderers/logs.js?v=release-20260509-160631";
+import { renderAuctionsSection } from "./admin-renderers/auctions.js?v=release-20260509-160631";
+import { getAdminDomRefs } from "./admin-runtime/dom.js?v=release-20260509-160631";
+import { activateAdminPageShell, renderPagination, setDebugLine } from "./admin-runtime/page-shell.js?v=release-20260509-160631";
+import {
+  createAdminStore,
+  POSTER_EXPORT_LIMIT,
+  POSTER_WEBSITE,
+  PRICING_TIER_ORDER,
+  PRICING_TIER_LABELS,
+  ADMIN_READ_ROLES,
+  ADMIN_WRITE_ROLES,
+  READ_ONLY_WRITE_CONTROL_IDS,
+} from "./admin-state/store.js?v=release-20260509-160631";
+import {
+  ADMIN_ROLES,
+  ORDER_STATUS,
+  RECHARGE_ORDER_STATUS,
+  isAdminRole,
+} from "./app-constants.js?v=release-20260509-160631";
 
-const adminSession = document.getElementById("admin-session");
-const adminMessage = document.getElementById("admin-message");
-const adminOverview = document.getElementById("admin-overview");
-const adminAlerts = document.getElementById("admin-alerts");
-const adminAlertSummary = document.getElementById("admin-alert-summary");
-const adminAlertActions = document.getElementById("admin-alert-actions");
-const adminAlertTimestamp = document.getElementById("admin-alert-timestamp");
-const adminProductModal = document.getElementById("admin-product-modal");
-const adminProductModalBody = document.getElementById("admin-product-modal-body");
-const closeAdminProductModalBtn = document.getElementById("close-admin-product-modal-btn");
-const adminLoginForm = document.getElementById("admin-login-form");
-const adminLoginRoleIdInput = document.getElementById("admin-login-role-id");
-const adminLoginPasswordInput = document.getElementById("admin-login-password");
-const adminLoginBtn = document.getElementById("admin-login-btn");
-const adminLogoutBtn = document.getElementById("admin-logout-btn");
-const importJsonInput = document.getElementById("import-json-input");
-const importFileNameInput = document.getElementById("import-file-name");
-const productsRoot = document.getElementById("admin-products");
-const auctionsRoot = document.getElementById("admin-auctions");
-const bundlesRoot = document.getElementById("admin-bundles");
-const usersRoot = document.getElementById("admin-users");
-const ordersRoot = document.getElementById("admin-orders");
-const quotaLogsRoot = document.getElementById("admin-quota-logs");
-const auditsRoot = document.getElementById("admin-audits");
-const selectedProductsChip = document.getElementById("selected-products-chip");
-const filteredProductsChip = document.getElementById("filtered-products-chip");
-const discountedProductsChip = document.getElementById("discounted-products-chip");
-const adminProductKeywordInput = document.getElementById("admin-product-keyword-input");
-const adminProductStatusFilter = document.getElementById("admin-product-status-filter");
-const adminProductDiscountFilter = document.getElementById("admin-product-discount-filter");
-const adminProductCategoryTabs = document.getElementById("admin-product-category-tabs");
-const adminProductSubcategoryTabs = document.getElementById("admin-product-subcategory-tabs");
-const adminProductDetailTabs = document.getElementById("admin-product-detail-tabs");
-const adminProductFullnessTabs = document.getElementById("admin-product-fullness-tabs");
-const adminUserKeywordInput = document.getElementById("admin-user-keyword-input");
-const adminRechargeKeywordInput = document.getElementById("admin-recharge-keyword-input");
-const adminRechargeStatusFilter = document.getElementById("admin-recharge-status-filter");
-const adminRechargeOrdersRoot = document.getElementById("admin-recharge-orders");
-const adminRechargeConfigForm = document.getElementById("admin-recharge-config-form");
-const adminRechargeEnabled = document.getElementById("admin-recharge-enabled");
-const adminRechargeExchangeYuanInput = document.getElementById("admin-recharge-exchange-yuan");
-const adminRechargeExchangeQuotaInput = document.getElementById("admin-recharge-exchange-quota");
-const adminRechargeMinYuanInput = document.getElementById("admin-recharge-min-yuan");
-const adminResidualTransferEnabledInput = document.getElementById("admin-residual-transfer-enabled");
-const adminResidualAdminRoleIdInput = document.getElementById("admin-residual-admin-role-id");
-const adminResidualAdminRoleNameInput = document.getElementById("admin-residual-admin-role-name");
-const adminResidualAdminGameNameInput = document.getElementById("admin-residual-admin-game-name");
-const adminResidualUnitLabelInput = document.getElementById("admin-residual-unit-label");
-const adminResidualQuotaPerUnitInput = document.getElementById("admin-residual-quota-per-unit");
-const adminSeasonMemberEnabledInput = document.getElementById("admin-season-member-enabled");
-const adminSeasonMemberLabelInput = document.getElementById("admin-season-member-label");
-const adminSeasonMemberExpiresAtInput = document.getElementById("admin-season-member-expires-at");
-const adminSeasonMemberPriceInput = document.getElementById("admin-season-member-price");
-const adminSeasonMemberQuotaInput = document.getElementById("admin-season-member-quota");
-const adminSeasonMemberBonusRateInput = document.getElementById("admin-season-member-bonus-rate");
-const adminLineupBaseSlotsInput = document.getElementById("admin-lineup-base-slots");
-const adminLineupPermanentSlotQuotaInput = document.getElementById("admin-lineup-permanent-slot-quota");
-const adminLineupPermanentSlotMaxInput = document.getElementById("admin-lineup-permanent-slot-max");
-const adminLineupSeasonalSlotQuotaInput = document.getElementById("admin-lineup-seasonal-slot-quota");
-const adminLineupMemberBonusSlotsInput = document.getElementById("admin-lineup-member-bonus-slots");
-const adminRechargePresetsInput = document.getElementById("admin-recharge-presets");
-const adminRechargePayeeNameInput = document.getElementById("admin-recharge-payee-name");
-const adminRechargePayeeHintInput = document.getElementById("admin-recharge-payee-hint");
-const adminRechargeQrImageUrlInput = document.getElementById("admin-recharge-qr-image-url");
-const adminWechatPayeeNameInput = document.getElementById("admin-wechat-payee-name");
-const adminWechatPayeeHintInput = document.getElementById("admin-wechat-payee-hint");
-const adminWechatQrImageUrlInput = document.getElementById("admin-wechat-qr-image-url");
-const adminRechargeInstructionsInput = document.getElementById("admin-recharge-instructions");
-const adminResidualInstructionsInput = document.getElementById("admin-residual-instructions");
-const adminRechargeQrPreview = document.getElementById("admin-recharge-qr-preview");
-const adminWechatQrPreview = document.getElementById("admin-wechat-qr-preview");
-const adminOrderKeywordInput = document.getElementById("admin-order-keyword-input");
-const adminOrderStatusFilter = document.getElementById("admin-order-status-filter");
-const adminQuotaLogKeywordInput = document.getElementById("admin-quota-log-keyword-input");
-const adminQuotaLogTypeFilter = document.getElementById("admin-quota-log-type-filter");
-const adminAuditKeywordInput = document.getElementById("admin-audit-keyword-input");
-const adminAuditActionInput = document.getElementById("admin-audit-action-input");
-const linkedOrderUserState = document.getElementById("linked-order-user-state");
-const bulkPriceInput = document.getElementById("bulk-price-input");
-const bulkStockInput = document.getElementById("bulk-stock-input");
-const bulkDiscountRateInput = document.getElementById("bulk-discount-rate-input");
-const randomDiscountCountInput = document.getElementById("random-discount-count-input");
-const randomDiscountRateInput = document.getElementById("random-discount-rate-input");
-const exportPosterAutoCountInput = document.getElementById("export-poster-auto-count-input");
-const smartSelectHotProductsBtn = document.getElementById("smart-select-hot-products-btn");
-const smartSelectBudgetProductsBtn = document.getElementById("smart-select-budget-products-btn");
-const smartSelectMixedProductsBtn = document.getElementById("smart-select-mixed-products-btn");
-const exportPosterTitleInput = document.getElementById("export-poster-title-input");
-const exportPosterSubtitleInput = document.getElementById("export-poster-subtitle-input");
-const exportPosterFootnoteInput = document.getElementById("export-poster-footnote-input");
-const exportProductPosterBtn = document.getElementById("export-product-poster-btn");
-const selectedAuctionProductChip = document.getElementById("selected-auction-product-chip");
-const adminAuctionStartingPriceInput = document.getElementById("admin-auction-starting-price-input");
-const adminAuctionMinIncrementInput = document.getElementById("admin-auction-min-increment-input");
-const adminAuctionStartAtInput = document.getElementById("admin-auction-start-at-input");
-const adminAuctionEndAtInput = document.getElementById("admin-auction-end-at-input");
-const adminAuctionTitleInput = document.getElementById("admin-auction-title-input");
-const adminAuctionRemarkInput = document.getElementById("admin-auction-remark-input");
-const adminAuctionStatusFilter = document.getElementById("admin-auction-status-filter");
-const recalculatePricingBtn = document.getElementById("recalculate-pricing-btn");
-const importForm = document.getElementById("import-form");
-const importSubmitBtn = document.getElementById("import-submit-btn");
-const adminDebugAction = document.getElementById("admin-debug-action");
-const adminDebugSession = document.getElementById("admin-debug-session");
-const adminDebugError = document.getElementById("admin-debug-error");
-const adminPageButtons = Array.from(document.querySelectorAll("[data-admin-page-tab]"));
-const adminPagePanels = Array.from(document.querySelectorAll("[data-admin-page-panel]"));
-const ordersPaginationRoot = document.getElementById("admin-orders-pagination");
-const rechargeOrdersPaginationRoot = document.getElementById("admin-recharge-orders-pagination");
-const quotaLogsPaginationRoot = document.getElementById("admin-quota-logs-pagination");
-const auditsPaginationRoot = document.getElementById("admin-audits-pagination");
-const productsPaginationRoot = document.getElementById("admin-products-pagination");
-const bundlesPaginationRoot = document.getElementById("admin-bundles-pagination");
-const usersPaginationRoot = document.getElementById("admin-users-pagination");
+const { apiFetch, clearSession, formatDate, loadSession, saveSession } = createAdminApi();
+const refs = getAdminDomRefs(document);
+const {
+  adminSession,
+  adminMessage,
+  adminOverview,
+  adminAlerts,
+  adminAlertSummary,
+  adminAlertActions,
+  adminAlertTimestamp,
+  adminProductModal,
+  adminProductModalBody,
+  closeAdminProductModalBtn,
+  adminLoginForm,
+  adminLoginRoleIdInput,
+  adminLoginPasswordInput,
+  adminLoginBtn,
+  adminLogoutBtn,
+  importJsonInput,
+  importFileNameInput,
+  importBatchAddBtn,
+  importBatchFileInput,
+  importBatchClearBtn,
+  importBatchSubmitBtn,
+  importBatchList,
+  importBatchCountChip,
+  helperImportFileInput,
+  helperImportClearBtn,
+  helperImportSubmitBtn,
+  helperImportSubmitProductsBtn,
+  helperImportList,
+  helperImportCountChip,
+  productsRoot,
+  auctionsRoot,
+  bundlesRoot,
+  usersRoot,
+  ordersRoot,
+  quotaLogsRoot,
+  auditsRoot,
+  selectedProductsChip,
+  filteredProductsChip,
+  discountedProductsChip,
+  adminProductKeywordInput,
+  adminProductStatusFilter,
+  adminProductDiscountFilter,
+  adminProductCategoryTabs,
+  adminProductSubcategoryTabs,
+  adminProductDetailTabs,
+  adminProductFullnessTabs,
+  adminUserKeywordInput,
+  adminRechargeKeywordInput,
+  adminRechargeStatusFilter,
+  adminRechargeOrdersRoot,
+  adminRechargeConfigForm,
+  adminRechargeEnabled,
+  adminRechargeExchangeYuanInput,
+  adminRechargeExchangeQuotaInput,
+  adminRechargeMinYuanInput,
+  adminResidualTransferEnabledInput,
+  adminResidualAdminRoleIdInput,
+  adminResidualAdminRoleNameInput,
+  adminResidualAdminGameNameInput,
+  adminResidualUnitLabelInput,
+  adminResidualQuotaPerUnitInput,
+  adminSeasonMemberEnabledInput,
+  adminSeasonMemberLabelInput,
+  adminSeasonMemberExpiresAtInput,
+  adminSeasonMemberPriceInput,
+  adminSeasonMemberQuotaInput,
+  adminSeasonMemberBonusRateInput,
+  adminLineupBaseSlotsInput,
+  adminLineupPermanentSlotQuotaInput,
+  adminLineupPermanentSlotMaxInput,
+  adminLineupSeasonalSlotQuotaInput,
+  adminLineupMemberBonusSlotsInput,
+  adminRechargePresetsInput,
+  adminRechargePayeeNameInput,
+  adminRechargePayeeHintInput,
+  adminRechargeQrImageUrlInput,
+  adminWechatPayeeNameInput,
+  adminWechatPayeeHintInput,
+  adminWechatQrImageUrlInput,
+  adminRechargeInstructionsInput,
+  adminResidualInstructionsInput,
+  adminRechargeQrPreview,
+  adminWechatQrPreview,
+  adminPricingDisplayModeSelect,
+  adminPricingControlsRoot,
+  adminOrderKeywordInput,
+  adminOrderStatusFilter,
+  adminQuotaLogKeywordInput,
+  adminQuotaLogTypeFilter,
+  adminAuditKeywordInput,
+  adminAuditActionInput,
+  linkedOrderUserState,
+  bulkPriceInput,
+  bulkStockInput,
+  bulkDiscountRateInput,
+  randomDiscountCountInput,
+  randomDiscountRateInput,
+  exportPosterAutoCountInput,
+  smartSelectHotProductsBtn,
+  smartSelectBudgetProductsBtn,
+  smartSelectMixedProductsBtn,
+  exportPosterTitleInput,
+  exportPosterSubtitleInput,
+  exportPosterFootnoteInput,
+  exportProductPosterBtn,
+  selectedAuctionProductChip,
+  adminAuctionStartingPriceInput,
+  adminAuctionMinIncrementInput,
+  adminAuctionStartAtInput,
+  adminAuctionEndAtInput,
+  adminAuctionTitleInput,
+  adminAuctionRemarkInput,
+  adminAuctionStatusFilter,
+  recalculatePricingBtn,
+  importForm,
+  importSubmitBtn,
+  adminDebugAction,
+  adminDebugSession,
+  adminDebugError,
+  adminPageButtons,
+  adminPagePanels,
+  ordersPaginationRoot,
+  rechargeOrdersPaginationRoot,
+  quotaLogsPaginationRoot,
+  auditsPaginationRoot,
+  productsPaginationRoot,
+  bundlesPaginationRoot,
+  usersPaginationRoot,
+} = refs;
 
-const selectedProductIds = new Set();
-let allProducts = [];
-let allBundles = [];
-let allUsers = [];
-let currentRechargeConfig = null;
-let linkedOrderUser = null;
-let activeAdminPage = "imports";
-let activeAdminProductCategory = "all";
-let activeAdminProductSubcategory = "all";
-let activeAdminProductDetail = "all";
-let activeAdminProductFullness = "all";
-let currentOrderList = [];
-let currentRechargeOrderList = [];
-let currentAuctionList = [];
-let overviewCounts = {
-  pendingOrderCount: 0,
-  cancelReviewCount: 0,
-  rechargeReviewCount: 0,
-};
-const POSTER_EXPORT_LIMIT = 60;
-const POSTER_WEBSITE = "gongfazhushou.cn";
-const ADMIN_READ_ROLES = new Set(["admin", "poster_admin"]);
-const ADMIN_WRITE_ROLES = new Set(["admin"]);
-const READ_ONLY_WRITE_CONTROL_IDS = [
-  "load-sample-json-btn",
-  "import-submit-btn",
-  "recalculate-pricing-btn",
-  "bulk-on-sale-btn",
-  "bulk-off-sale-btn",
-  "bulk-price-input",
-  "bulk-price-btn",
-  "bulk-stock-input",
-  "bulk-stock-btn",
-  "bulk-discount-rate-input",
-  "bulk-discount-btn",
-  "bulk-restore-discount-btn",
-  "filtered-restore-discount-btn",
-  "random-discount-count-input",
-  "random-discount-rate-input",
-  "random-select-products-btn",
-  "random-discount-btn",
-  "admin-auction-starting-price-input",
-  "admin-auction-min-increment-input",
-  "admin-auction-start-at-input",
-  "admin-auction-end-at-input",
-  "admin-auction-title-input",
-  "admin-auction-remark-input",
-  "admin-create-auction-btn",
-  "save-recharge-config-btn",
-];
-const loadedAdminPages = new Set();
-let alertPollTimer = null;
-let currentAdminProfile = null;
-const paginationState = {
-  products: { page: 1, pageSize: 12, total: 0, totalPages: 0 },
-  bundles: { page: 1, pageSize: 8, total: 0, totalPages: 0 },
-  users: { page: 1, pageSize: 10, total: 0, totalPages: 0 },
-  orders: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
-  rechargeOrders: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
-  quotaLogs: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
-  audits: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
-};
-
-function setDebugLine(element, prefix, value) {
-  if (!element) return;
-  element.textContent = `${prefix}: ${value}`;
-}
+const adminStore = createAdminStore();
+const { selectedProductIds, loadedAdminPages, paginationState } = adminStore;
+let allProducts = adminStore.allProducts;
+let allBundles = adminStore.allBundles;
+let allUsers = adminStore.allUsers;
+let currentRechargeConfig = adminStore.currentRechargeConfig;
+let draftPricingControls = adminStore.draftPricingControls;
+let linkedOrderUser = adminStore.linkedOrderUser;
+let activeAdminPage = adminStore.activeAdminPage;
+let activeAdminProductCategory = adminStore.activeAdminProductCategory;
+let activeAdminProductSubcategory = adminStore.activeAdminProductSubcategory;
+let activeAdminProductDetail = adminStore.activeAdminProductDetail;
+let activeAdminProductFullness = adminStore.activeAdminProductFullness;
+let currentOrderList = adminStore.currentOrderList;
+let currentRechargeOrderList = adminStore.currentRechargeOrderList;
+let currentAuctionList = adminStore.currentAuctionList;
+let currentQuotaLogList = [];
+let currentAuditList = [];
+let overviewData = adminStore.overviewData;
+let currentProductFacets = adminStore.currentProductFacets;
+let currentProductSummary = adminStore.currentProductSummary;
+let currentProductAppliedFilters = adminStore.currentProductAppliedFilters;
+let pendingImportEntries = adminStore.pendingImportEntries;
+let pendingHelperInventoryEntries = adminStore.pendingHelperInventoryEntries;
+let alertPollTimer = adminStore.alertPollTimer;
+let currentAdminProfile = adminStore.currentAdminProfile;
 
 function markDebugAction(action) {
   setDebugLine(adminDebugAction, "action", action);
@@ -193,6 +208,100 @@ function markDebugSession(sessionState) {
 
 function markDebugError(errorText) {
   setDebugLine(adminDebugError, "error", errorText || "none");
+}
+
+function buildPendingImportEntry(sourceFileName, rawJson) {
+  const trimmedName = String(sourceFileName || "").trim() || `legacy_getinfo-${Date.now()}.json`;
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    source_file_name: trimmedName,
+    raw_json: String(rawJson || "").trim(),
+  };
+}
+
+function inferRoleIdFromUid(uid) {
+  const normalizedUid = String(uid || "").trim();
+  if (!normalizedUid) return "";
+  const [roleId] = normalizedUid.split("-");
+  return String(roleId || "").trim();
+}
+
+function describeHelperInventorySource(rawJson) {
+  try {
+    const parsed = JSON.parse(String(rawJson || ""));
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      parsed.summary &&
+      typeof parsed.summary === "object" &&
+      Array.isArray(parsed.items)
+    ) {
+      const roleId =
+        String(parsed.summary?.role_id || parsed.summary?.roleId || "").trim() ||
+        inferRoleIdFromUid(parsed.items?.[0]?.uid || parsed.items?.[0]?.uId || "");
+      return {
+        format: "helper_payload",
+        roleId,
+        roleName: String(parsed.summary?.role_name || parsed.summary?.roleName || "").trim(),
+        server: String(parsed.summary?.server || "").trim(),
+        currentScheduleId:
+          Number(
+            parsed.summary?.current_schedule_id ??
+              parsed.summary?.currentScheduleId ??
+              parsed.summary?.role_schedule_id ??
+              parsed.summary?.roleScheduleId ??
+              0
+          ) || null,
+        itemCount: Array.isArray(parsed.items) ? parsed.items.length : 0,
+      };
+    }
+
+    const storage = parsed?.roleLegacy?.legacyStorage;
+    if (storage && typeof storage === "object" && !Array.isArray(storage)) {
+      const entries = Object.values(storage);
+      return {
+        format: "legacy_getinfo",
+        roleId:
+          inferRoleIdFromUid(entries?.[0]?.uId || entries?.[0]?.uid || "") ||
+          inferRoleIdFromUid(Object.keys(storage)[0] || ""),
+        roleName: String(parsed?.roleName || parsed?.gameRoleName || "").trim(),
+        server: String(parsed?.server || parsed?.gameServer || "").trim(),
+        currentScheduleId: Number(parsed?.roleLegacy?.scheduleId || parsed?.scheduleId || 0) || null,
+        itemCount: entries.length,
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function buildPendingHelperInventoryEntry(sourceFileName, rawJson) {
+  const trimmedName =
+    String(sourceFileName || "").trim() || `helper-inventory-${Date.now()}.json`;
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    source_file_name: trimmedName,
+    raw_json: String(rawJson || "").trim(),
+    meta: describeHelperInventorySource(rawJson),
+  };
+}
+
+function renderPendingImportEntries() {
+  renderPendingImportEntriesView(
+    { importBatchCountChip, importBatchList },
+    pendingImportEntries,
+    { escapeHtml }
+  );
+}
+
+function renderPendingHelperInventoryEntries() {
+  renderPendingHelperInventoryEntriesView(
+    { helperImportCountChip, helperImportList },
+    pendingHelperInventoryEntries,
+    { escapeHtml }
+  );
 }
 
 function escapeHtml(value) {
@@ -219,6 +328,269 @@ function parsePositiveMoneyValue(value) {
   return normalized;
 }
 
+function parseNonNegativeMoneyValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  const normalized = Number(numeric.toFixed(2));
+  if (Math.abs(normalized * 100 - Math.round(normalized * 100)) > 0.000001) {
+    return null;
+  }
+  return normalized;
+}
+
+function parseNonNegativeIntegerValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (!Number.isInteger(numeric) || numeric < 0) return null;
+  return numeric;
+}
+
+function parsePricingDecaySpeedValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric) || numeric < 0.2 || numeric > 5) return null;
+  return Number(numeric.toFixed(2));
+}
+
+function parsePricingBonusRateValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 3) return null;
+  return Number(numeric.toFixed(4));
+}
+
+function parsePricingThresholdRateValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric) || numeric < 0.5 || numeric > 1) return null;
+  return Number(numeric.toFixed(4));
+}
+
+function parsePricingPenaltyRateValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 1) return null;
+  return Number(numeric.toFixed(4));
+}
+
+function parsePricingPercentValue(value, { min = 0, max = 300 } = {}) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (!Number.isInteger(numeric) || numeric < min || numeric > max) return null;
+  return numeric;
+}
+
+function cloneValue(value) {
+  if (value === null || value === undefined) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function getQuotaPerYuan(config = currentRechargeConfig) {
+  const exchangeQuota = Number(config?.exchange_quota || 0);
+  const exchangeYuan = Number(config?.exchange_yuan || 0);
+  if (!Number.isFinite(exchangeQuota) || !Number.isFinite(exchangeYuan) || exchangeQuota <= 0 || exchangeYuan <= 0) {
+    return null;
+  }
+  return exchangeQuota / exchangeYuan;
+}
+
+function getRechargeConfigDraftForPricing() {
+  const exchangeYuan = parsePositiveMoneyValue(adminRechargeExchangeYuanInput?.value);
+  const exchangeQuota = parseNonNegativeIntegerValue(adminRechargeExchangeQuotaInput?.value);
+  return {
+    ...(currentRechargeConfig || {}),
+    ...(exchangeYuan !== null ? { exchange_yuan: exchangeYuan } : {}),
+    ...(exchangeQuota !== null && exchangeQuota > 0 ? { exchange_quota: exchangeQuota } : {}),
+  };
+}
+
+function convertQuotaToCash(quotaAmount, config = currentRechargeConfig) {
+  const quota = Number(quotaAmount);
+  const quotaPerYuan = getQuotaPerYuan(config);
+  if (!Number.isFinite(quota) || quota < 0 || !quotaPerYuan) return null;
+  return Number((quota / quotaPerYuan).toFixed(2));
+}
+
+function convertCashToQuota(yuanAmount, config = currentRechargeConfig) {
+  const yuan = Number(yuanAmount);
+  const quotaPerYuan = getQuotaPerYuan(config);
+  if (!Number.isFinite(yuan) || yuan < 0 || !quotaPerYuan) return null;
+  return Math.max(0, Math.round(yuan * quotaPerYuan));
+}
+
+function getEmptyPricingControls() {
+  return {
+    enabled: true,
+    legacy_discount_rate: 100,
+    legacy_double_term_discount_rate: 100,
+    double_term_bonus_percent: 0,
+    tiers: Object.fromEntries(
+      PRICING_TIER_ORDER.map((tierKey) => [
+        tierKey,
+        {
+          key: tierKey,
+          label: PRICING_TIER_LABELS[tierKey],
+          atlas_min_quota: 0,
+          atlas_max_quota: 0,
+          atlas_double_full_quota: 0,
+          atlas_decay_speed: 1,
+          term_min_quota: 0,
+          term_max_quota: 0,
+          term_decay_speed: 1,
+          term_attack_bonus_rate: 0,
+          term_attack_bonus_start_rate: 0.95,
+          term_attack_penalty_rate: 0,
+          term_attack_penalty_start_rate: 0.85,
+          term_attack_reference_min_value: tierKey === "gold" ? 8100000 : 0,
+          term_attack_reference_max_value: tierKey === "gold" ? 10000000 : 0,
+          term_value_reference_min: tierKey === "gold" ? 2.1 : 0,
+          term_value_reference_max: tierKey === "gold" ? 3.0 : 0,
+          no_term_min_quota: tierKey === "gold" ? 500 : 0,
+          no_term_full_attack_quota: tierKey === "gold" ? 20000 : 0,
+          no_term_double_full_quota: tierKey === "gold" ? 35000 : 0,
+          no_term_hp_bonus_start_value: tierKey === "gold" ? 198000000 : 0,
+        },
+      ])
+    ),
+  };
+}
+
+function getNormalizedPricingControls(pricingControls) {
+  const source =
+    pricingControls && typeof pricingControls === "object" ? cloneValue(pricingControls) : getEmptyPricingControls();
+  const tiers = source.tiers && typeof source.tiers === "object" ? source.tiers : {};
+  return {
+    enabled: source.enabled === undefined ? true : Boolean(source.enabled),
+    legacy_discount_rate: parsePricingPercentValue(source.legacy_discount_rate, {
+      min: 1,
+      max: 100,
+    }) ?? 100,
+    legacy_double_term_discount_rate:
+      parsePricingPercentValue(source.legacy_double_term_discount_rate, {
+        min: 1,
+        max: 100,
+      }) ?? 100,
+    double_term_bonus_percent:
+      parsePricingPercentValue(source.double_term_bonus_percent, {
+        min: 0,
+        max: 300,
+      }) ?? 0,
+    tiers: Object.fromEntries(
+      PRICING_TIER_ORDER.map((tierKey) => {
+        const tier = tiers[tierKey] || {};
+        const atlasMin = Math.max(0, Number(tier.atlas_min_quota || 0));
+        const atlasMax = Math.max(atlasMin, Number(tier.atlas_max_quota || 0));
+        const atlasDoubleFull = Math.max(
+          atlasMax,
+          Number(tier.atlas_double_full_quota || atlasMax)
+        );
+        const atlasDecaySpeed = parsePricingDecaySpeedValue(tier.atlas_decay_speed) ?? 1;
+        const termMin = Math.max(0, Number(tier.term_min_quota || 0));
+        const termMax = Math.max(termMin, Number(tier.term_max_quota || 0));
+        const termDecaySpeed = parsePricingDecaySpeedValue(tier.term_decay_speed) ?? 1;
+        const termAttackBonusRate = parsePricingBonusRateValue(tier.term_attack_bonus_rate) ?? 0;
+        const termAttackBonusStartRate =
+          parsePricingThresholdRateValue(tier.term_attack_bonus_start_rate) ?? 0.95;
+        const termAttackPenaltyRate =
+          parsePricingPenaltyRateValue(tier.term_attack_penalty_rate) ?? 0;
+        const termAttackPenaltyStartRate =
+          parsePricingThresholdRateValue(tier.term_attack_penalty_start_rate) ?? 0.85;
+        const termAttackReferenceMinValue = Math.max(
+          0,
+          Number(tier.term_attack_reference_min_value || (tierKey === "gold" ? 8100000 : 0))
+        );
+        const termAttackReferenceMaxValue = Math.max(
+          termAttackReferenceMinValue,
+          Number(tier.term_attack_reference_max_value || (tierKey === "gold" ? 10000000 : 0))
+        );
+        const termValueReferenceMin = Math.max(
+          0,
+          Number(tier.term_value_reference_min || (tierKey === "gold" ? 2.1 : 0))
+        );
+        const termValueReferenceMax = Math.max(
+          termValueReferenceMin,
+          Number(tier.term_value_reference_max || (tierKey === "gold" ? 3.0 : 0))
+        );
+        const noTermMinQuota = Math.max(
+          0,
+          Number(tier.no_term_min_quota || (tierKey === "gold" ? 500 : 0))
+        );
+        const noTermFullAttackQuota = Math.max(
+          noTermMinQuota,
+          Number(tier.no_term_full_attack_quota || (tierKey === "gold" ? 20000 : 0))
+        );
+        const noTermDoubleFullQuota = Math.max(
+          noTermFullAttackQuota,
+          Number(tier.no_term_double_full_quota || (tierKey === "gold" ? 35000 : 0))
+        );
+        const noTermHpBonusStartValue = Math.max(
+          0,
+          Number(tier.no_term_hp_bonus_start_value || (tierKey === "gold" ? 198000000 : 0))
+        );
+        return [
+          tierKey,
+          {
+            key: tierKey,
+            label: tier.label || PRICING_TIER_LABELS[tierKey],
+            atlas_min_quota: atlasMin,
+            atlas_max_quota: atlasMax,
+            atlas_double_full_quota: atlasDoubleFull,
+            atlas_decay_speed: atlasDecaySpeed,
+            term_min_quota: termMin,
+            term_max_quota: termMax,
+            term_decay_speed: termDecaySpeed,
+            term_attack_bonus_rate: termAttackBonusRate,
+            term_attack_bonus_start_rate: termAttackBonusStartRate,
+            term_attack_penalty_rate: termAttackPenaltyRate,
+            term_attack_penalty_start_rate: termAttackPenaltyStartRate,
+            term_attack_reference_min_value: termAttackReferenceMinValue,
+            term_attack_reference_max_value: termAttackReferenceMaxValue,
+            term_value_reference_min: termValueReferenceMin,
+            term_value_reference_max: termValueReferenceMax,
+            no_term_min_quota: noTermMinQuota,
+            no_term_full_attack_quota: noTermFullAttackQuota,
+            no_term_double_full_quota: noTermDoubleFullQuota,
+            no_term_hp_bonus_start_value: noTermHpBonusStartValue,
+          },
+        ];
+      })
+    ),
+  };
+}
+
+function getPricingDisplayMode() {
+  return adminPricingDisplayModeSelect?.value === "cash" ? "cash" : "quota";
+}
+
+function formatEditablePricingValue(
+  quotaAmount,
+  mode = getPricingDisplayMode(),
+  config = getRechargeConfigDraftForPricing()
+) {
+  const quota = Math.max(0, Number(quotaAmount || 0));
+  if (mode === "cash") {
+    const cashAmount = convertQuotaToCash(quota, config);
+    return cashAmount === null ? "" : String(cashAmount);
+  }
+  return String(Math.round(quota));
+}
+
+function formatQuotaCashPair(quotaAmount, config = currentRechargeConfig) {
+  const quota = Number(quotaAmount || 0);
+  if (!Number.isFinite(quota) || quota < 0) return "-";
+  const cashAmount = convertQuotaToCash(quota, config);
+  if (cashAmount === null) return `${Math.round(quota)} 额度`;
+  return `${Math.round(quota)} 额度 / ¥${cashAmount.toFixed(2)}`;
+}
+
 function setMessage(text, type = "") {
   adminMessage.textContent = text || "";
   adminMessage.className = type ? `notice ${type}` : "notice";
@@ -242,8 +614,7 @@ function hasAdminWriteAccess(profile = currentAdminProfile) {
 }
 
 function canConfirmOrders(profile = currentAdminProfile) {
-  const role = getAdminRoleValue(profile);
-  return role === "admin" || role === "poster_admin";
+  return isAdminRole(getAdminRoleValue(profile));
 }
 
 function isAdminReadOnlyMode(profile = currentAdminProfile) {
@@ -252,9 +623,9 @@ function isAdminReadOnlyMode(profile = currentAdminProfile) {
 
 function getAdminRoleLabel(role) {
   switch (String(role || "").trim()) {
-    case "admin":
+    case ADMIN_ROLES.ADMIN:
       return "管理员";
-    case "poster_admin":
+    case ADMIN_ROLES.POSTER_ADMIN:
       return "海报只读";
     case "user":
       return "普通用户";
@@ -292,13 +663,13 @@ function applyAdminAccessMode() {
 
 function formatOrderStatusLabel(status) {
   switch (status) {
-    case "pending":
+    case ORDER_STATUS.PENDING:
       return "待处理";
-    case "cancel_requested":
+    case ORDER_STATUS.CANCEL_REQUESTED:
       return "待审核取消";
-    case "confirmed":
+    case ORDER_STATUS.CONFIRMED:
       return "已确认";
-    case "cancelled":
+    case ORDER_STATUS.CANCELLED:
       return "已取消";
     default:
       return status || "-";
@@ -314,6 +685,9 @@ function normalizePaginatedResponse(response, fallbackPageSize = 20) {
       page_size: fallbackPageSize,
       total_pages: response.length > 0 ? 1 : 0,
       has_more: false,
+      facets: null,
+      summary: null,
+      applied_filters: null,
     };
   }
 
@@ -324,40 +698,10 @@ function normalizePaginatedResponse(response, fallbackPageSize = 20) {
     page_size: Number(response?.page_size || fallbackPageSize),
     total_pages: Number(response?.total_pages || 0),
     has_more: Boolean(response?.has_more),
+    facets: response?.facets || null,
+    summary: response?.summary || null,
+    applied_filters: response?.applied_filters || null,
   };
-}
-
-function renderPagination(root, target, state) {
-  if (!root) return;
-
-  const total = Number(state?.total || 0);
-  const page = Math.max(Number(state?.page || 1), 1);
-  const totalPages = Math.max(Number(state?.totalPages || 0), 0);
-
-  if (total === 0) {
-    root.innerHTML = '<div class="pagination-meta">当前共 0 条记录。</div>';
-    return;
-  }
-
-  root.innerHTML = `
-    <div class="pagination-meta">第 ${page} / ${Math.max(totalPages, 1)} 页，共 ${total} 条</div>
-    <div class="pagination-actions">
-      <button
-        class="ghost"
-        type="button"
-        data-pagination-target="${target}"
-        data-pagination-page="${Math.max(page - 1, 1)}"
-        ${page <= 1 ? "disabled" : ""}
-      >上一页</button>
-      <button
-        class="ghost"
-        type="button"
-        data-pagination-target="${target}"
-        data-pagination-page="${Math.min(page + 1, Math.max(totalPages, 1))}"
-        ${totalPages === 0 || page >= totalPages ? "disabled" : ""}
-      >下一页</button>
-    </div>
-  `;
 }
 
 function resetPagedState(target) {
@@ -461,118 +805,31 @@ function getOrderSourceLabel(order) {
 function renderSession(profile) {
   const session = loadSession();
   currentAdminProfile = profile || null;
-
-  if (!session?.token) {
-    markDebugSession("no_token");
-    adminSession.innerHTML =
-      '<div class="stack-item">当前未登录。可直接在后台页输入管理员或海报只读账号的游戏 ID 和密码登录。</div>';
-    applyAdminAccessMode();
-    return { canRead: false, canWrite: false };
-  }
-
-  if (!profile) {
-    markDebugSession("token_without_profile");
-    adminSession.innerHTML = '<div class="stack-item">已检测到登录态，但当前无法读取管理员资料。</div>';
-    applyAdminAccessMode();
-    return { canRead: false, canWrite: false };
-  }
-
-  markDebugSession(`token role=${profile.role || "-"}`);
-  const canRead = hasAdminReadAccess(profile);
-  const canWrite = hasAdminWriteAccess(profile);
-
-  adminSession.innerHTML = [
-    `当前账号：${escapeHtml(profile.game_role_name || "-")}`,
-    `游戏 ID：${escapeHtml(profile.game_role_id || "-")}`,
-    `区服：${escapeHtml(profile.game_server || "-")}`,
-    `角色：${escapeHtml(getAdminRoleLabel(profile.role || "-"))}`,
-    `当前额度：${Number(profile.quota_balance || 0)}`,
-  ]
-    .map((line) => `<div class="stack-item">${line}</div>`)
-    .join("");
-
-  applyAdminAccessMode();
-  return { canRead, canWrite };
+  return renderSessionView(
+    { adminSession },
+    {
+      session,
+      profile,
+      markDebugSession,
+      getAdminRoleLabel,
+      applyAdminAccessMode,
+      hasAdminReadAccess,
+      hasAdminWriteAccess,
+      escapeHtml,
+    }
+  );
 }
 
 function renderOverview() {
-  const onSaleCount = allProducts.filter((product) => product.status === "on_sale").length;
-  const discountedCount = allProducts.filter(isDiscountedProduct).length;
-  const pendingOrderCount = Number(overviewCounts.pendingOrderCount || 0);
-  const cancelReviewCount = Number(overviewCounts.cancelReviewCount || 0);
-  const rechargeReviewCount = Number(overviewCounts.rechargeReviewCount || 0);
-  const activeUsers = allUsers.filter((user) => user.status === "active").length;
-  const totalQuota = allUsers.reduce((sum, user) => sum + Number(user.quota_balance || 0), 0);
-
-  const cards = [
-    { label: "商品总数", value: allProducts.length, hint: `上架中 ${onSaleCount}` },
-    { label: "打折商品", value: discountedCount, hint: "当前折扣管理" },
-    { label: "套餐总数", value: allBundles.length, hint: "独立 SKU" },
-    { label: "用户总数", value: allUsers.length, hint: `活跃 ${activeUsers}` },
-    { label: "待处理订单", value: pendingOrderCount, hint: "交易处理" },
-    { label: "待审取消", value: cancelReviewCount, hint: "商品订单" },
-    { label: "待审充值", value: rechargeReviewCount, hint: "充值申请" },
-    { label: "用户总额度", value: totalQuota, hint: "当前可用额度汇总" },
-  ];
-
-  adminOverview.innerHTML = cards
-    .map(
-      (card) => `
-        <div class="overview-card">
-          <div class="overview-label">${escapeHtml(card.label)}</div>
-          <div class="overview-value">${escapeHtml(card.value)}</div>
-          <div class="overview-hint">${escapeHtml(card.hint)}</div>
-        </div>
-      `
-    )
-    .join("");
+  renderOverviewSection({ adminOverview }, overviewData, { escapeHtml });
 }
 
 function renderAdminAlerts() {
-  if (!adminAlerts || !adminAlertSummary || !adminAlertActions) return;
-
-  adminAlerts.classList.remove("hidden");
-
-  const pendingOrderCount = Number(overviewCounts.pendingOrderCount || 0);
-  const cancelReviewCount = Number(overviewCounts.cancelReviewCount || 0);
-  const rechargeReviewCount = Number(overviewCounts.rechargeReviewCount || 0);
-  const totalPending = pendingOrderCount + cancelReviewCount + rechargeReviewCount;
-  const lastUpdated = formatDate(new Date().toISOString());
-
-  if (adminAlertTimestamp) {
-    adminAlertTimestamp.textContent = `上次刷新：${lastUpdated}`;
-  }
-
-  adminAlertSummary.innerHTML = `
-    <div class="admin-alert-lead ${totalPending > 0 ? "hot" : ""}">
-      ${
-        totalPending > 0
-          ? `当前有 ${totalPending} 条待处理事项，优先看订单和充值审核。`
-          : "当前没有待处理的充值或交易。"
-      }
-    </div>
-    <div class="admin-alert-grid">
-      <div class="admin-alert-item ${pendingOrderCount > 0 ? "hot" : ""}">
-        <div class="admin-alert-label">待处理订单</div>
-        <div class="admin-alert-value ${pendingOrderCount > 0 ? "hot" : ""}">${pendingOrderCount}</div>
-      </div>
-      <div class="admin-alert-item ${cancelReviewCount > 0 ? "hot" : ""}">
-        <div class="admin-alert-label">待审取消</div>
-        <div class="admin-alert-value ${cancelReviewCount > 0 ? "hot" : ""}">${cancelReviewCount}</div>
-      </div>
-      <div class="admin-alert-item ${rechargeReviewCount > 0 ? "hot" : ""}">
-        <div class="admin-alert-label">待审充值</div>
-        <div class="admin-alert-value ${rechargeReviewCount > 0 ? "hot" : ""}">${rechargeReviewCount}</div>
-      </div>
-    </div>
-  `;
-
-  adminAlertActions.innerHTML = `
-    <button class="ghost" type="button" data-alert-target="orders" data-alert-status="pending">去看订单</button>
-    <button class="ghost" type="button" data-alert-target="orders" data-alert-status="cancel_requested">去看取消审核</button>
-    <button class="ghost" type="button" data-alert-target="recharge" data-alert-status="pending_review">去看充值审核</button>
-    <button class="ghost" type="button" id="refresh-alert-counts-btn">刷新提醒</button>
-  `;
+  renderAdminAlertsSection(
+    { adminAlerts, adminAlertSummary, adminAlertActions, adminAlertTimestamp },
+    overviewData,
+    { formatDate }
+  );
 }
 
 function clearAdminAlerts() {
@@ -580,18 +837,7 @@ function clearAdminAlerts() {
     window.clearInterval(alertPollTimer);
     alertPollTimer = null;
   }
-  if (adminAlerts) {
-    adminAlerts.classList.add("hidden");
-  }
-  if (adminAlertSummary) {
-    adminAlertSummary.innerHTML = "";
-  }
-  if (adminAlertActions) {
-    adminAlertActions.innerHTML = "";
-  }
-  if (adminAlertTimestamp) {
-    adminAlertTimestamp.textContent = "等待首次刷新";
-  }
+  clearAdminAlertsSection({ adminAlerts, adminAlertSummary, adminAlertActions, adminAlertTimestamp });
 }
 
 function startAlertPolling() {
@@ -603,105 +849,22 @@ function startAlertPolling() {
   }, 60000);
 }
 
-function renderLinkedOrderUserState() {
-  if (!linkedOrderUser) {
-    linkedOrderUserState.innerHTML = "";
-    return;
-  }
-
-  linkedOrderUserState.innerHTML = `
-    <span class="chip">订单关联用户：${escapeHtml(linkedOrderUser.game_role_name || "-")}</span>
-    <span class="chip">游戏 ID：${escapeHtml(linkedOrderUser.game_role_id || "-")}</span>
-    <button id="clear-linked-order-user-btn" class="ghost" type="button">清除联动</button>
-  `;
-}
-
-function renderRechargeConfig(config) {
-  currentRechargeConfig = config || null;
-  if (!config || !adminRechargeConfigForm) return;
-
-  if (adminRechargeEnabled) adminRechargeEnabled.value = String(Boolean(config.enabled));
-  if (adminRechargeExchangeYuanInput) adminRechargeExchangeYuanInput.value = Number(config.exchange_yuan || 1);
-  if (adminRechargeExchangeQuotaInput) adminRechargeExchangeQuotaInput.value = Number(config.exchange_quota || 0);
-  if (adminRechargeMinYuanInput) adminRechargeMinYuanInput.value = Number(config.min_amount_yuan || 1);
-  if (adminResidualTransferEnabledInput) {
-    adminResidualTransferEnabledInput.value = String(Boolean(config.residual_transfer_enabled));
-  }
-  if (adminResidualAdminRoleIdInput) {
-    adminResidualAdminRoleIdInput.value = config.residual_admin_role_id || "";
-  }
-  if (adminResidualAdminRoleNameInput) {
-    adminResidualAdminRoleNameInput.value = config.residual_admin_role_name || "";
-  }
-  if (adminResidualAdminGameNameInput) {
-    adminResidualAdminGameNameInput.value = config.residual_admin_game_name || "";
-  }
-  if (adminResidualUnitLabelInput) {
-    adminResidualUnitLabelInput.value = config.residual_unit_label || "";
-  }
-  if (adminResidualQuotaPerUnitInput) {
-    adminResidualQuotaPerUnitInput.value = Number(config.residual_quota_per_unit || 1);
-  }
-  if (adminSeasonMemberEnabledInput) adminSeasonMemberEnabledInput.value = String(Boolean(config.season_member_enabled));
-  if (adminSeasonMemberLabelInput) adminSeasonMemberLabelInput.value = config.season_member_season_label || "";
-  if (adminSeasonMemberExpiresAtInput) adminSeasonMemberExpiresAtInput.value = config.season_member_expires_at || "";
-  if (adminSeasonMemberPriceInput) adminSeasonMemberPriceInput.value = Number(config.season_member_price_yuan || 0);
-  if (adminSeasonMemberQuotaInput) adminSeasonMemberQuotaInput.value = Number(config.season_member_quota || 0);
-  if (adminSeasonMemberBonusRateInput) adminSeasonMemberBonusRateInput.value = Number(config.season_member_bonus_rate || 0);
-  if (adminLineupBaseSlotsInput) adminLineupBaseSlotsInput.value = Number(config.lineup_base_slots || 3);
-  if (adminLineupPermanentSlotQuotaInput) {
-    adminLineupPermanentSlotQuotaInput.value = Number(config.lineup_permanent_slot_quota || 5000);
-  }
-  if (adminLineupPermanentSlotMaxInput) {
-    adminLineupPermanentSlotMaxInput.value = Number(config.lineup_permanent_slot_max || 7);
-  }
-  if (adminLineupSeasonalSlotQuotaInput) {
-    adminLineupSeasonalSlotQuotaInput.value = Number(config.lineup_seasonal_slot_quota || 1000);
-  }
-  if (adminLineupMemberBonusSlotsInput) {
-    adminLineupMemberBonusSlotsInput.value = Number(config.lineup_member_bonus_slots || 3);
-  }
-  if (adminRechargePresetsInput) {
-    adminRechargePresetsInput.value = Array.isArray(config.preset_amounts)
-      ? config.preset_amounts.join(",")
-      : "";
-  }
-  if (adminRechargePayeeNameInput) adminRechargePayeeNameInput.value = config.payee_name || "";
-  if (adminRechargePayeeHintInput) adminRechargePayeeHintInput.value = config.payee_hint || "";
-  if (adminRechargeQrImageUrlInput) adminRechargeQrImageUrlInput.value = config.qr_image_url || "";
-  if (adminWechatPayeeNameInput) adminWechatPayeeNameInput.value = config.wechat_payee_name || "";
-  if (adminWechatPayeeHintInput) adminWechatPayeeHintInput.value = config.wechat_payee_hint || "";
-  if (adminWechatQrImageUrlInput) adminWechatQrImageUrlInput.value = config.wechat_qr_image_url || "";
-  if (adminRechargeInstructionsInput) {
-    adminRechargeInstructionsInput.value = Array.isArray(config.instructions)
-      ? config.instructions.join("\n")
-      : "";
-  }
-  if (adminResidualInstructionsInput) {
-    adminResidualInstructionsInput.value = Array.isArray(config.residual_instructions)
-      ? config.residual_instructions.join("\n")
-      : "";
-  }
-  if (adminRechargeQrPreview) {
-    adminRechargeQrPreview.src = config.qr_image_url || "/payment/alipay-qr.jpg";
-  }
-  if (adminWechatQrPreview) {
-    adminWechatQrPreview.src = config.wechat_qr_image_url || "/payment/wechat-qr.png";
-  }
-  applyAdminAccessMode();
+function renderPricingControls(pricingControls = draftPricingControls) {
+  renderPricingControlsSection(buildAdminPageContext(), pricingControls);
 }
 
 function activateAdminPage(page, { force = false } = {}) {
-  activeAdminPage = page;
-
-  adminPageButtons.forEach((button) => {
-    button.classList.toggle("active", button.getAttribute("data-admin-page-tab") === page);
+  return activateAdminPageShell(page, {
+    refs: { adminPageButtons, adminPagePanels },
+    setActivePage(nextPage) {
+      activeAdminPage = nextPage;
+    },
+    renderPage(nextPage) {
+      renderAdminPage(nextPage, buildAdminPageContext());
+    },
+    loadPage: (nextPage, options) => loadAdminPage(nextPage, options),
+    force,
   });
-  adminPagePanels.forEach((panel) => {
-    panel.classList.toggle("hidden", panel.getAttribute("data-admin-page-panel") !== page);
-  });
-
-  return loadAdminPage(page, { force });
 }
 
 function setLinkedOrderUser(user) {
@@ -717,7 +880,7 @@ function setLinkedOrderUser(user) {
     adminOrderKeywordInput.value = String(linkedOrderUser.game_role_id);
   }
 
-  renderLinkedOrderUserState();
+  renderLinkedOrderUserStateSection(buildAdminPageContext());
 }
 
 function syncSelectedProducts() {
@@ -732,10 +895,10 @@ function isDiscountedProduct(product) {
 function syncProductSummary(products = getFilteredProducts()) {
   syncSelectedProducts();
   if (filteredProductsChip) {
-    filteredProductsChip.textContent = `当前筛选 ${products.length}`;
+    filteredProductsChip.textContent = `当前筛选 ${Number(currentProductSummary.filtered_total || products.length)}`;
   }
   if (discountedProductsChip) {
-    discountedProductsChip.textContent = `打折中 ${products.filter(isDiscountedProduct).length}`;
+    discountedProductsChip.textContent = `打折中 ${Number(currentProductSummary.discounted_total || products.filter(isDiscountedProduct).length)}`;
   }
 }
 
@@ -757,100 +920,6 @@ function renderSelectedAuctionProduct() {
       ? ` / 当前拍卖 ${product.auction_status} #${product.auction_id}`
       : "";
   selectedAuctionProductChip.textContent = `当前拍卖商品：#${product.id} ${product.name}${auctionHint}`;
-}
-
-function formatAuctionStatusLabel(status) {
-  switch (String(status || "").trim()) {
-    case "live":
-      return "进行中";
-    case "scheduled":
-      return "即将开始";
-    case "ended":
-      return "等待结算";
-    case "settled":
-      return "已成交";
-    case "cancelled":
-      return "已流拍";
-    default:
-      return status || "-";
-  }
-}
-
-function renderAuctions(auctions) {
-  currentAuctionList = Array.isArray(auctions) ? auctions : [];
-  if (!auctionsRoot) return;
-  const canWrite = hasAdminWriteAccess();
-
-  if (!currentAuctionList.length) {
-    auctionsRoot.innerHTML = '<div class="stack-item">当前没有拍卖记录。</div>';
-    return;
-  }
-
-  auctionsRoot.innerHTML = currentAuctionList
-    .map((auction) => {
-      const item = auction?.item || {};
-      const bids = Array.isArray(auction?.bids) ? auction.bids : [];
-      const bidLines = bids.length
-        ? bids
-            .slice(0, 5)
-            .map(
-              (bid) =>
-                `<div class="stack-item">${escapeHtml(
-                  bid.game_role_name || bid.nickname || bid.game_role_id || "-"
-                )} / ${Number(bid.amount_quota || 0)} 额度 / ${formatDate(bid.created_at)}</div>`
-            )
-            .join("")
-        : '<div class="stack-item">还没有人出价。</div>';
-
-      return `
-        <div class="admin-card" data-auction-id="${auction.id}">
-          <div class="admin-card-head">
-            <div class="product-name">${escapeHtml(auction.title || item.name || `拍卖 #${auction.id}`)}</div>
-            <span class="chip">${escapeHtml(formatAuctionStatusLabel(auction.status))}</span>
-          </div>
-          <div class="product-meta">
-            <div>商品：#${Number(auction.product_id || 0)} / ${escapeHtml(item.name || "-")}</div>
-            <div>起拍价：${Number(auction.starting_price_quota || 0)} / 当前价：${Number(auction.current_price_quota || 0)} / 加价幅度：${Number(auction.min_increment_quota || 0)}</div>
-            <div>领先者：${escapeHtml(auction.current_bid_user_name || auction.leading_bidder_label || "暂无")} / 游戏ID：${escapeHtml(auction.current_bid_user_game_role_id || "-")} / 用户ID：${Number(auction.current_bid_user_id || 0) || "-"} / 共 ${Number(auction.bid_count || 0)} 次出价</div>
-            ${
-              auction.current_bid_user_name || auction.leading_bidder_label
-                ? `<div>领先者额度：${Number(auction.current_bid_user_quota_balance || 0)} / 成交价：${Number(auction.winning_amount_quota || auction.current_price_quota || 0)} / ${
-                    auction.can_direct_settle ? "可直接扣额度结算" : "额度不足，走线下结算"
-                  }</div>`
-                : ""
-            }
-            <div>开始：${formatDate(auction.starts_at)} / 截止：${formatDate(auction.ends_at)}</div>
-            ${auction.settled_order_id ? `<div>成交订单：#${Number(auction.settled_order_id)}</div>` : ""}
-            ${auction.cancelled_reason ? `<div>流拍原因：${escapeHtml(auction.cancelled_reason)}</div>` : ""}
-          </div>
-          <div class="stack-list">${bidLines}</div>
-          ${
-            canWrite
-              ? `
-                  <div class="inline-form">
-                    <input data-field="auction-remark" type="text" value="${escapeHtml(auction.remark || "")}" placeholder="结算或流拍备注，可选" />
-                    <input data-field="auction-reason" type="text" value="${escapeHtml(auction.cancelled_reason || "")}" placeholder="流拍原因，可选" />
-                  </div>
-                  <div class="actions">
-                    <button class="ghost reload-single-auction-btn" type="button">刷新</button>
-                    <button class="primary settle-auction-direct-btn" type="button" ${
-                      auction.status === "ended" && auction.can_direct_settle ? "" : "disabled"
-                    }>扣额度结算</button>
-                    <button class="ghost settle-auction-offline-btn" type="button" ${
-                      auction.status === "ended" ? "" : "disabled"
-                    }>联系管理员结算</button>
-                    <button class="danger cancel-auction-btn" type="button" ${["settled", "cancelled"].includes(String(auction.status || "")) ? "disabled" : ""}>流拍</button>
-                  </div>
-                `
-              : `
-                  <div class="muted">备注：${escapeHtml(auction.remark || "-")}</div>
-                  <div class="muted">流拍原因：${escapeHtml(auction.cancelled_reason || "-")}</div>
-                `
-          }
-        </div>
-      `;
-    })
-    .join("");
 }
 
 function parseDiscountRateInputValue(value, fallback = null) {
@@ -929,95 +998,7 @@ function renderAdminProductCover(product) {
 }
 
 function renderPricingSummary(product, pricingMeta) {
-  const atlasPrice = Number(pricingMeta?.atlas?.price || 0);
-  const wearPrice = Number(pricingMeta?.wear?.price || 0);
-  const marketFactor = Number(pricingMeta?.market?.factor || 1).toFixed(2);
-  const attackRate = formatRate(pricingMeta?.atlas?.attack_rate);
-  const hpRate = formatRate(pricingMeta?.atlas?.hp_rate);
-  const fireRate = formatRate(pricingMeta?.wear?.fire_rate);
-  const calmRate = formatRate(pricingMeta?.wear?.calm_rate);
-  const referenceCaps = pricingMeta?.reference_caps || {};
-
-  return `
-    <div class="pricing-chip-row">
-      <span class="pricing-chip">${escapeHtml(pricingMeta?.dominant_reason_label || "reason")}</span>
-      <span class="pricing-chip">${escapeHtml(pricingMeta?.source === "manual" ? "manual" : "auto")}</span>
-      <span class="pricing-chip">market ${marketFactor}</span>
-      <span class="pricing-chip">${escapeHtml(pricingMeta?.reference_source || "reference")}</span>
-    </div>
-    <div class="pricing-grid">
-      <div class="pricing-block">
-        <strong>Atlas</strong>
-        <span>${atlasPrice}</span>
-        <small>ATK ${attackRate} / HP ${hpRate}</small>
-      </div>
-      <div class="pricing-block">
-        <strong>Wear</strong>
-        <span>${wearPrice}</span>
-        <small>Fire ${fireRate} / Calm ${calmRate}</small>
-      </div>
-      <div class="pricing-block">
-        <strong>Final</strong>
-        <span>${Number(product.price_quota || 0)}</span>
-        <small>Floor ${Number(pricingMeta?.floor_price || 0)}</small>
-      </div>
-      <div class="pricing-block">
-        <strong>Caps</strong>
-        <span>${Number(referenceCaps.attack_max || 0)} / ${Number(referenceCaps.hp_max || 0)}</span>
-        <small>${Number(referenceCaps.fire_total_max || 0)} / ${Number(referenceCaps.calm_total_max || 0)}</small>
-      </div>
-    </div>
-  `;
-}
-
-function openProductModal(product) {
-  const pricingMeta = getPricingMeta(product);
-  const rawSnapshot = {
-    id: product.id,
-    uid: product.uid,
-    legacy_id: product.legacy_id,
-    name: product.name,
-    image_url: product.image_url,
-    attack_value: product.attack_value,
-    hp_value: product.hp_value,
-    main_attrs: product.main_attrs,
-    ext_attrs: product.ext_attrs,
-    stock: product.stock,
-    status: product.status,
-    price_quota: product.price_quota,
-    manual_price_quota: product.manual_price_quota,
-    pricing_meta: pricingMeta,
-  };
-
-  adminProductModalBody.innerHTML = `
-    <div class="product-detail-layout">
-      <div class="product-detail-cover">
-        ${renderAdminProductCover(product)}
-      </div>
-      <div class="product-detail-main">
-        <div class="product-name">${escapeHtml(product.name || "-")}</div>
-        <div class="detail-list">
-          <div class="detail-row"><strong>UID</strong><span>${escapeHtml(product.uid || "-")}</span></div>
-          <div class="detail-row"><strong>Legacy</strong><span>${escapeHtml(product.legacy_id || "-")}</span></div>
-          <div class="detail-row"><strong>攻击 / 血量</strong><span>${Number(product.attack_value || 0)} / ${Number(product.hp_value || 0)}</span></div>
-          <div class="detail-row"><strong>主词条</strong><span>${escapeHtml(product.main_attrs || "-")}</span></div>
-          <div class="detail-row"><strong>额外词条</strong><span>${escapeHtml(product.ext_attrs || "-")}</span></div>
-          <div class="detail-row"><strong>库存 / 状态</strong><span>${Number(product.stock || 0)} / ${escapeHtml(product.status || "-")}</span></div>
-        </div>
-        ${renderPricingSummary(product, pricingMeta)}
-      </div>
-    </div>
-    <div class="detail-list">
-      <div class="card-title">原始商品快照</div>
-      <pre class="admin-detail-pre">${escapeHtml(JSON.stringify(rawSnapshot, null, 2))}</pre>
-    </div>
-  `;
-  adminProductModal.classList.remove("hidden");
-}
-
-function closeProductModal() {
-  adminProductModal.classList.add("hidden");
-  adminProductModalBody.innerHTML = "";
+  return renderPricingSummaryView(product, pricingMeta, { escapeHtml, formatQuotaCashPair });
 }
 
 function getAdminProductTierKey(product) {
@@ -1073,9 +1054,9 @@ function buildAdminProductCategoryEntries(products) {
     .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
 }
 
-function renderAdminProductCategoryTabs(products) {
+function renderAdminProductCategoryTabs() {
   if (!adminProductCategoryTabs) return;
-  const entries = buildAdminProductCategoryEntries(products || []);
+  const entries = Array.isArray(currentProductFacets?.categories) ? currentProductFacets.categories : [];
   const validKeys = new Set(entries.map((entry) => entry.key));
   if (!validKeys.has(activeAdminProductCategory)) {
     activeAdminProductCategory = "all";
@@ -1154,16 +1135,17 @@ function buildAdminProductSubcategoryEntries(products, category) {
     .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
 }
 
-function renderAdminProductSubcategoryTabs(products) {
+function renderAdminProductSubcategoryTabs() {
   if (!adminProductSubcategoryTabs) return;
-  if (!activeAdminProductCategory || activeAdminProductCategory === "bundle") {
+  const entries = Array.isArray(currentProductFacets?.subcategories)
+    ? currentProductFacets.subcategories
+    : [];
+  if (!activeAdminProductCategory || activeAdminProductCategory === "bundle" || !entries.length) {
     adminProductSubcategoryTabs.classList.add("hidden");
     adminProductSubcategoryTabs.innerHTML = "";
     activeAdminProductSubcategory = "all";
     return;
   }
-
-  const entries = buildAdminProductSubcategoryEntries(products || [], activeAdminProductCategory);
   const validKeys = new Set(entries.map((entry) => entry.key));
   if (!validKeys.has(activeAdminProductSubcategory)) {
     activeAdminProductSubcategory = "all";
@@ -1228,9 +1210,9 @@ function buildAdminProductDetailEntries(products, tier) {
   ];
 }
 
-function renderAdminProductDetailTabs(products) {
+function renderAdminProductDetailTabs() {
   if (!adminProductDetailTabs) return;
-  const entries = buildAdminProductDetailEntries(products || [], activeAdminProductSubcategory);
+  const entries = Array.isArray(currentProductFacets?.details) ? currentProductFacets.details : [];
   if (entries.length <= 1) {
     adminProductDetailTabs.classList.add("hidden");
     adminProductDetailTabs.innerHTML = "";
@@ -1301,12 +1283,9 @@ function buildAdminProductFullnessEntries(products, enabled) {
     .map(([key, label]) => ({ key, label, count: counts[key] || 0 }));
 }
 
-function renderAdminProductFullnessTabs(products) {
+function renderAdminProductFullnessTabs() {
   if (!adminProductFullnessTabs) return;
-  const entries = buildAdminProductFullnessEntries(
-    products || [],
-    activeAdminProductCategory !== "bundle" && activeAdminProductSubcategory !== "all"
-  );
+  const entries = Array.isArray(currentProductFacets?.fullness) ? currentProductFacets.fullness : [];
   if (entries.length <= 1) {
     adminProductFullnessTabs.classList.add("hidden");
     adminProductFullnessTabs.innerHTML = "";
@@ -1370,60 +1349,15 @@ function filterAdminProductsByFullness(products, fullness) {
   return (products || []).filter((product) => getAdminProductFullnessKey(product) === fullness);
 }
 
-function getAdminBaseFilteredProducts() {
-  const keyword = String(adminProductKeywordInput.value || "").trim().toLowerCase();
-  const status = adminProductStatusFilter.value;
-  const discountFilter = adminProductDiscountFilter?.value || "all";
-
-  return allProducts.filter((product) => {
-    if (status !== "all" && product.status !== status) return false;
-    if (discountFilter === "discounted" && !isDiscountedProduct(product)) return false;
-    if (discountFilter === "full_price" && isDiscountedProduct(product)) return false;
-    if (!keyword) return true;
-    return [
-      product.name,
-      product.ext_attrs,
-      product.source_file_name,
-      String(product.legacy_id || ""),
-      String(product.uid || ""),
-    ]
-      .filter(Boolean)
-      .some((field) => String(field).toLowerCase().includes(keyword));
-  });
-}
-
-function syncAdminProductFilters(products = getAdminBaseFilteredProducts()) {
-  renderAdminProductCategoryTabs(products);
-  const categoryFiltered = filterAdminProductsByCategory(products, activeAdminProductCategory);
-  renderAdminProductSubcategoryTabs(categoryFiltered);
-  const subcategoryFiltered = filterAdminProductsBySubcategory(
-    categoryFiltered,
-    activeAdminProductCategory,
-    activeAdminProductSubcategory
-  );
-  renderAdminProductDetailTabs(subcategoryFiltered);
-  const detailFiltered = filterAdminProductsByDetail(
-    subcategoryFiltered,
-    activeAdminProductSubcategory,
-    activeAdminProductDetail
-  );
-  renderAdminProductFullnessTabs(detailFiltered);
+function syncAdminProductFilters() {
+  renderAdminProductCategoryTabs();
+  renderAdminProductSubcategoryTabs();
+  renderAdminProductDetailTabs();
+  renderAdminProductFullnessTabs();
 }
 
 function getFilteredProducts() {
-  const baseFiltered = getAdminBaseFilteredProducts();
-  const categoryFiltered = filterAdminProductsByCategory(baseFiltered, activeAdminProductCategory);
-  const subcategoryFiltered = filterAdminProductsBySubcategory(
-    categoryFiltered,
-    activeAdminProductCategory,
-    activeAdminProductSubcategory
-  );
-  const detailFiltered = filterAdminProductsByDetail(
-    subcategoryFiltered,
-    activeAdminProductSubcategory,
-    activeAdminProductDetail
-  );
-  return filterAdminProductsByFullness(detailFiltered, activeAdminProductFullness);
+  return Array.isArray(allProducts) ? allProducts : [];
 }
 
 function getDiscountedFilteredProducts() {
@@ -1583,7 +1517,7 @@ function rankPosterCandidates(candidates, stats, mode) {
 function applyPosterSelection(products) {
   selectedProductIds.clear();
   products.forEach((product) => selectedProductIds.add(Number(product.id)));
-  renderProducts(getFilteredProducts());
+  renderCatalogProductsSection(buildAdminPageContext(), getFilteredProducts());
 }
 
 async function autoSelectPosterProducts(mode) {
@@ -2158,380 +2092,6 @@ async function exportSelectedProductsPoster() {
   }
 }
 
-function getFilteredUsers() {
-  const keyword = String(adminUserKeywordInput.value || "").trim().toLowerCase();
-  if (!keyword) return allUsers;
-
-  return allUsers.filter((user) =>
-    [
-      user.game_role_name,
-      user.game_role_id,
-      user.game_server,
-      user.role,
-      user.status,
-      user.nickname,
-    ]
-      .filter(Boolean)
-      .some((field) => String(field).toLowerCase().includes(keyword))
-  );
-}
-
-function renderProducts(products) {
-  const pagedProducts = sliceLocalPage(products, "products");
-  const canWrite = hasAdminWriteAccess();
-
-  if (!products.length) {
-    productsRoot.innerHTML =
-      activeAdminProductCategory === "bundle"
-        ? '<div class="stack-item">套餐请在下方“套餐 SKU”模块里管理，这里只展示单卡商品。</div>'
-        : '<div class="stack-item">当前筛选条件下没有商品。</div>';
-    renderPagination(productsPaginationRoot, "products", paginationState.products);
-    syncProductSummary(products);
-    return;
-  }
-
-  productsRoot.innerHTML = pagedProducts
-    .map((product) => {
-      const pricingMeta = getPricingMeta(product);
-      const pricingLabel = pricingMeta.source === "manual" ? "手动价" : "自动价";
-      const dominantLabel = pricingMeta.dominant_reason_label || "-";
-      const marketFactor = Number(pricingMeta?.market?.factor || 1).toFixed(2);
-      const floorPrice = Number(pricingMeta.floor_price || 0);
-      const autoPrice = Number(pricingMeta.auto_price || product.price_quota || 0);
-      const manualPrice =
-        product.manual_price_quota === null || product.manual_price_quota === undefined
-          ? "-"
-          : Number(product.manual_price_quota);
-      const discountRate = normalizeDiscountRate(product.discount_rate);
-      const effectivePrice = Number(product.effective_price_quota || product.price_quota || 0);
-      const basePrice = Number(product.price_quota || 0);
-
-      return `
-        <div class="admin-card" data-product-id="${product.id}">
-          <div class="admin-card-head">
-            <label class="checkbox-line">
-              <input class="product-select" type="checkbox" data-product-id="${product.id}" ${
-                selectedProductIds.has(product.id) ? "checked" : ""
-              } />
-              <span>选中</span>
-            </label>
-            <span class="chip">${escapeHtml(product.status)}</span>
-          </div>
-                    <div class="admin-product-layout">
-            ${renderAdminProductCover(product)}
-            <div class="admin-product-main">
-              <div class="product-name">${escapeHtml(product.name)}</div>
-              <div class="product-meta">
-                <div>UID / Legacy: ${escapeHtml(product.uid || "-")} / ${escapeHtml(product.legacy_id || "-")}</div>
-                <div>Source: ${escapeHtml(product.source_file_name || "-")}</div>
-                <div>Stats: ATK ${Number(product.attack_value || 0)} / HP ${Number(product.hp_value || 0)}</div>
-                <div>Terms: ${escapeHtml(product.ext_attrs || "none")}</div>
-                <div>Stock: ${Number(product.stock || 0)} / Base price: ${basePrice}</div>
-                <div>Discount: ${escapeHtml(getDiscountLabel(discountRate))} / Final: ${effectivePrice}</div>
-                <div>Auction: ${product.auction_id ? `#${Number(product.auction_id)} / ${escapeHtml(product.auction_status || "-")} / ${escapeHtml(formatDate(product.auction_ends_at || ""))}` : "none"}</div>
-                <div>Pricing: ${pricingLabel} / Reason: ${escapeHtml(dominantLabel)}</div>
-                <div>Floor: ${floorPrice} / Auto: ${autoPrice} / Manual: ${manualPrice}</div>
-                <div>Market factor: ${marketFactor}</div>
-              </div>
-              ${renderPricingSummary(product, pricingMeta)}
-            </div>
-          </div>
-          ${
-            canWrite
-              ? `
-                  <div class="inline-form">
-                    <input data-field="name" value="${escapeHtml(product.name)}" />
-                    <input data-field="price_quota" type="number" value="${Number(product.price_quota || 0)}" />
-                    <input data-field="discount_rate" type="number" min="1" max="100" value="${discountRate}" placeholder="折扣率" />
-                    <input data-field="stock" type="number" value="${Number(product.stock || 0)}" />
-                    <select data-field="status">
-                      ${["draft", "on_sale", "off_sale", "sold"]
-                        .map(
-                          (status) =>
-                            `<option value="${status}" ${product.status === status ? "selected" : ""}>${status}</option>`
-                        )
-                        .join("")}
-                    </select>
-                  </div>
-                  <div class="inline-form">
-                    <input data-field="external-buyer-label" type="text" placeholder="外部交易对象，例如微信直卖 / 熟人代拍" />
-                    <input data-field="external-order-remark" type="text" placeholder="外部成交备注，可选" />
-                    <button class="danger create-external-order-btn" type="button">记外部成交</button>
-                  </div>
-                  <div class="actions">
-                    <button class="ghost view-product-detail-btn" type="button">查看详情</button>
-                    <button class="primary save-product-btn" type="button">保存商品</button>
-                    <button class="ghost save-status-btn" type="button">仅更新状态</button>
-                    <button class="ghost clear-manual-price-btn" type="button">恢复自动价</button>
-                  </div>
-                `
-              : `
-                  <div class="actions">
-                    <button class="ghost view-product-detail-btn" type="button">查看详情</button>
-                  </div>
-                `
-          }
-        </div>
-      `;
-    })
-    .join("");
-
-  renderPagination(productsPaginationRoot, "products", paginationState.products);
-  syncProductSummary(products);
-}
-
-function renderUsers(users) {
-  const pagedUsers = sliceLocalPage(users, "users");
-  const canWrite = hasAdminWriteAccess();
-
-  if (!users.length) {
-    usersRoot.innerHTML = '<div class="stack-item">没有匹配到用户。</div>';
-    renderPagination(usersPaginationRoot, "users", paginationState.users);
-    return;
-  }
-
-  usersRoot.innerHTML = pagedUsers
-    .map(
-      (user) => `
-        <div class="admin-card" data-user-id="${user.id}">
-          <div class="admin-card-head">
-            <div class="product-name">${escapeHtml(user.game_role_name || "-")}</div>
-            <span class="chip">${escapeHtml(user.role || "-")}</span>
-          </div>
-          <div class="product-meta">
-            <div>${escapeHtml(user.game_server || "-")} / ${escapeHtml(user.game_role_id || "-")}</div>
-            <div>当前额度：${Number(user.quota_balance || 0)}</div>
-            <div>账号状态：${escapeHtml(user.status || "-")}</div>
-            <div>昵称：${escapeHtml(user.nickname || "-")}</div>
-            <div>阵容槽位：已存 ${Number(user.lineup_slot_saved || 0)} / 可用 ${Number(user.lineup_slot_limit || 0)}</div>
-            <div>槽位构成：基础 ${Number(user.lineup_slot_base || 0)} / 永久 ${Number(user.lineup_slot_permanent || 0)} / 赛季 ${Number(user.lineup_slot_seasonal || 0)} / 会员赠送 ${Number(user.lineup_slot_member_bonus || 0)}</div>
-          </div>
-          ${
-            canWrite
-              ? `
-                  <div class="inline-form">
-                    <input data-field="change_amount" type="number" placeholder="额度增减，可填负数" />
-                    <input data-field="remark" type="text" placeholder="备注" />
-                  </div>
-                  <div class="actions tight">
-                    <button class="ghost quick-quota-btn" type="button" data-amount="1000">+1000</button>
-                    <button class="ghost quick-quota-btn" type="button" data-amount="5000">+5000</button>
-                    <button class="ghost quick-quota-btn" type="button" data-amount="10000">+10000</button>
-                    <button class="ghost view-user-orders-btn" type="button">查看订单</button>
-                  </div>
-                  <div class="actions">
-                    <button class="primary save-quota-btn" type="button">调整额度</button>
-                    <button class="ghost toggle-status-btn" type="button">${
-                      user.status === "active" ? "禁用" : "启用"
-                    }</button>
-                  </div>
-                `
-              : `
-                  <div class="actions">
-                    <button class="ghost view-user-orders-btn" type="button">查看订单</button>
-                  </div>
-                `
-          }
-        </div>
-      `
-    )
-    .join("");
-
-  renderPagination(usersPaginationRoot, "users", paginationState.users);
-}
-
-function renderBundles(bundles) {
-  const pagedBundles = sliceLocalPage(bundles, "bundles");
-  const canWrite = hasAdminWriteAccess();
-
-  if (!bundles.length) {
-    bundlesRoot.innerHTML = '<div class="stack-item">暂无套餐 SKU。</div>';
-    renderPagination(bundlesPaginationRoot, "bundles", paginationState.bundles);
-    return;
-  }
-
-  bundlesRoot.innerHTML = pagedBundles
-    .map(
-      (bundle) => `
-        <div class="admin-card" data-bundle-id="${bundle.id}">
-          <div class="admin-card-head">
-            <div class="product-name">${escapeHtml(bundle.name)}</div>
-            <span class="chip">${escapeHtml(bundle.status)}</span>
-          </div>
-          <div class="product-meta">
-            <div>编码：${escapeHtml(bundle.code)}</div>
-            <div>说明：${escapeHtml(bundle.description || "-")}</div>
-            <div>标签：${escapeHtml((bundle.tags || []).join(" / ") || "-")}</div>
-            <div>价格：${Number(bundle.price_quota || 0)} / 库存：${
-              bundle.stock === null || bundle.stock === undefined ? "不限" : Number(bundle.stock)
-            }</div>
-            <div>显示顺序：${Number(bundle.display_rank || 999)}</div>
-          </div>
-          ${
-            canWrite
-              ? `
-                  <div class="inline-form">
-                    <input data-field="name" value="${escapeHtml(bundle.name)}" />
-                    <input data-field="description" value="${escapeHtml(bundle.description || "")}" />
-                    <input
-                      data-field="tags"
-                      value="${escapeHtml((bundle.tags || []).join(", "))}"
-                      placeholder="标签，逗号分隔"
-                    />
-                    <input data-field="price_quota" type="number" value="${Number(bundle.price_quota || 0)}" />
-                    <input
-                      data-field="stock"
-                      type="text"
-                      value="${bundle.stock === null || bundle.stock === undefined ? "" : Number(bundle.stock)}"
-                      placeholder="留空表示不限量"
-                    />
-                    <input
-                      data-field="display_rank"
-                      type="number"
-                      value="${Number(bundle.display_rank || 999)}"
-                      placeholder="排序"
-                    />
-                    <select data-field="status">
-                      ${["on_sale", "off_sale", "sold"]
-                        .map(
-                          (status) =>
-                            `<option value="${status}" ${bundle.status === status ? "selected" : ""}>${status}</option>`
-                        )
-                        .join("")}
-                    </select>
-                  </div>
-                  <div class="actions">
-                    <button class="primary save-bundle-btn" type="button">保存套餐</button>
-                    <button class="ghost save-bundle-status-btn" type="button">仅更新状态</button>
-                  </div>
-                `
-              : ""
-          }
-        </div>
-      `
-    )
-    .join("");
-
-  renderPagination(bundlesPaginationRoot, "bundles", paginationState.bundles);
-}
-
-function formatRechargeReviewStatusLabel(status) {
-  switch (status) {
-    case "pending_review":
-      return "待审核";
-    case "approved":
-      return "已通过";
-    case "rejected":
-      return "已驳回";
-    default:
-      return status || "-";
-  }
-}
-
-function isResidualRechargeOrder(order) {
-  return String(order?.order_type || "").trim() === "residual_transfer";
-}
-
-function formatRechargeOrderTitle(order) {
-  if (order?.order_title) return order.order_title;
-  if (isResidualRechargeOrder(order)) return "残卷转赠";
-  if (order?.order_type === "season_member") return "赛季会员";
-  return "普通充值";
-}
-
-function formatRechargeChannelLabel(channel) {
-  if (String(channel || "").trim() === "wechat_qr") return "微信";
-  if (String(channel || "").trim() === "game_residual_transfer") return "残卷转赠";
-  return "支付宝";
-}
-
-function renderRechargeOrders(orders) {
-  currentRechargeOrderList = orders;
-  renderOverview();
-  const canWrite = hasAdminWriteAccess();
-
-  if (!adminRechargeOrdersRoot) return;
-  if (!orders.length) {
-    adminRechargeOrdersRoot.innerHTML = '<div class="stack-item">当前没有符合条件的充值订单。</div>';
-    return;
-  }
-
-  adminRechargeOrdersRoot.innerHTML = orders
-    .map((order) => {
-      const amountLine = isResidualRechargeOrder(order)
-        ? `转赠数量：${Number(order.transfer_amount || order.amount_yuan || 0)} ${escapeHtml(order.transfer_unit || "残卷")} / 预计额度：${Number(order.quota_amount || 0)}`
-        : `充值金额：${Number(order.amount_yuan || 0)} 元 / 预计额度：${Number(order.quota_amount || 0)} / 支付方式：${formatRechargeChannelLabel(order.channel)}`;
-      const referenceLabel = isResidualRechargeOrder(order) ? "转赠时间" : "付款时间";
-      const statusHint =
-        order.status === "pending_review"
-          ? `<div class="muted">${isResidualRechargeOrder(order) ? "审核通过后会自动给用户增加额度，请先核对游戏内转赠记录和凭据。" : "审核通过后会自动给用户增加额度，请先核对付款备注和金额。"}</div>`
-          : "";
-      return `
-        <div class="admin-card" data-recharge-order-id="${order.id}">
-          <div class="admin-card-head">
-            <div class="product-name">${escapeHtml(formatRechargeOrderTitle(order))} #${order.id}</div>
-            <span class="chip">${escapeHtml(formatRechargeReviewStatusLabel(order.status))}</span>
-          </div>
-          <div class="product-meta">
-            <div>用户：${escapeHtml(order.game_role_name || "-")} / ${escapeHtml(order.game_server || "-")} / ${escapeHtml(order.game_role_id || "-")}</div>
-            <div>${amountLine}</div>
-            <div>${referenceLabel}：${escapeHtml(order.payment_reference || "-")}</div>
-            ${isResidualRechargeOrder(order) ? `<div>转赠目标：${escapeHtml(order.transfer_target_role_name || "admin残卷")} / ${escapeHtml(order.transfer_target_role_id || "-")}</div>` : ""}
-            <div>提交时间：${formatDate(order.created_at)}</div>
-          </div>
-          ${order.payer_note ? `<div class="muted">用户备注：${escapeHtml(order.payer_note)}</div>` : ""}
-          ${order.admin_remark ? `<div class="muted">管理员备注：${escapeHtml(order.admin_remark)}</div>` : ""}
-          ${
-            canWrite
-              ? `
-                  <div class="inline-form order-toolbar">
-                    <input
-                      data-field="admin_remark"
-                      type="text"
-                      value="${escapeHtml(order.admin_remark || "")}"
-                      placeholder="填写审核备注，例如已核对付款截图"
-                    />
-                  </div>
-                `
-              : ""
-          }
-          ${statusHint}
-          ${
-            canWrite
-              ? `
-                  <div class="actions">
-                    ${order.status === "pending_review" ? `
-                      <button class="primary approve-recharge-order-btn" type="button">审核通过并加额度</button>
-                      <button class="danger reject-recharge-order-btn" type="button">驳回申请</button>
-                    ` : '<button class="ghost" type="button" disabled>已处理</button>'}
-                  </div>
-                `
-              : ""
-          }
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function renderAudits(logs) {
-  if (!logs.length) {
-    auditsRoot.innerHTML = '<div class="stack-item">暂无审计日志。</div>';
-    return;
-  }
-
-  auditsRoot.innerHTML = logs
-    .map(
-      (log) => `
-        <div class="stack-item">
-          <div>${escapeHtml(log.action)} / ${escapeHtml(log.target_type)} #${log.target_id}</div>
-          <div class="muted">${escapeHtml(log.actor_role_name || "-")} / ${formatDate(log.created_at)}</div>
-        </div>
-      `
-    )
-    .join("");
-}
-
 async function loadQuotaLogs(options = {}) {
   const nextPage = Math.max(Number(options.page || paginationState.quotaLogs.page || 1), 1);
   const query = new URLSearchParams();
@@ -2551,6 +2111,7 @@ async function loadQuotaLogs(options = {}) {
   query.set("page_size", String(paginationState.quotaLogs.pageSize));
 
   const response = normalizePaginatedResponse(await apiFetch(`/admin/quota-logs?${query.toString()}`));
+  currentQuotaLogList = response.items;
   paginationState.quotaLogs = {
     ...paginationState.quotaLogs,
     page: response.page,
@@ -2558,7 +2119,7 @@ async function loadQuotaLogs(options = {}) {
     total: response.total,
     totalPages: response.total_pages,
   };
-  renderQuotaLogs(response.items);
+  renderQuotaLogsSection(buildAdminPageContext(), response.items);
   renderPagination(quotaLogsPaginationRoot, "quotaLogs", paginationState.quotaLogs);
 }
 
@@ -2576,6 +2137,7 @@ async function loadAudits(options = {}) {
   query.set("page_size", String(paginationState.audits.pageSize));
 
   const response = normalizePaginatedResponse(await apiFetch(`/admin/audit-logs?${query.toString()}`));
+  currentAuditList = response.items;
   paginationState.audits = {
     ...paginationState.audits,
     page: response.page,
@@ -2583,202 +2145,8 @@ async function loadAudits(options = {}) {
     total: response.total,
     totalPages: response.total_pages,
   };
-  renderAudits(response.items);
+  renderAuditsSection(buildAdminPageContext(), response.items);
   renderPagination(auditsPaginationRoot, "audits", paginationState.audits);
-}
-
-function formatQuotaLogType(type) {
-  switch (type) {
-    case "admin_add":
-      return "管理员加额度";
-    case "admin_subtract":
-      return "管理员扣额度";
-    case "order_deduct":
-      return "下单扣减";
-    case "order_refund":
-      return "订单退款";
-    case "recharge_credit":
-      return "充值到账";
-    case "residual_transfer_credit":
-      return "残卷到账";
-    case "draw_service_rebate":
-      return "代抽返利";
-    case "lineup_slot_permanent_purchase":
-      return "购买永久阵容槽";
-    case "lineup_slot_seasonal_purchase":
-      return "购买赛季阵容槽";
-    case "beginner_guide_reward":
-      return "新手教学奖励";
-    default:
-      return type || "-";
-  }
-}
-
-function renderQuotaLogs(logs) {
-  if (!logs.length) {
-    quotaLogsRoot.innerHTML = '<div class="stack-item">暂无额度流水。</div>';
-    return;
-  }
-
-  quotaLogsRoot.innerHTML = logs
-    .map((log) => {
-      const amount = Number(log.change_amount || 0);
-      const prefix = amount > 0 ? "+" : "";
-      return `
-        <div class="stack-item">
-          <div>${escapeHtml(log.game_role_name || "-")} / ${escapeHtml(log.game_role_id || "-")}</div>
-          <div class="muted">${escapeHtml(formatQuotaLogType(log.type))} / ${prefix}${amount} / ${formatDate(
-            log.created_at
-          )}</div>
-          <div class="muted">订单：${escapeHtml(log.order_id || "-")} / 备注：${escapeHtml(log.remark || "-")}</div>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function renderOrders(orders) {
-  currentOrderList = Array.isArray(orders) ? orders : [];
-  renderOverview();
-  const canWrite = hasAdminWriteAccess();
-
-  if (!ordersRoot) return;
-  if (!currentOrderList.length) {
-    ordersRoot.innerHTML = '<div class="stack-item">当前没有符合条件的订单。</div>';
-    return;
-  }
-
-  ordersRoot.innerHTML = currentOrderList
-    .map((order) => {
-      const items = Array.isArray(order.items) ? order.items : [];
-      const drawMeta = getDrawServiceMeta(order);
-      const itemLines = items.length
-        ? items
-            .map(
-              (item) => `
-                <div class="order-item-line">
-                  <div><strong>${escapeHtml(item.product_name || item.bundle_name || "-")}</strong> / ${Number(item.price_quota || 0)} 额度</div>
-                  ${
-                    formatOrderItemSnapshot(item).length
-                      ? `<div class="muted">${formatOrderItemSnapshot(item)
-                          .map((line) => escapeHtml(line))
-                          .join(" / ")}</div>`
-                      : ""
-                  }
-                </div>
-              `
-            )
-            .join("")
-        : '<div class="order-item-line">没有订单明细</div>';
-
-      const drawFields =
-        isDrawServiceOrder(order) && drawMeta
-          ? `
-              ${
-                order.status === "pending" && canWrite
-                  ? `
-                      <div class="inline-form order-toolbar">
-                        <textarea
-                          data-field="draw-returned-cards"
-                          rows="3"
-                          placeholder="确认代抽时填写返还了哪些卡"
-                        >${escapeHtml(drawMeta.returned_cards_text || "")}</textarea>
-                        <input
-                          data-field="draw-best-gold"
-                          type="text"
-                          value="${escapeHtml(drawMeta.best_gold_card || "")}"
-                          placeholder="如果触发 5w 首档奖励，填写本次选中的最佳金卡"
-                        />
-                      </div>
-                    `
-                  : `
-                      <div class="muted">返还卡：${escapeHtml(drawMeta.returned_cards_text || "-")}</div>
-                      <div class="muted">图鉴金卡：${escapeHtml(drawMeta.best_gold_card || "-")}</div>
-                    `
-              }
-              <div class="muted">规则：返还所有双满紫 / 橙 / 红 / 金卡、>=2.5 单词条、双词条、珍；视频如需查看请让用户去咨询群联系管理员。</div>
-              ${
-                drawMeta.reward_summary
-                  ? `<div class="muted">已结算奖励：${escapeHtml(drawMeta.reward_summary)}</div>`
-                  : ""
-              }
-            `
-          : "";
-
-      const actionButtons =
-        order.order_source === "external"
-          ? `
-              <button class="ghost save-order-remark-btn" type="button">保存备注</button>
-            `
-          : isDrawServiceOrder(order) && order.status === "pending"
-            ? `
-                <button class="ghost save-order-remark-btn" type="button">保存备注</button>
-                <button class="primary confirm-order-btn" type="button">确认代抽</button>
-                <button class="danger cancel-order-btn" type="button">取消订单</button>
-              `
-          :
-        order.status === "cancel_requested"
-          ? `
-              <button class="ghost save-order-remark-btn" type="button">保存备注</button>
-              <button class="danger approve-cancel-order-btn" type="button">通过取消</button>
-              <button class="primary reject-cancel-order-btn" type="button">驳回取消</button>
-            `
-          : order.status === "pending"
-            ? `
-                <button class="ghost save-order-remark-btn" type="button">保存备注</button>
-                <button class="primary confirm-order-btn" type="button">确认订单</button>
-                <button class="danger cancel-order-btn" type="button">取消订单</button>
-              `
-            : `
-                <button class="ghost save-order-remark-btn" type="button">保存备注</button>
-              `;
-
-      return `
-        <div class="admin-card" data-order-id="${order.id}">
-          <div class="admin-card-head">
-            <div class="product-name">订单 #${order.id}</div>
-            <span class="chip">${escapeHtml(formatOrderStatusLabel(order.status))}</span>
-          </div>
-          <div class="product-meta">
-            <div>用户：${escapeHtml(order.game_role_name || "-")} / ${escapeHtml(order.game_server || "-")} / ${escapeHtml(order.game_role_id || "-")}</div>
-            <div>来源：${escapeHtml(getOrderSourceLabel(order))}${order.buyer_label ? ` / 对象：${escapeHtml(order.buyer_label)}` : ""}</div>
-            <div>订单总额：${Number(order.total_quota || 0)} 额度</div>
-            ${
-              order.order_source === "guest_transfer"
-                ? String(order.payment_channel || "") === "game_residual_transfer"
-                  ? `<div>转赠数量：${Number(order.transfer_amount || 0)} ${escapeHtml(order.transfer_unit || "残卷")} / 目标：${escapeHtml(order.transfer_target_role_name || "admin残卷")} / ${escapeHtml(order.transfer_target_role_id || "-")} / 转赠时间：${escapeHtml(order.payment_reference || "-")}</div>`
-                  : `<div>转账金额：${Number(order.payment_amount_yuan || 0)} 元 / 方式：${escapeHtml(formatRechargeChannelLabel(order.payment_channel || "alipay_qr"))} / 付款时间：${escapeHtml(order.payment_reference || "-")}</div>`
-                : ""
-            }
-            <div>创建时间：${formatDate(order.created_at)}</div>
-            ${
-              isDrawServiceOrder(order) && drawMeta
-                ? `<div>代抽赛季：${escapeHtml(drawMeta.season_label || "-")} / 返利：${Number(drawMeta.rebate_quota || 0)}</div>`
-                : ""
-            }
-          </div>
-          ${order.cancel_reason ? `<div class="muted">取消原因：${escapeHtml(order.cancel_reason)}</div>` : ""}
-          <div class="order-item-list">${itemLines}</div>
-          ${
-            canWrite
-              ? `
-                  <div class="inline-form order-toolbar">
-                    <input
-                      data-field="remark"
-                      type="text"
-                      value="${escapeHtml(order.remark || "")}"
-                      placeholder="填写后台备注或处理说明"
-                    />
-                  </div>
-                `
-              : `<div class="muted">后台备注：${escapeHtml(order.remark || "-")}</div>`
-          }
-          ${drawFields}
-          ${canWrite ? `<div class="actions">${actionButtons}</div>` : ""}
-        </div>
-      `;
-    })
-    .join("");
 }
 
 async function loadOrders(options = {}) {
@@ -2805,9 +2173,11 @@ async function loadOrders(options = {}) {
     total: response.total,
     totalPages: response.total_pages,
   };
-  renderOrders(response.items);
+  currentOrderList = Array.isArray(response.items) ? response.items : [];
+  renderOverview();
+  renderOrdersListSection(buildAdminPageContext(), currentOrderList);
   renderPagination(ordersPaginationRoot, "orders", paginationState.orders);
-  renderLinkedOrderUserState();
+  renderLinkedOrderUserStateSection(buildAdminPageContext());
 }
 
 async function loadRechargeOrders(options = {}) {
@@ -2833,7 +2203,9 @@ async function loadRechargeOrders(options = {}) {
     total: response.total,
     totalPages: response.total_pages,
   };
-  renderRechargeOrders(response.items);
+  currentRechargeOrderList = Array.isArray(response.items) ? response.items : [];
+  renderOverview();
+  renderRechargeOrdersSection(buildAdminPageContext(), currentRechargeOrderList);
   renderPagination(
     rechargeOrdersPaginationRoot,
     "rechargeOrders",
@@ -2843,7 +2215,7 @@ async function loadRechargeOrders(options = {}) {
 
 async function loadRechargeConfig() {
   const config = await apiFetch("/admin/recharge-config");
-  renderRechargeConfig(config);
+  renderRechargeConfigSection(buildAdminPageContext(), config);
 }
 
 async function loadAuctions() {
@@ -2855,34 +2227,135 @@ async function loadAuctions() {
   const suffix = query.toString();
   try {
     const auctions = await apiFetch(`/admin/auctions${suffix ? `?${suffix}` : ""}`);
-    renderAuctions(Array.isArray(auctions) ? auctions : []);
+    currentAuctionList = Array.isArray(auctions) ? auctions : [];
+    renderAuctionsSection(buildAdminPageContext(), currentAuctionList);
   } catch (error) {
     if (pickErrorMessage(error) === "Not Found") {
       currentAuctionList = [];
-      renderAuctions([]);
+      renderAuctionsSection(buildAdminPageContext(), []);
       return;
     }
     throw error;
   }
 }
 
+function applyProductResponseState(response) {
+  allProducts = Array.isArray(response?.items) ? response.items : [];
+  currentProductFacets = response?.facets || {
+    categories: [],
+    subcategories: [],
+    details: [],
+    fullness: [],
+  };
+  currentProductSummary = response?.summary || {
+    filtered_total: Number(response?.total || 0),
+    discounted_total: 0,
+  };
+  currentProductAppliedFilters = response?.applied_filters || currentProductAppliedFilters;
+  activeAdminProductCategory = currentProductAppliedFilters.category || "all";
+  activeAdminProductSubcategory = currentProductAppliedFilters.subcategory || "all";
+  activeAdminProductDetail = currentProductAppliedFilters.detail || "all";
+  activeAdminProductFullness = currentProductAppliedFilters.fullness || "all";
+
+  const visibleIds = new Set(allProducts.map((product) => Number(product.id)));
+  [...selectedProductIds].forEach((productId) => {
+    if (!visibleIds.has(Number(productId))) {
+      selectedProductIds.delete(Number(productId));
+    }
+  });
+}
+
+async function loadProducts(options = {}) {
+  const nextPage = Math.max(Number(options.page || paginationState.products.page || 1), 1);
+  const query = new URLSearchParams();
+  const keyword =
+    options.keyword !== undefined ? String(options.keyword || "").trim() : adminProductKeywordInput?.value?.trim() || "";
+  const status =
+    options.status !== undefined ? String(options.status || "all") : adminProductStatusFilter?.value || "all";
+  const discount =
+    options.discount !== undefined ? String(options.discount || "all") : adminProductDiscountFilter?.value || "all";
+  const category = options.category !== undefined ? options.category : activeAdminProductCategory;
+  const subcategory =
+    options.subcategory !== undefined ? options.subcategory : activeAdminProductSubcategory;
+  const detail = options.detail !== undefined ? options.detail : activeAdminProductDetail;
+  const fullness = options.fullness !== undefined ? options.fullness : activeAdminProductFullness;
+
+  if (keyword) query.set("keyword", keyword);
+  if (status) query.set("status", status);
+  if (discount) query.set("discount", discount);
+  if (category) query.set("category", category);
+  if (subcategory) query.set("subcategory", subcategory);
+  if (detail) query.set("detail", detail);
+  if (fullness) query.set("fullness", fullness);
+  query.set("page", String(nextPage));
+  query.set("page_size", String(paginationState.products.pageSize));
+
+  const response = normalizePaginatedResponse(await apiFetch(`/admin/products?${query.toString()}`));
+  applyProductResponseState(response);
+  paginationState.products = {
+    ...paginationState.products,
+    page: response.page,
+    pageSize: response.page_size,
+    total: response.total,
+    totalPages: response.total_pages,
+  };
+  syncAdminProductFilters();
+  renderCatalogProductsSection(buildAdminPageContext(), allProducts);
+  renderPagination(productsPaginationRoot, "products", paginationState.products);
+}
+
+async function loadBundles(options = {}) {
+  const nextPage = Math.max(Number(options.page || paginationState.bundles.page || 1), 1);
+  const query = new URLSearchParams();
+  query.set("page", String(nextPage));
+  query.set("page_size", String(paginationState.bundles.pageSize));
+  const response = normalizePaginatedResponse(await apiFetch(`/admin/bundles?${query.toString()}`));
+  allBundles = response.items;
+  paginationState.bundles = {
+    ...paginationState.bundles,
+    page: response.page,
+    pageSize: response.page_size,
+    total: response.total,
+    totalPages: response.total_pages,
+  };
+  renderBundlesSection(buildAdminPageContext(), allBundles);
+  renderPagination(bundlesPaginationRoot, "bundles", paginationState.bundles);
+}
+
+async function loadUsers(options = {}) {
+  const nextPage = Math.max(Number(options.page || paginationState.users.page || 1), 1);
+  const query = new URLSearchParams();
+  const keyword =
+    options.keyword !== undefined ? String(options.keyword || "").trim() : adminUserKeywordInput?.value?.trim() || "";
+  if (keyword) query.set("keyword", keyword);
+  query.set("page", String(nextPage));
+  query.set("page_size", String(paginationState.users.pageSize));
+  const response = normalizePaginatedResponse(await apiFetch(`/admin/users?${query.toString()}`));
+  allUsers = response.items;
+  paginationState.users = {
+    ...paginationState.users,
+    page: response.page,
+    pageSize: response.page_size,
+    total: response.total,
+    totalPages: response.total_pages,
+  };
+  renderUsersSection(buildAdminPageContext(), allUsers);
+  renderPagination(usersPaginationRoot, "users", paginationState.users);
+}
+
 async function loadOverviewCounts() {
   try {
-    const [pendingOrders, cancelOrders, rechargeReviewOrders] = await Promise.all([
-      apiFetch("/admin/orders?status=pending&page=1&page_size=1"),
-      apiFetch("/admin/orders?status=cancel_requested&page=1&page_size=1"),
-      apiFetch("/admin/recharge-orders?status=pending_review&page=1&page_size=1"),
-    ]);
-    overviewCounts = {
-      pendingOrderCount: Number(pendingOrders?.total || 0),
-      cancelReviewCount: Number(cancelOrders?.total || 0),
-      rechargeReviewCount: Number(rechargeReviewOrders?.total || 0),
-    };
+    overviewData = await apiFetch("/admin/overview");
   } catch (error) {
-    overviewCounts = {
-      pendingOrderCount: currentOrderList.filter((order) => order.status === "pending").length,
-      cancelReviewCount: currentOrderList.filter((order) => order.status === "cancel_requested").length,
-      rechargeReviewCount: currentRechargeOrderList.filter((order) => order.status === "pending_review").length,
+    overviewData = {
+      products: overviewData?.products || { total: 0, on_sale: 0, discounted: 0 },
+      bundles: overviewData?.bundles || { total: 0 },
+      users: overviewData?.users || { total: 0, active: 0, total_quota: 0 },
+      alerts: {
+        pending_orders: currentOrderList.filter((order) => order.status === ORDER_STATUS.PENDING).length,
+        cancel_reviews: currentOrderList.filter((order) => order.status === ORDER_STATUS.CANCEL_REQUESTED).length,
+        recharge_reviews: currentRechargeOrderList.filter((order) => order.status === RECHARGE_ORDER_STATUS.PENDING_REVIEW).length,
+      },
     };
   }
   renderOverview();
@@ -2899,57 +2372,220 @@ async function loadBaseAdminData() {
     return false;
   }
 
-  const [products, bundles, users, rechargeConfig] = await Promise.all([
-    apiFetch("/admin/products"),
-    apiFetch("/admin/bundles"),
-    apiFetch("/admin/users"),
+  const [overview, rechargeConfig] = await Promise.all([
+    apiFetch("/admin/overview"),
     apiFetch("/admin/recharge-config"),
   ]);
 
-  allProducts = products;
-  allBundles = bundles;
-  allUsers = users;
+  overviewData = overview;
+  allProducts = [];
+  allBundles = [];
+  allUsers = [];
+  currentProductFacets = {
+    categories: [],
+    subcategories: [],
+    details: [],
+    fullness: [],
+  };
+  currentProductSummary = {
+    filtered_total: 0,
+    discounted_total: 0,
+  };
   currentRechargeConfig = rechargeConfig;
 
-  syncAdminProductFilters();
-  renderProducts(getFilteredProducts());
-  await loadAuctions();
-  renderBundles(allBundles);
-  renderUsers(getFilteredUsers());
-  renderRechargeConfig(rechargeConfig);
-  await loadOverviewCounts();
+  renderRechargeConfigSection(buildAdminPageContext(), rechargeConfig);
+  renderOverview();
+  renderAdminAlerts();
   startAlertPolling();
   markPageLoaded("imports");
-  markPageLoaded("catalog");
-  markPageLoaded("users");
   if (isAdminReadOnlyMode(profile)) {
     setMessage("当前账号为只读海报权限，可查看后台信息并导出广告图。", "success");
   }
   return true;
 }
 
+function buildAdminPageContext() {
+  return {
+    refs: {
+      productsRoot,
+      auctionsRoot,
+      bundlesRoot,
+      usersRoot,
+      ordersRoot,
+      quotaLogsRoot,
+      auditsRoot,
+      adminRechargeOrdersRoot,
+      linkedOrderUserState,
+      adminPricingControlsRoot,
+      adminRechargeConfigForm,
+      adminProductModal,
+      adminProductModalBody,
+      adminProductKeywordInput,
+      adminProductStatusFilter,
+      adminProductDiscountFilter,
+      adminProductCategoryTabs,
+      adminProductSubcategoryTabs,
+      adminProductDetailTabs,
+      adminProductFullnessTabs,
+      adminRechargeStatusFilter,
+      adminRechargeKeywordInput,
+      adminUserKeywordInput,
+      adminOrderStatusFilter,
+      adminOrderKeywordInput,
+      adminRechargeQrImageUrlInput,
+      adminRechargeQrPreview,
+      adminWechatQrImageUrlInput,
+      adminWechatQrPreview,
+      adminPricingDisplayModeSelect,
+      adminRechargeExchangeYuanInput,
+      adminRechargeExchangeQuotaInput,
+      closeAdminProductModalBtn,
+      adminProductModal,
+      recalculatePricingBtn,
+      bulkPriceInput,
+      bulkStockInput,
+      bulkDiscountRateInput,
+      randomDiscountCountInput,
+      randomDiscountRateInput,
+      smartSelectHotProductsBtn,
+      smartSelectBudgetProductsBtn,
+      smartSelectMixedProductsBtn,
+      exportProductPosterBtn,
+      adminAuctionTitleInput,
+      adminAuctionStartingPriceInput,
+      adminAuctionMinIncrementInput,
+      adminAuctionStartAtInput,
+      adminAuctionEndAtInput,
+      adminAuctionRemarkInput,
+      adminQuotaLogTypeFilter,
+      adminQuotaLogKeywordInput,
+      adminAuditKeywordInput,
+      adminAuditActionInput,
+    },
+    selectedProductIds,
+    paginationState,
+    markPageLoaded,
+    loadProducts,
+    loadBundles,
+    loadAuctions,
+    loadUsers,
+    loadRechargeOrders,
+    loadOrders,
+    loadQuotaLogs,
+    loadAudits,
+    loadOverviewCounts,
+    loadUsers,
+    reloadAll,
+    apiFetch,
+    setMessage,
+    pickErrorMessage,
+    guardAdminWriteAccess,
+    canConfirmOrders,
+    parseNonNegativeMoneyValue,
+    parseNonNegativeIntegerValue,
+    parsePricingDecaySpeedValue,
+    parsePricingBonusRateValue,
+    parsePricingThresholdRateValue,
+    parsePricingPenaltyRateValue,
+    parsePricingPercentValue,
+    parseDiscountRateInputValue,
+    convertCashToQuota,
+    convertQuotaToCash,
+    getRechargeConfigDraftForPricing,
+    getNormalizedPricingControls,
+    getPricingDisplayMode,
+    getEmptyPricingControls,
+    formatEditablePricingValue,
+    renderPricingControls,
+    syncProductSummary,
+    bulkUpdateSelectedProducts,
+    bulkPatchSelectedProducts,
+    restoreDiscountForProducts,
+    applyRandomSelection,
+    applyRandomDiscount,
+    autoSelectPosterProducts,
+    autoSelectMixedPosterProducts,
+    exportSelectedProductsPoster,
+    getSelectedAuctionProduct,
+    setLinkedOrderUser,
+    resetPagedState,
+    activateAdminPage,
+    getFilteredProducts,
+    getDiscountedFilteredProducts,
+    getAllProducts: () => allProducts,
+    getAllBundles: () => allBundles,
+    getAllUsers: () => allUsers,
+    getCurrentOrderList: () => currentOrderList,
+    getCurrentRechargeOrderList: () => currentRechargeOrderList,
+    getCurrentAuctionList: () => currentAuctionList,
+    getCurrentQuotaLogList: () => currentQuotaLogList,
+    getCurrentAuditList: () => currentAuditList,
+    getCurrentRechargeConfig: () => currentRechargeConfig,
+    setCurrentRechargeConfig(nextConfig) {
+      currentRechargeConfig = nextConfig || null;
+    },
+    getDraftPricingControls: () => draftPricingControls,
+    setDraftPricingControls(nextControls) {
+      draftPricingControls = nextControls;
+    },
+    getActiveAdminProductCategory: () => activeAdminProductCategory,
+    setActiveAdminProductCategory(value) {
+      activeAdminProductCategory = value;
+    },
+    getActiveAdminProductSubcategory: () => activeAdminProductSubcategory,
+    setActiveAdminProductSubcategory(value) {
+      activeAdminProductSubcategory = value;
+    },
+    getActiveAdminProductDetail: () => activeAdminProductDetail,
+    setActiveAdminProductDetail(value) {
+      activeAdminProductDetail = value;
+    },
+    getActiveAdminProductFullness: () => activeAdminProductFullness,
+    setActiveAdminProductFullness(value) {
+      activeAdminProductFullness = value;
+    },
+    getLinkedOrderUser: () => linkedOrderUser,
+    getActiveAdminPage: () => activeAdminPage,
+    applyAdminAccessMode,
+    isDiscountedProduct,
+    normalizeDiscountRate,
+    escapeHtml,
+    formatDate,
+    hasAdminWriteAccess,
+    ORDER_STATUS,
+    RECHARGE_ORDER_STATUS,
+    getPricingMeta,
+    renderAdminProductCover,
+    renderPricingSummary,
+    getDiscountLabel,
+    formatQuotaCashPair,
+    formatOrderStatusLabel,
+    getOrderSourceLabel,
+    isDrawServiceOrder,
+    getDrawServiceMeta,
+    formatOrderItemSnapshot,
+    formatRechargeChannelLabel,
+    PRICING_TIER_ORDER,
+    PRICING_TIER_LABELS,
+    renderLinkedOrderUserState() {
+      renderLinkedOrderUserStateSection(buildAdminPageContext());
+    },
+    renderRechargeConfig(config) {
+      renderRechargeConfigSection(buildAdminPageContext(), config);
+    },
+    openProductModal(product) {
+      openProductModalView(buildAdminPageContext(), product);
+    },
+    closeProductModal() {
+      closeProductModalView(buildAdminPageContext());
+    },
+  };
+}
+
 async function loadAdminPage(page, { force = false } = {}) {
   if (!force && loadedAdminPages.has(page)) return;
-
-  if (page === "recharge") {
-    await loadRechargeOrders({ page: paginationState.rechargeOrders.page });
-    markPageLoaded("recharge");
-    return;
-  }
-
-  if (page === "orders") {
-    await loadOrders({ page: paginationState.orders.page });
-    markPageLoaded("orders");
-    return;
-  }
-
-  if (page === "logs") {
-    await Promise.all([
-      loadQuotaLogs({ page: paginationState.quotaLogs.page }),
-      loadAudits({ page: paginationState.audits.page }),
-    ]);
-    markPageLoaded("logs");
-  }
+  bindAdminPageEvents(page, buildAdminPageContext());
+  await loadAdminPageData(page, buildAdminPageContext());
 }
 
 async function reloadAll() {
@@ -3040,6 +2676,176 @@ async function submitImport(event) {
     if (importSubmitBtn) {
       importSubmitBtn.disabled = false;
       importSubmitBtn.textContent = "导入并生成商品";
+    }
+  }
+}
+
+function addCurrentImportToBatch() {
+  if (!guardAdminWriteAccess()) return;
+  const rawJson = String(importJsonInput?.value || "").trim();
+  if (!rawJson) {
+    setMessage("请先粘贴一份 JSON，再加入批量导入。", "error");
+    return;
+  }
+  const entry = buildPendingImportEntry(importFileNameInput?.value, rawJson);
+  pendingImportEntries.push(entry);
+  renderPendingImportEntries();
+  setMessage(`已加入批量导入：${entry.source_file_name}`, "success");
+}
+
+async function appendImportFiles(files) {
+  const inputFiles = Array.from(files || []);
+  if (inputFiles.length === 0) return;
+  const loadedEntries = [];
+  for (const file of inputFiles) {
+    const rawJson = await file.text();
+    loadedEntries.push(buildPendingImportEntry(file.name, rawJson));
+  }
+  pendingImportEntries.push(...loadedEntries);
+  renderPendingImportEntries();
+  setMessage(`已加入 ${loadedEntries.length} 份 JSON 到批量导入。`, "success");
+  if (importBatchFileInput) {
+    importBatchFileInput.value = "";
+  }
+}
+
+function clearPendingImportEntries() {
+  pendingImportEntries = [];
+  renderPendingImportEntries();
+  if (importBatchFileInput) {
+    importBatchFileInput.value = "";
+  }
+  setMessage("已清空批量导入队列。", "success");
+}
+
+async function appendHelperInventoryImportFiles(files) {
+  const inputFiles = Array.from(files || []);
+  if (inputFiles.length === 0) return;
+  const loadedEntries = [];
+  for (const file of inputFiles) {
+    const rawJson = await file.text();
+    loadedEntries.push(buildPendingHelperInventoryEntry(file.name, rawJson));
+  }
+  pendingHelperInventoryEntries.push(...loadedEntries);
+  renderPendingHelperInventoryEntries();
+  setMessage(`已加入 ${loadedEntries.length} 份功法 JSON 到双炉子导入队列。`, "success");
+  if (helperImportFileInput) {
+    helperImportFileInput.value = "";
+  }
+}
+
+function clearPendingHelperInventoryEntries() {
+  pendingHelperInventoryEntries = [];
+  renderPendingHelperInventoryEntries();
+  if (helperImportFileInput) {
+    helperImportFileInput.value = "";
+  }
+  setMessage("已清空功法仓库导入队列。", "success");
+}
+
+async function submitImportBatch() {
+  if (!guardAdminWriteAccess()) return;
+  if (pendingImportEntries.length === 0) {
+    setMessage("请先加入至少一份 JSON 到批量导入。", "error");
+    return;
+  }
+  if (importBatchSubmitBtn) {
+    importBatchSubmitBtn.disabled = true;
+    importBatchSubmitBtn.textContent = "批量导入中...";
+  }
+  setMessage(`正在批量导入 ${pendingImportEntries.length} 份 JSON，请稍等...`, "success");
+  try {
+    const result = await apiFetch("/admin/imports/cards-json-batch", {
+      method: "POST",
+      body: JSON.stringify({
+        imports: pendingImportEntries.map((entry) => ({
+          source_type: "upload",
+          source_file_name: entry.source_file_name,
+          raw_json: entry.raw_json,
+        })),
+      }),
+    });
+    markDebugAction(`import_batch_ok count=${result.parsed_count}`);
+    setMessage(
+      `批量导入完成，共合并 ${result.batch_file_count || pendingImportEntries.length} 份 JSON，解析 ${result.parsed_count} 个商品。`,
+      "success"
+    );
+    pendingImportEntries = [];
+    renderPendingImportEntries();
+    await reloadAll();
+  } catch (error) {
+    markDebugError(`import_batch_failed ${pickErrorMessage(error, "import_batch_failed")}`);
+    setMessage(`批量导入失败：${pickErrorMessage(error, "导入失败")}`, "error");
+  } finally {
+    if (importBatchSubmitBtn) {
+      importBatchSubmitBtn.disabled = false;
+      importBatchSubmitBtn.textContent = "批量合并导入";
+    }
+  }
+}
+
+async function submitHelperInventoryImportBatch(importProducts = false) {
+  if (!guardAdminWriteAccess()) return;
+  if (pendingHelperInventoryEntries.length === 0) {
+    setMessage("请先加入至少一份功法 JSON 到双炉子导入队列。", "error");
+    return;
+  }
+  if (helperImportSubmitBtn) {
+    helperImportSubmitBtn.disabled = true;
+    helperImportSubmitBtn.textContent = importProducts ? "导入中..." : "导入中...";
+  }
+  if (helperImportSubmitProductsBtn) {
+    helperImportSubmitProductsBtn.disabled = true;
+    helperImportSubmitProductsBtn.textContent = importProducts ? "生成中..." : "导入并生成商品";
+  }
+  setMessage(
+    importProducts
+      ? `正在导入 ${pendingHelperInventoryEntries.length} 份功法 JSON，并生成商城商品，请稍等...`
+      : `正在导入 ${pendingHelperInventoryEntries.length} 份功法 JSON 到功法仓库，请稍等...`,
+    "success"
+  );
+  try {
+    const result = await apiFetch("/admin/imports/helper-inventories-json-batch", {
+      method: "POST",
+      body: JSON.stringify({
+        imports: pendingHelperInventoryEntries.map((entry) => ({
+          source_file_name: entry.source_file_name,
+          raw_json: entry.raw_json,
+        })),
+        import_products: Boolean(importProducts),
+      }),
+    });
+    const importedInventoryCount = Number(
+      result?.imported_inventory_count || pendingHelperInventoryEntries.length || 0
+    );
+    const removedInventoryCount = Number(result?.removed_inventory_count || 0);
+    const mergedItemCount = Number(result?.merged_item_count || 0);
+    const productParsedCount = Number(result?.product_import?.parsed_count || 0);
+    markDebugAction(
+      importProducts
+        ? `helper_inventory_batch_ok inventories=${importedInventoryCount} products=${productParsedCount}`
+        : `helper_inventory_batch_ok inventories=${importedInventoryCount}`
+    );
+    setMessage(
+      importProducts
+        ? `功法仓库导入完成，共写入 ${importedInventoryCount} 个炉子库存，清掉 ${removedInventoryCount} 个旧炉子库存，合并后 ${mergedItemCount} 个功法分组，并生成 ${productParsedCount} 个商品分组。`
+        : `功法仓库导入完成，共写入 ${importedInventoryCount} 个炉子库存，清掉 ${removedInventoryCount} 个旧炉子库存，合并后 ${mergedItemCount} 个功法分组。`,
+      "success"
+    );
+    pendingHelperInventoryEntries = [];
+    renderPendingHelperInventoryEntries();
+    await reloadAll();
+  } catch (error) {
+    markDebugError(`helper_inventory_batch_failed ${pickErrorMessage(error, "helper_inventory_batch_failed")}`);
+    setMessage(`功法仓库导入失败：${pickErrorMessage(error, "导入失败")}`, "error");
+  } finally {
+    if (helperImportSubmitBtn) {
+      helperImportSubmitBtn.disabled = false;
+      helperImportSubmitBtn.textContent = "导入到功法仓库";
+    }
+    if (helperImportSubmitProductsBtn) {
+      helperImportSubmitProductsBtn.disabled = false;
+      helperImportSubmitProductsBtn.textContent = "导入并生成商品";
     }
   }
 }
@@ -3143,7 +2949,7 @@ function applyRandomSelection() {
   const picked = sampleProducts(candidates, Math.min(count, candidates.length));
   selectedProductIds.clear();
   picked.forEach((product) => selectedProductIds.add(product.id));
-  renderProducts(getFilteredProducts());
+  renderCatalogProductsSection(buildAdminPageContext(), getFilteredProducts());
   setMessage(`已随机选中 ${picked.length} 个商品。`, "success");
   return picked;
 }
@@ -3162,433 +2968,6 @@ async function applyRandomDiscount() {
   await bulkPatchSelectedProducts({ discount_rate: discountRate });
 }
 
-productsRoot.addEventListener("click", async (event) => {
-  const card = event.target.closest("[data-product-id]");
-  if (!card) return;
-  if (event.target.closest(".product-select")) return;
-
-  const productId = Number(card.getAttribute("data-product-id"));
-  const product = allProducts.find((item) => Number(item.id) === productId) || null;
-
-  try {
-    if (event.target.closest(".view-product-detail-btn")) {
-      openProductModal(product);
-      return;
-    }
-    if (!guardAdminWriteAccess()) return;
-
-    if (event.target.closest(".save-product-btn")) {
-      await apiFetch(`/admin/products/${productId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: card.querySelector('[data-field="name"]').value.trim(),
-          price_quota: Number(card.querySelector('[data-field="price_quota"]').value),
-          discount_rate: Number(card.querySelector('[data-field="discount_rate"]').value),
-          stock: Number(card.querySelector('[data-field="stock"]').value),
-        }),
-      });
-      setMessage(`商品 #${productId} 已保存。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".save-status-btn")) {
-      await apiFetch(`/admin/products/${productId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          status: card.querySelector('[data-field="status"]').value,
-        }),
-      });
-      setMessage(`商品 #${productId} 状态已更新。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".clear-manual-price-btn")) {
-      await apiFetch(`/admin/products/${productId}/manual-price`, {
-        method: "DELETE",
-      });
-      setMessage(`商品 #${productId} 已恢复自动价。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".create-external-order-btn")) {
-      const buyerLabel = card.querySelector('[data-field="external-buyer-label"]').value.trim();
-      const remark = card.querySelector('[data-field="external-order-remark"]').value.trim();
-      if (!buyerLabel) {
-        setMessage("请先填写外部交易对象。", "error");
-        return;
-      }
-      await apiFetch("/admin/orders/external", {
-        method: "POST",
-        body: JSON.stringify({
-          item_id: productId,
-          item_kind: "card",
-          buyer_label: buyerLabel,
-          remark: remark || null,
-        }),
-      });
-      setMessage(`商品 #${productId} 已记录为外部成交。`, "success");
-      await reloadAll();
-    }
-  } catch (error) {
-    setMessage(`商品更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
-  }
-});
-
-productsRoot.addEventListener("change", (event) => {
-  const checkbox = event.target.closest(".product-select");
-  if (!checkbox) return;
-  const productId = Number(checkbox.getAttribute("data-product-id"));
-  if (checkbox.checked) selectedProductIds.add(productId);
-  else selectedProductIds.delete(productId);
-  syncProductSummary(getFilteredProducts());
-});
-
-auctionsRoot?.addEventListener("click", async (event) => {
-  const card = event.target.closest("[data-auction-id]");
-  if (!card) return;
-  if (!guardAdminWriteAccess()) return;
-  const auctionId = Number(card.getAttribute("data-auction-id") || 0);
-  const remark = card.querySelector('[data-field="auction-remark"]')?.value?.trim() || "";
-  const reason = card.querySelector('[data-field="auction-reason"]')?.value?.trim() || "";
-
-  try {
-    if (event.target.closest(".reload-single-auction-btn")) {
-      await loadAuctions();
-      setMessage(`拍卖 #${auctionId} 已刷新。`, "success");
-      return;
-    }
-
-    if (event.target.closest(".settle-auction-direct-btn")) {
-      await apiFetch(`/admin/auctions/${auctionId}/settle`, {
-        method: "POST",
-        body: JSON.stringify({ remark: remark || null, settlement_mode: "direct_quota" }),
-      });
-      setMessage(`拍卖 #${auctionId} 已扣额度并结算。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".settle-auction-offline-btn")) {
-      await apiFetch(`/admin/auctions/${auctionId}/settle`, {
-        method: "POST",
-        body: JSON.stringify({ remark: remark || null, settlement_mode: "offline" }),
-      });
-      setMessage(`拍卖 #${auctionId} 已按线下支付方式结算。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".cancel-auction-btn")) {
-      await apiFetch(`/admin/auctions/${auctionId}/cancel`, {
-        method: "POST",
-        body: JSON.stringify({
-          reason: reason || null,
-          remark: remark || null,
-        }),
-      });
-      setMessage(`拍卖 #${auctionId} 已流拍。`, "success");
-      await reloadAll();
-    }
-  } catch (error) {
-    setMessage(`拍卖操作失败：${pickErrorMessage(error, "操作失败")}`, "error");
-  }
-});
-
-bundlesRoot.addEventListener("click", async (event) => {
-  const card = event.target.closest("[data-bundle-id]");
-  if (!card) return;
-  if (!guardAdminWriteAccess()) return;
-  const bundleId = Number(card.getAttribute("data-bundle-id"));
-
-  try {
-    if (event.target.closest(".save-bundle-btn")) {
-      const stockRaw = card.querySelector('[data-field="stock"]').value.trim();
-      const tagsRaw = card.querySelector('[data-field="tags"]').value.trim();
-      await apiFetch(`/admin/bundles/${bundleId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: card.querySelector('[data-field="name"]').value.trim(),
-          description: card.querySelector('[data-field="description"]').value.trim(),
-          tags: tagsRaw
-            ? tagsRaw
-                .split(/[,锛寍]/)
-                .map((item) => item.trim())
-                .filter(Boolean)
-            : [],
-          price_quota: Number(card.querySelector('[data-field="price_quota"]').value),
-          stock: stockRaw === "" ? null : Number(stockRaw),
-          display_rank: Number(card.querySelector('[data-field="display_rank"]').value),
-        }),
-      });
-      setMessage(`套餐 #${bundleId} 已保存。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".save-bundle-status-btn")) {
-      await apiFetch(`/admin/bundles/${bundleId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          status: card.querySelector('[data-field="status"]').value,
-        }),
-      });
-      setMessage(`套餐 #${bundleId} 状态已更新。`, "success");
-      await reloadAll();
-    }
-  } catch (error) {
-    setMessage(`套餐更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
-  }
-});
-
-usersRoot.addEventListener("click", async (event) => {
-  const card = event.target.closest("[data-user-id]");
-  if (!card) return;
-  const userId = Number(card.getAttribute("data-user-id"));
-  const user = allUsers.find((item) => Number(item.id) === userId) || null;
-
-  try {
-    if (event.target.closest(".view-user-orders-btn")) {
-      setLinkedOrderUser(user);
-      adminOrderStatusFilter.value = "all";
-      resetPagedState("orders");
-      resetPagedState("quotaLogs");
-      await activateAdminPage("orders", { force: true });
-      document.querySelector('[data-admin-page-panel="orders"]')?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-      setMessage(`已切换到用户 ${user?.game_role_name || userId} 的订单视图。`, "success");
-      return;
-    }
-    if (!guardAdminWriteAccess()) return;
-
-    if (event.target.closest(".quick-quota-btn")) {
-      const amount = Number(event.target.closest(".quick-quota-btn").dataset.amount || 0);
-      await apiFetch(`/admin/users/${userId}/quota`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          change_amount: amount,
-          remark: `quick_add_${amount}`,
-        }),
-      });
-      setMessage(`用户 #${userId} 已快捷增加 ${amount} 额度。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".save-quota-btn")) {
-      await apiFetch(`/admin/users/${userId}/quota`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          change_amount: Number(card.querySelector('[data-field="change_amount"]').value),
-          remark: card.querySelector('[data-field="remark"]').value.trim(),
-        }),
-      });
-      setMessage(`用户 #${userId} 额度已更新。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".toggle-status-btn")) {
-      const nextStatus = event.target.textContent.includes("禁用") ? "disabled" : "active";
-      await apiFetch(`/admin/users/${userId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      setMessage(`用户 #${userId} 状态已更新。`, "success");
-      await reloadAll();
-    }
-  } catch (error) {
-    setMessage(`用户更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
-  }
-});
-
-adminRechargeOrdersRoot?.addEventListener("click", async (event) => {
-  const card = event.target.closest("[data-recharge-order-id]");
-  if (!card) return;
-  if (!guardAdminWriteAccess()) return;
-  const rechargeOrderId = Number(card.getAttribute("data-recharge-order-id"));
-  const adminRemark = card.querySelector('[data-field="admin_remark"]')?.value?.trim() || "";
-
-  try {
-    if (event.target.closest(".approve-recharge-order-btn")) {
-      await apiFetch(`/admin/recharge-orders/${rechargeOrderId}/review`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "approved", admin_remark: adminRemark }),
-      });
-      await reloadAll();
-      setMessage(`充值单 #${rechargeOrderId} 已审核通过并加额度。`, "success");
-      return;
-    }
-
-    if (event.target.closest(".reject-recharge-order-btn")) {
-      await apiFetch(`/admin/recharge-orders/${rechargeOrderId}/review`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "rejected", admin_remark: adminRemark }),
-      });
-      await loadOverviewCounts();
-      await loadRechargeOrders();
-      setMessage(`充值单 #${rechargeOrderId} 已驳回。`, "success");
-    }
-  } catch (error) {
-    setMessage(`充值订单处理失败：${pickErrorMessage(error, "处理失败")}`, "error");
-  }
-});
-
-adminRechargeQrImageUrlInput?.addEventListener("input", () => {
-  if (!adminRechargeQrPreview) return;
-  adminRechargeQrPreview.src =
-    adminRechargeQrImageUrlInput.value.trim() || "/payment/alipay-qr.jpg";
-});
-
-adminWechatQrImageUrlInput?.addEventListener("input", () => {
-  if (!adminWechatQrPreview) return;
-  adminWechatQrPreview.src =
-    adminWechatQrImageUrlInput.value.trim() || "/payment/wechat-qr.png";
-});
-
-adminRechargeConfigForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!guardAdminWriteAccess()) return;
-
-  const presetAmounts = String(adminRechargePresetsInput.value || "")
-    .split(",")
-    .map((item) => parsePositiveMoneyValue(item.trim()))
-    .filter((item) => item !== null);
-  const instructions = String(adminRechargeInstructionsInput.value || "")
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const residualInstructions = String(adminResidualInstructionsInput?.value || "")
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  try {
-    const nextConfig = await apiFetch("/admin/recharge-config", {
-      method: "PATCH",
-      body: JSON.stringify({
-        enabled: adminRechargeEnabled.value === "true",
-        exchange_yuan: Number(adminRechargeExchangeYuanInput.value),
-        exchange_quota: Number(adminRechargeExchangeQuotaInput.value),
-        min_amount_yuan: Number(adminRechargeMinYuanInput.value),
-        residual_transfer_enabled: adminResidualTransferEnabledInput?.value === "true",
-        residual_admin_role_id: adminResidualAdminRoleIdInput?.value.trim(),
-        residual_admin_role_name: adminResidualAdminRoleNameInput?.value.trim(),
-        residual_admin_game_name: adminResidualAdminGameNameInput?.value.trim(),
-        residual_unit_label: adminResidualUnitLabelInput?.value.trim(),
-        residual_quota_per_unit: Number(adminResidualQuotaPerUnitInput?.value),
-        season_member_enabled: adminSeasonMemberEnabledInput.value === "true",
-        season_member_season_label: adminSeasonMemberLabelInput.value.trim(),
-        season_member_expires_at: adminSeasonMemberExpiresAtInput.value.trim(),
-        season_member_price_yuan: Number(adminSeasonMemberPriceInput.value),
-        season_member_quota: Number(adminSeasonMemberQuotaInput.value),
-        season_member_bonus_rate: Number(adminSeasonMemberBonusRateInput.value),
-        lineup_base_slots: Number(adminLineupBaseSlotsInput?.value),
-        lineup_permanent_slot_quota: Number(adminLineupPermanentSlotQuotaInput?.value),
-        lineup_permanent_slot_max: Number(adminLineupPermanentSlotMaxInput?.value),
-        lineup_seasonal_slot_quota: Number(adminLineupSeasonalSlotQuotaInput?.value),
-        lineup_member_bonus_slots: Number(adminLineupMemberBonusSlotsInput?.value),
-        preset_amounts: presetAmounts,
-        qr_image_url: adminRechargeQrImageUrlInput.value.trim(),
-        payee_name: adminRechargePayeeNameInput.value.trim(),
-        payee_hint: adminRechargePayeeHintInput.value.trim(),
-        wechat_qr_image_url: adminWechatQrImageUrlInput?.value.trim(),
-        wechat_payee_name: adminWechatPayeeNameInput?.value.trim(),
-        wechat_payee_hint: adminWechatPayeeHintInput?.value.trim(),
-        instructions,
-        residual_instructions: residualInstructions,
-      }),
-    });
-    renderRechargeConfig(nextConfig);
-    setMessage(
-      `充值配置已保存，当前比例 ${Number(nextConfig.exchange_yuan || 1)} 元 = ${Number(nextConfig.exchange_quota || 0)} 额度。`,
-      "success"
-    );
-  } catch (error) {
-    setMessage(`充值配置保存失败：${pickErrorMessage(error, "保存失败")}`, "error");
-  }
-});
-
-ordersRoot.addEventListener("click", async (event) => {
-  const card = event.target.closest("[data-order-id]");
-  if (!card) return;
-  const orderId = Number(card.getAttribute("data-order-id"));
-  const remark = card.querySelector('[data-field="remark"]').value.trim();
-  const returnedCardsText =
-    card.querySelector('[data-field="draw-returned-cards"]')?.value?.trim() || "";
-  const bestGoldCard =
-    card.querySelector('[data-field="draw-best-gold"]')?.value?.trim() || "";
-
-  try {
-    if (event.target.closest(".confirm-order-btn")) {
-      if (!canConfirmOrders()) {
-        setMessage("当前账号没有确认订单权限。", "error");
-        return;
-      }
-      await apiFetch(`/admin/orders/${orderId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          status: "confirmed",
-          remark,
-          returned_cards_text: returnedCardsText || null,
-          best_gold_card: bestGoldCard || null,
-        }),
-      });
-      setMessage(`订单 #${orderId} 已确认。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (!guardAdminWriteAccess()) return;
-
-    if (event.target.closest(".save-order-remark-btn")) {
-      await apiFetch(`/admin/orders/${orderId}/remark`, {
-        method: "PATCH",
-        body: JSON.stringify({ remark }),
-      });
-      setMessage(`订单 #${orderId} 备注已保存。`, "success");
-      await loadOrders();
-      return;
-    }
-
-    if (event.target.closest(".cancel-order-btn")) {
-      await apiFetch(`/admin/orders/${orderId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "cancelled", remark }),
-      });
-      setMessage(`订单 #${orderId} 已取消。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".approve-cancel-order-btn")) {
-      await apiFetch(`/admin/orders/${orderId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "cancelled", remark }),
-      });
-      setMessage(`订单 #${orderId} 的取消申请已通过。`, "success");
-      await reloadAll();
-      return;
-    }
-
-    if (event.target.closest(".reject-cancel-order-btn")) {
-      await apiFetch(`/admin/orders/${orderId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "pending", remark }),
-      });
-      setMessage(`订单 #${orderId} 的取消申请已驳回。`, "success");
-      await reloadAll();
-      return;
-    }
-  } catch (error) {
-    setMessage(`订单更新失败：${pickErrorMessage(error, "更新失败")}`, "error");
-  }
-});
-
 adminLoginForm?.addEventListener("submit", submitAdminLogin);
 adminLoginBtn?.addEventListener("click", () => {
   submitAdminLogin({
@@ -3603,6 +2982,48 @@ importSubmitBtn?.addEventListener("click", () => {
   });
 });
 document.getElementById("load-sample-json-btn")?.addEventListener("click", loadSampleJson);
+importBatchAddBtn?.addEventListener("click", addCurrentImportToBatch);
+importBatchClearBtn?.addEventListener("click", clearPendingImportEntries);
+importBatchSubmitBtn?.addEventListener("click", submitImportBatch);
+importBatchFileInput?.addEventListener("change", async (event) => {
+  try {
+    await appendImportFiles(event.target?.files || []);
+  } catch (error) {
+    setMessage(`读取 JSON 文件失败：${pickErrorMessage(error, "读取失败")}`, "error");
+  }
+});
+importBatchList?.addEventListener("click", (event) => {
+  const button = event.target.closest(".remove-import-entry-btn");
+  if (!button) return;
+  const entryId = button.getAttribute("data-import-entry-id");
+  if (!entryId) return;
+  pendingImportEntries = pendingImportEntries.filter((entry) => entry.id !== entryId);
+  renderPendingImportEntries();
+  setMessage("已移除这份 JSON。", "success");
+});
+helperImportClearBtn?.addEventListener("click", clearPendingHelperInventoryEntries);
+helperImportSubmitBtn?.addEventListener("click", () => {
+  submitHelperInventoryImportBatch(false);
+});
+helperImportSubmitProductsBtn?.addEventListener("click", () => {
+  submitHelperInventoryImportBatch(true);
+});
+helperImportFileInput?.addEventListener("change", async (event) => {
+  try {
+    await appendHelperInventoryImportFiles(event.target?.files || []);
+  } catch (error) {
+    setMessage(`读取功法 JSON 文件失败：${pickErrorMessage(error, "读取失败")}`, "error");
+  }
+});
+helperImportList?.addEventListener("click", (event) => {
+  const button = event.target.closest(".remove-helper-import-entry-btn");
+  if (!button) return;
+  const entryId = button.getAttribute("data-helper-import-entry-id");
+  if (!entryId) return;
+  pendingHelperInventoryEntries = pendingHelperInventoryEntries.filter((entry) => entry.id !== entryId);
+  renderPendingHelperInventoryEntries();
+  setMessage("已移除这份功法 JSON。", "success");
+});
 document.getElementById("reload-admin-btn")?.addEventListener("click", reloadAll);
 adminPageButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -3613,273 +3034,13 @@ adminPageButtons.forEach((button) => {
     });
   });
 });
-document.getElementById("reload-orders-btn")?.addEventListener("click", () => {
-  resetPagedState("orders");
-  loadOrders({ page: 1 }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
+closeAdminProductModalBtn?.addEventListener("click", () => {
+  closeProductModalView(buildAdminPageContext());
 });
-document.getElementById("select-all-products-btn")?.addEventListener("click", () => {
-  selectedProductIds.clear();
-  getFilteredProducts().forEach((product) => selectedProductIds.add(product.id));
-  renderProducts(getFilteredProducts());
-});
-document.getElementById("select-discounted-products-btn")?.addEventListener("click", () => {
-  selectedProductIds.clear();
-  getDiscountedFilteredProducts().forEach((product) => selectedProductIds.add(product.id));
-  renderProducts(getFilteredProducts());
-});
-document.getElementById("clear-selected-products-btn")?.addEventListener("click", () => {
-  selectedProductIds.clear();
-  productsRoot?.querySelectorAll(".product-select").forEach((checkbox) => {
-    checkbox.checked = false;
-  });
-  syncProductSummary(getFilteredProducts());
-});
-document.getElementById("bulk-on-sale-btn")?.addEventListener("click", () => {
-  bulkUpdateSelectedProducts("on_sale");
-});
-document.getElementById("bulk-off-sale-btn")?.addEventListener("click", () => {
-  bulkUpdateSelectedProducts("off_sale");
-});
-document.getElementById("bulk-price-btn")?.addEventListener("click", () => {
-  const price = Number(bulkPriceInput?.value);
-  if (!Number.isInteger(price) || price < 0) {
-    setMessage("批量价格必须是大于等于 0 的整数。", "error");
-    return;
-  }
-  bulkPatchSelectedProducts({ price_quota: price });
-});
-document.getElementById("bulk-stock-btn")?.addEventListener("click", () => {
-  const stock = Number(bulkStockInput?.value);
-  if (!Number.isInteger(stock) || stock < 0) {
-    setMessage("批量库存必须是大于等于 0 的整数。", "error");
-    return;
-  }
-  bulkPatchSelectedProducts({ stock });
-});
-document.getElementById("bulk-discount-btn")?.addEventListener("click", () => {
-  const discountRate = parseDiscountRateInputValue(bulkDiscountRateInput?.value);
-  if (!discountRate) {
-    setMessage("批量折扣率必须是 1 到 100 之间的整数。", "error");
-    return;
-  }
-  bulkPatchSelectedProducts({ discount_rate: discountRate });
-});
-document.getElementById("bulk-restore-discount-btn")?.addEventListener("click", () => {
-  restoreDiscountForProducts(
-    allProducts.filter((product) => selectedProductIds.has(Number(product.id)) && isDiscountedProduct(product))
-  );
-});
-document.getElementById("filtered-restore-discount-btn")?.addEventListener("click", () => {
-  restoreDiscountForProducts(getDiscountedFilteredProducts());
-});
-document.getElementById("random-select-products-btn")?.addEventListener("click", () => {
-  applyRandomSelection();
-});
-document.getElementById("random-discount-btn")?.addEventListener("click", () => {
-  applyRandomDiscount();
-});
-smartSelectHotProductsBtn?.addEventListener("click", () => {
-  autoSelectPosterProducts("hot");
-});
-smartSelectBudgetProductsBtn?.addEventListener("click", () => {
-  autoSelectPosterProducts("budget");
-});
-smartSelectMixedProductsBtn?.addEventListener("click", () => {
-  autoSelectMixedPosterProducts();
-});
-exportProductPosterBtn?.addEventListener("click", () => {
-  exportSelectedProductsPoster();
-});
-document.getElementById("reload-auctions-btn")?.addEventListener("click", () => {
-  loadAuctions().catch((error) => setMessage(`拍卖加载失败：${pickErrorMessage(error)}`, "error"));
-});
-document.getElementById("admin-create-auction-btn")?.addEventListener("click", async () => {
-  if (!guardAdminWriteAccess()) return;
-  const product = getSelectedAuctionProduct();
-  if (!product) {
-    setMessage("开拍前请先只选中一张商品。", "error");
-    return;
-  }
-  if (product.auction_id) {
-    setMessage("这张卡已经在拍卖流程里了。", "error");
-    return;
-  }
-
-  try {
-    await apiFetch("/admin/auctions", {
-      method: "POST",
-      body: JSON.stringify({
-        product_id: Number(product.id),
-        title: adminAuctionTitleInput?.value?.trim() || null,
-        starting_price_quota: Number(adminAuctionStartingPriceInput?.value),
-        min_increment_quota: Number(adminAuctionMinIncrementInput?.value),
-        starts_at: adminAuctionStartAtInput?.value
-          ? new Date(adminAuctionStartAtInput.value).toISOString()
-          : null,
-        ends_at: adminAuctionEndAtInput?.value
-          ? new Date(adminAuctionEndAtInput.value).toISOString()
-          : null,
-        remark: adminAuctionRemarkInput?.value?.trim() || null,
-      }),
-    });
-    setMessage(`商品 #${product.id} 已开拍。`, "success");
-    await reloadAll();
-  } catch (error) {
-    setMessage(`开拍失败：${pickErrorMessage(error, "开拍失败")}`, "error");
-  }
-});
-
-recalculatePricingBtn?.addEventListener("click", async () => {
-  if (!guardAdminWriteAccess()) return;
-  try {
-    const result = await apiFetch("/admin/pricing/recalculate", { method: "POST" });
-    setMessage(`定价已重算，共处理 ${result.product_count} 个商品。`, "success");
-    await reloadAll();
-  } catch (error) {
-    setMessage(`重算定价失败：${pickErrorMessage(error, "重算失败")}`, "error");
-  }
-});
-
-adminProductKeywordInput?.addEventListener("input", () => {
-  syncAdminProductFilters();
-  resetPagedState("products");
-  renderProducts(getFilteredProducts());
-});
-adminProductStatusFilter?.addEventListener("change", () => {
-  syncAdminProductFilters();
-  resetPagedState("products");
-  renderProducts(getFilteredProducts());
-});
-adminProductDiscountFilter?.addEventListener("change", () => {
-  syncAdminProductFilters();
-  resetPagedState("products");
-  renderProducts(getFilteredProducts());
-});
-adminProductCategoryTabs?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-admin-product-category]");
-  if (!button) return;
-  activeAdminProductCategory = button.getAttribute("data-admin-product-category") || "all";
-  activeAdminProductSubcategory = "all";
-  activeAdminProductDetail = "all";
-  activeAdminProductFullness = "all";
-  syncAdminProductFilters();
-  resetPagedState("products");
-  renderProducts(getFilteredProducts());
-  if (activeAdminProductCategory === "bundle") {
-    document.getElementById("bundles")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setMessage("套餐入口在下方的套餐 SKU 模块。", "success");
-  }
-});
-adminProductSubcategoryTabs?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-admin-product-subcategory]");
-  if (!button) return;
-  activeAdminProductSubcategory =
-    button.getAttribute("data-admin-product-subcategory") || "all";
-  activeAdminProductDetail = "all";
-  activeAdminProductFullness = "all";
-  syncAdminProductFilters();
-  resetPagedState("products");
-  renderProducts(getFilteredProducts());
-});
-adminProductDetailTabs?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-admin-product-detail]");
-  if (!button) return;
-  activeAdminProductDetail = button.getAttribute("data-admin-product-detail") || "all";
-  activeAdminProductFullness = "all";
-  syncAdminProductFilters();
-  resetPagedState("products");
-  renderProducts(getFilteredProducts());
-});
-adminProductFullnessTabs?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-admin-product-fullness]");
-  if (!button) return;
-  activeAdminProductFullness =
-    button.getAttribute("data-admin-product-fullness") || "all";
-  resetPagedState("products");
-  renderProducts(getFilteredProducts());
-});
-adminRechargeStatusFilter?.addEventListener("change", () => {
-  resetPagedState("rechargeOrders");
-  loadRechargeOrders({ page: 1 }).catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
-});
-adminRechargeKeywordInput?.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  resetPagedState("rechargeOrders");
-  loadRechargeOrders({ page: 1 }).catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
-});
-document.getElementById("reload-recharge-orders-btn")?.addEventListener("click", () => {
-  resetPagedState("rechargeOrders");
-  loadRechargeOrders({ page: 1 }).catch((error) => setMessage(`充值订单加载失败：${pickErrorMessage(error)}`, "error"));
-});
-
-adminUserKeywordInput?.addEventListener("input", () => {
-  resetPagedState("users");
-  renderUsers(getFilteredUsers());
-});
-linkedOrderUserState?.addEventListener("click", (event) => {
-  if (!event.target.closest("#clear-linked-order-user-btn")) return;
-  linkedOrderUser = null;
-  adminOrderKeywordInput.value = "";
-  renderLinkedOrderUserState();
-  resetPagedState("orders");
-  resetPagedState("quotaLogs");
-  if (activeAdminPage === "logs") {
-    loadQuotaLogs({ page: 1 }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
-  }
-  loadOrders({ page: 1 }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
-});
-adminOrderStatusFilter?.addEventListener("change", () => {
-  resetPagedState("orders");
-  loadOrders({ page: 1 }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
-});
-adminOrderKeywordInput?.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  resetPagedState("orders");
-  loadOrders({ page: 1 }).catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
-});
-adminOrderKeywordInput?.addEventListener("input", () => {
-  if (linkedOrderUser && adminOrderKeywordInput.value.trim() !== linkedOrderUser.game_role_id) {
-    linkedOrderUser = null;
-    renderLinkedOrderUserState();
-  }
-});
-closeAdminProductModalBtn?.addEventListener("click", closeProductModal);
 adminProductModal?.addEventListener("click", (event) => {
   if (event.target === adminProductModal) {
-    closeProductModal();
+    closeProductModalView(buildAdminPageContext());
   }
-});
-document.getElementById("reload-quota-logs-btn")?.addEventListener("click", () => {
-  resetPagedState("quotaLogs");
-  loadQuotaLogs({ page: 1 }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
-});
-document.getElementById("reload-audits-btn")?.addEventListener("click", () => {
-  resetPagedState("audits");
-  loadAudits({ page: 1 }).catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
-});
-adminQuotaLogTypeFilter?.addEventListener("change", () => {
-  resetPagedState("quotaLogs");
-  loadQuotaLogs({ page: 1 }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
-});
-adminQuotaLogKeywordInput?.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  resetPagedState("quotaLogs");
-  loadQuotaLogs({ page: 1 }).catch((error) => setMessage(`额度流水加载失败：${pickErrorMessage(error)}`, "error"));
-});
-adminAuditKeywordInput?.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  resetPagedState("audits");
-  loadAudits({ page: 1 }).catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
-});
-adminAuditActionInput?.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  resetPagedState("audits");
-  loadAudits({ page: 1 }).catch((error) => setMessage(`审计日志加载失败：${pickErrorMessage(error)}`, "error"));
 });
 document.addEventListener("click", (event) => {
   const alertButton = event.target.closest("[data-alert-target]");
@@ -3898,7 +3059,7 @@ document.addEventListener("click", (event) => {
             behavior: "smooth",
             block: "start",
           });
-          setMessage(`已跳转到${status === "cancel_requested" ? "取消审核" : "待处理"}订单。`, "success");
+          setMessage(`已跳转到${status === ORDER_STATUS.CANCEL_REQUESTED ? "取消审核" : "待处理"}订单。`, "success");
         })
         .catch((error) => setMessage(`订单加载失败：${pickErrorMessage(error)}`, "error"));
       return;
@@ -3941,18 +3102,15 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (target === "products") {
-    paginationState.products.page = page;
-    renderProducts(getFilteredProducts());
+    loadProducts({ page }).catch((error) => setMessage(`商品加载失败：${pickErrorMessage(error)}`, "error"));
     return;
   }
   if (target === "users") {
-    paginationState.users.page = page;
-    renderUsers(getFilteredUsers());
+    loadUsers({ page }).catch((error) => setMessage(`用户加载失败：${pickErrorMessage(error)}`, "error"));
     return;
   }
   if (target === "bundles") {
-    paginationState.bundles.page = page;
-    renderBundles(allBundles);
+    loadBundles({ page }).catch((error) => setMessage(`套餐加载失败：${pickErrorMessage(error)}`, "error"));
     return;
   }
   if (target === "rechargeOrders") {
@@ -3973,5 +3131,7 @@ document.addEventListener("click", (event) => {
 markDebugAction("page_loaded_v20260320a");
 markDebugSession(loadSession()?.token ? "token_present" : "no_token");
 markDebugError("none");
+renderPendingImportEntries();
+renderPendingHelperInventoryEntries();
 window.__adminModuleReady = true;
 reloadAll();

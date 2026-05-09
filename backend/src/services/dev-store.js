@@ -1,10 +1,37 @@
 const fs = require("fs");
 const path = require("path");
 const { PRICE_CONFIG, buildOrderEvents, repriceProducts } = require("./pricing");
+const { createFileStore } = require("../domain/store/core/file-store");
+const { normalizeStoreData } = require("../domain/store/core/data-normalizer");
+const { repriceStoreProducts } = require("../domain/store/core/reprice-hook");
+const { configureStoreRuntime } = require("../domain/store/core/runtime-context");
+const adminQueryStore = require("../domain/store/admin-query-store");
+const helperStore = require("../domain/store/helper-store");
+const usersStore = require("../domain/store/users-store");
+const auctionsStore = require("../domain/store/auctions-store");
+const ordersStore = require("../domain/store/orders-store");
+const productsStore = require("../domain/store/products-store");
+const sharedStoreViews = require("../domain/store/shared-store-views");
+const {
+  buildRepriceSummary,
+  buildRepriceFailureSummary,
+  attachRepriceStatus,
+} = require("../domain/pricing/core/reprice-products");
 const { BUNDLE_SKU_SEEDS, RETIRED_BUNDLE_CODES } = require("../config/catalog-config");
 const { hashPassword, verifyPassword } = require("./password-auth");
 const { buildDefaultRechargeConfig, normalizeRechargeConfig } = require("../config/recharge-config");
+const {
+  buildCardSeasonMeta,
+  getConfiguredCurrentSeasonScheduleId,
+  parseSeasonScheduleId,
+} = require("../config/season-meta");
 const { getSignupSeedQuota } = require("../config/signup-seed-quota");
+const { buildAdminProductQueryResult } = require("../modules/admin/queries/product-filters");
+const { ADMIN_ROLES } = require("../domain/admin-roles");
+const { normalizeHelperCapabilities } = require("../domain/helper-capabilities");
+const { RECHARGE_ORDER_STATUS } = require("../domain/recharge-order-status");
+const { QUOTA_LOG_TYPES } = require("../domain/quota-log-types");
+const { AUDIT_ACTIONS } = require("../domain/audit-actions");
 
 const defaultDataPath = path.resolve(__dirname, "..", "..", "dev-data.json");
 const configuredDataPath = process.env.DEV_STORE_DATA_PATH
@@ -14,6 +41,7 @@ const dataPath =
   configuredDataPath && fs.existsSync(configuredDataPath)
     ? configuredDataPath
     : defaultDataPath;
+let storeCore = null;
 const FIXED_ADMIN_ACCOUNT = {
   game_role_id: "584967604",
   game_role_name: "繁星✨秋",
@@ -271,23 +299,7 @@ function normalizeLegacyCardNames(data) {
 }
 
 function repriceDataProducts(data) {
-  const pricedProducts = repriceProducts(
-    data.products || [],
-    buildOrderEvents(data.orders || [], data.orderItems || []),
-    new Date(),
-    { rechargeConfig: data.rechargeConfig || {} }
-  );
-
-  const pricedById = new Map(pricedProducts.map((item) => [Number(item.id), item]));
-  data.products = (data.products || []).map((product) => {
-    const priced = pricedById.get(Number(product.id));
-    if (!priced) return product;
-    return {
-      ...product,
-      price_quota: priced.price_quota,
-      pricing_meta: priced.pricing_meta,
-    };
-  });
+  return repriceStoreProducts(data, { repriceProducts, buildOrderEvents });
 }
 
 function ensureFixedAdminUser(data) {
@@ -306,7 +318,7 @@ function ensureFixedAdminUser(data) {
   if (!adminUser) {
     adminUser = {
       id: nextId(data.users || []),
-      role: "admin",
+      role: ADMIN_ROLES.ADMIN,
       status: "active",
       auth_provider: FIXED_ADMIN_ACCOUNT.auth_provider,
       game_role_id: FIXED_ADMIN_ACCOUNT.game_role_id,
@@ -336,7 +348,7 @@ function ensureFixedAdminUser(data) {
   }
 
   const fieldsToSync = {
-    role: "admin",
+    role: ADMIN_ROLES.ADMIN,
     status: "active",
     auth_provider: FIXED_ADMIN_ACCOUNT.auth_provider,
     game_role_id: FIXED_ADMIN_ACCOUNT.game_role_id,
@@ -354,304 +366,52 @@ function ensureFixedAdminUser(data) {
     }
   }
 
-  for (const user of data.users || []) {
-    if (Number(user.id) === Number(adminUser.id)) continue;
-    if (user.role === "admin") {
-      user.role = "user";
-      changed = true;
-    }
-  }
-
   ensureQuotaAccount(data, adminUser.id);
   return changed;
 }
 
-function normalizeData(data) {
-  const next = {
-    ...defaultData(),
-    ...data,
-  };
-
-  let changed = seedBundleSkus(next);
-  if (ensureFixedAdminUser(next)) {
-    changed = true;
+function getStoreCore() {
+  if (!storeCore) {
+    storeCore = createFileStore({
+      dataPath,
+      defaultData,
+      clone,
+      normalizeStoreData: (data) =>
+        normalizeStoreData(data, {
+          defaultData,
+          seedBundleSkus,
+          ensureFixedAdminUser,
+          removeLegacySeedJunk,
+          normalizeLegacyCardNames,
+          normalizeDiscountRate,
+          normalizeRechargeConfig,
+          getConfiguredCurrentSeasonScheduleId,
+          buildCardSeasonMeta,
+          parseSeasonScheduleId,
+          now,
+          normalizeAuctionStatus,
+          refreshAuctionStatuses,
+          backfillBeginnerGuideRewards,
+          repriceStoreProducts: repriceDataProducts,
+          persistStoreData: writeData,
+          priceConfig: PRICE_CONFIG,
+          normalizeHelperCapabilities,
+        }),
+    });
   }
-  if (removeLegacySeedJunk(next)) {
-    changed = true;
-  }
-  if (normalizeLegacyCardNames(next)) {
-    changed = true;
-  }
-  next.products = (next.products || []).map((product) => {
-    const normalizedDiscountRate = normalizeDiscountRate(product?.discount_rate);
-    const normalizedManualPrice =
-      product?.manual_price_quota === undefined ? null : product.manual_price_quota;
-    const normalized = {
-      ...product,
-      manual_price_quota: normalizedManualPrice,
-      discount_rate: normalizedDiscountRate,
-      pricing_meta:
-        product?.pricing_meta && typeof product.pricing_meta === "object"
-          ? product.pricing_meta
-          : {},
-    };
-    if (product && product.status === "draft") {
-      changed = true;
-      normalized.status = "on_sale";
-    }
-    if (
-      product?.manual_price_quota === undefined ||
-      product?.discount_rate === undefined ||
-      Number(product?.discount_rate) !== normalizedDiscountRate ||
-      !product?.pricing_meta
-    ) {
-      changed = true;
-    }
-    if (
-      Number.isInteger(Number(normalizedManualPrice)) &&
-      Number(product?.price_quota || 0) !== Number(normalizedManualPrice)
-    ) {
-      changed = true;
-    }
-    if (normalized.pricing_meta?.version !== PRICE_CONFIG.version) {
-      changed = true;
-    }
-    return normalized;
-  });
-  next.orderItems = (next.orderItems || []).map((item) => {
-    if (item?.item_kind === undefined || item?.bundle_sku_id === undefined) {
-      changed = true;
-    }
-    return {
-      ...item,
-      item_kind: item?.item_kind || "card",
-      product_id: item?.product_id === undefined ? null : item.product_id,
-      bundle_sku_id: item?.bundle_sku_id === undefined ? null : item.bundle_sku_id,
-    };
-  });
-  next.users = (next.users || []).map((user) => {
-    const normalized = {
-      ...user,
-      auth_provider: user?.auth_provider || "bind",
-      password_hash: user?.password_hash || null,
-      beginner_guide_reward:
-        user?.beginner_guide_reward && typeof user.beginner_guide_reward === "object"
-          ? user.beginner_guide_reward
-          : null,
-    };
-    if (
-      !user?.auth_provider ||
-      user?.password_hash === undefined ||
-      user?.beginner_guide_reward === undefined
-    ) {
-      changed = true;
-    }
-    return normalized;
-  });
-  next.helperBindings = (next.helperBindings || []).map((binding) => ({
-    id: Number(binding?.id || 0),
-    user_id: Number(binding?.user_id || 0),
-    game_role_id: String(binding?.game_role_id || "").trim(),
-    game_server: String(binding?.game_server || "").trim(),
-    game_role_name: String(binding?.game_role_name || "").trim(),
-    bind_token_id:
-      binding?.bind_token_id === undefined || binding?.bind_token_id === null
-        ? null
-        : String(binding.bind_token_id).trim() || null,
-    nickname:
-      binding?.nickname === undefined || binding?.nickname === null
-        ? null
-        : String(binding.nickname).trim() || null,
-    helper_token:
-      binding?.helper_token === undefined || binding?.helper_token === null
-        ? null
-        : String(binding.helper_token).trim() || null,
-    helper_ws_url:
-      binding?.helper_ws_url === undefined || binding?.helper_ws_url === null
-        ? null
-        : String(binding.helper_ws_url).trim() || null,
-    helper_import_method:
-      binding?.helper_import_method === undefined || binding?.helper_import_method === null
-        ? null
-        : String(binding.helper_import_method).trim() || null,
-    bind_source: String(binding?.bind_source || "helper_wx_scan").trim() || "helper_wx_scan",
-    bind_status: String(binding?.bind_status || "active").trim() || "active",
-    created_at: binding?.created_at || now(),
-    updated_at: binding?.updated_at || now(),
-  }));
-  next.helperInventories = (next.helperInventories || []).map((inventory) => ({
-    id: Number(inventory?.id || 0),
-    user_id: Number(inventory?.user_id || 0),
-    binding_id:
-      inventory?.binding_id === undefined || inventory?.binding_id === null
-        ? null
-        : Number(inventory.binding_id),
-    source_type: String(inventory?.source_type || "helper_bridge").trim() || "helper_bridge",
-    summary:
-      inventory?.summary && typeof inventory.summary === "object" && !Array.isArray(inventory.summary)
-        ? inventory.summary
-        : {},
-    items: Array.isArray(inventory?.items)
-      ? inventory.items.map((item) => ({
-          row_key:
-            item?.row_key === undefined || item?.row_key === null
-              ? ""
-              : String(item.row_key).trim(),
-          uid:
-            item?.uid === undefined || item?.uid === null ? "" : String(item.uid).trim(),
-          legacy_id: Number(item?.legacy_id || 0),
-          display_name:
-            item?.display_name === undefined || item?.display_name === null
-              ? ""
-              : String(item.display_name).trim(),
-          attack_value: Number(item?.attack_value || 0),
-          hp_value: Number(item?.hp_value || 0),
-          main_attr_text:
-            item?.main_attr_text === undefined || item?.main_attr_text === null
-              ? ""
-              : String(item.main_attr_text).trim(),
-          ext_attr_text:
-            item?.ext_attr_text === undefined || item?.ext_attr_text === null
-              ? ""
-              : String(item.ext_attr_text).trim(),
-          has_ext: Boolean(item?.has_ext),
-          is_locked: Boolean(item?.is_locked),
-          max: Boolean(item?.max),
-          image_url:
-            item?.image_url === undefined || item?.image_url === null
-              ? ""
-              : String(item.image_url).trim(),
-        }))
-      : [],
-    created_at: inventory?.created_at || now(),
-    updated_at: inventory?.updated_at || now(),
-  }));
-  next.helperSnapshots = (next.helperSnapshots || []).map((snapshot) => ({
-    id: Number(snapshot?.id || 0),
-    user_id: Number(snapshot?.user_id || 0),
-    binding_id:
-      snapshot?.binding_id === undefined || snapshot?.binding_id === null
-        ? null
-        : Number(snapshot.binding_id),
-    source_type: String(snapshot?.source_type || "helper_bridge").trim() || "helper_bridge",
-    snapshot_name:
-      snapshot?.snapshot_name === undefined || snapshot?.snapshot_name === null
-        ? null
-        : String(snapshot.snapshot_name).trim() || null,
-    is_pinned: Boolean(snapshot?.is_pinned),
-    summary:
-      snapshot?.summary && typeof snapshot.summary === "object" && !Array.isArray(snapshot.summary)
-        ? snapshot.summary
-        : {},
-    raw:
-      snapshot?.raw && typeof snapshot.raw === "object" && !Array.isArray(snapshot.raw)
-        ? snapshot.raw
-        : {},
-    created_at: snapshot?.created_at || now(),
-    updated_at: snapshot?.updated_at || now(),
-  }));
-  next.helperActionLogs = (next.helperActionLogs || []).map((log) => ({
-    id: Number(log?.id || 0),
-    user_id: log?.user_id === undefined || log?.user_id === null ? null : Number(log.user_id),
-    binding_id:
-      log?.binding_id === undefined || log?.binding_id === null ? null : Number(log.binding_id),
-    action_type: String(log?.action_type || "").trim(),
-    action_payload:
-      log?.action_payload && typeof log.action_payload === "object" ? log.action_payload : {},
-    result_status: String(log?.result_status || "").trim() || "ok",
-    result_payload:
-      log?.result_payload && typeof log.result_payload === "object" ? log.result_payload : {},
-    created_at: log?.created_at || now(),
-  }));
-  next.auctions = (next.auctions || []).map((auction) => {
-    const normalizedStatus = normalizeAuctionStatus(auction?.status);
-    const normalized = {
-      ...auction,
-      item_kind: "card",
-      title: String(auction?.title || "").trim() || null,
-      current_price_quota: Number(
-        auction?.current_price_quota || auction?.starting_price_quota || 0
-      ),
-      current_bid_user_id:
-        auction?.current_bid_user_id === undefined || auction?.current_bid_user_id === null
-          ? null
-          : Number(auction.current_bid_user_id),
-      current_bid_at: auction?.current_bid_at || null,
-      settled_order_id:
-        auction?.settled_order_id === undefined || auction?.settled_order_id === null
-          ? null
-          : Number(auction.settled_order_id),
-      settled_at: auction?.settled_at || null,
-      cancelled_at: auction?.cancelled_at || null,
-      cancelled_reason: auction?.cancelled_reason || null,
-      winning_bid_amount:
-        auction?.winning_bid_amount === undefined || auction?.winning_bid_amount === null
-          ? null
-          : Number(auction.winning_bid_amount),
-      winning_bid_user_id:
-        auction?.winning_bid_user_id === undefined || auction?.winning_bid_user_id === null
-          ? null
-          : Number(auction.winning_bid_user_id),
-      product_snapshot:
-        auction?.product_snapshot && typeof auction.product_snapshot === "object"
-          ? auction.product_snapshot
-          : null,
-      status: normalizedStatus,
-    };
-    if (
-      auction?.status !== normalizedStatus ||
-      auction?.item_kind !== "card" ||
-      auction?.product_snapshot === undefined
-    ) {
-      changed = true;
-    }
-    return normalized;
-  });
-  next.auctionBids = (next.auctionBids || []).map((bid) => {
-    const normalized = {
-      ...bid,
-      amount_quota: Number(bid?.amount_quota || 0),
-      auction_id: Number(bid?.auction_id || 0),
-      user_id: Number(bid?.user_id || 0),
-    };
-    if (
-      Number(bid?.amount_quota || 0) !== normalized.amount_quota ||
-      Number(bid?.auction_id || 0) !== normalized.auction_id ||
-      Number(bid?.user_id || 0) !== normalized.user_id
-    ) {
-      changed = true;
-    }
-    return normalized;
-  });
-  next.rechargeConfig = normalizeRechargeConfig(next.rechargeConfig || {});
-  if (refreshAuctionStatuses(next)) {
-    changed = true;
-  }
-  if (backfillBeginnerGuideRewards(next)) {
-    changed = true;
-  }
-
-  if (changed) {
-    repriceDataProducts(next);
-    writeData(next);
-  }
-
-  return next;
+  return storeCore;
 }
 
-function readData() {
-  if (!fs.existsSync(dataPath)) {
-    return defaultData();
-  }
-  try {
-    return normalizeData(JSON.parse(fs.readFileSync(dataPath, "utf8")));
-  } catch {
-    return defaultData();
-  }
+function loadDataFromDisk() {
+  return getStoreCore().loadDataFromDisk();
+}
+
+function readData(options = {}) {
+  return getStoreCore().readStoreData(options);
 }
 
 function writeData(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
+  return getStoreCore().writeStoreData(data);
 }
 
 function nextId(list) {
@@ -1046,7 +806,7 @@ function maybeGrantBeginnerGuideReward(data, userId, actorUserId = null, sourceT
   const approvedRechargeOrder = (data.rechargeOrders || []).find(
     (item) =>
       Number(item.user_id) === Number(userId) &&
-      String(item.status || "") === "approved"
+      String(item.status || "") === RECHARGE_ORDER_STATUS.APPROVED
   );
   const confirmedOrder = (data.orders || []).find(
     (item) =>
@@ -1061,7 +821,7 @@ function maybeGrantBeginnerGuideReward(data, userId, actorUserId = null, sourceT
   applyQuotaChange(data, {
     userId: Number(userId),
     changeAmount: BEGINNER_GUIDE_REWARD_QUOTA,
-    type: "beginner_guide_reward",
+    type: QUOTA_LOG_TYPES.BEGINNER_GUIDE_REWARD,
     orderId: Number(confirmedOrder.id),
     remark: BEGINNER_GUIDE_REWARD_REMARK,
     bonusAmount: 0,
@@ -1080,7 +840,7 @@ function maybeGrantBeginnerGuideReward(data, userId, actorUserId = null, sourceT
     actorUserId,
     targetType: "user",
     targetId: Number(userId),
-    action: "beginner_guide_reward_grant",
+    action: AUDIT_ACTIONS.BEGINNER_GUIDE_REWARD_GRANT,
     detail: {
       quota_amount: BEGINNER_GUIDE_REWARD_QUOTA,
       source_trigger: sourceTrigger,
@@ -1102,7 +862,8 @@ function backfillBeginnerGuideRewards(data) {
   return changed;
 }
 
-function normalizeCardProduct(product) {
+function normalizeCardProduct(product, options = {}) {
+  const { includePricingMeta = true } = options;
   const manualPriceQuota =
     product?.manual_price_quota === null || product?.manual_price_quota === undefined
       ? null
@@ -1112,7 +873,7 @@ function normalizeCardProduct(product) {
     : Number(product?.price_quota || 0);
   const discountRate = normalizeDiscountRate(product?.discount_rate);
   const effectivePriceQuota = getEffectiveQuotaPrice(basePriceQuota, discountRate);
-  return {
+  const normalized = {
     ...clone(product),
     item_kind: "card",
     item_id: Number(product.id),
@@ -1131,10 +892,15 @@ function normalizeCardProduct(product) {
     season_display: product?.season_display || "老卡",
     stock_label: `库存 ${Number(product.stock || 0)}`,
   };
+  if (!includePricingMeta) {
+    delete normalized.pricing_meta;
+  }
+  return normalized;
 }
 
-function normalizeBundleSku(bundle) {
-  return {
+function normalizeBundleSku(bundle, options = {}) {
+  const { includePricingMeta = true } = options;
+  const normalized = {
     ...clone(bundle),
     item_kind: "bundle",
     item_id: Number(bundle.id),
@@ -1150,6 +916,10 @@ function normalizeBundleSku(bundle) {
     },
     stock_label: bundle.stock === null || bundle.stock === undefined ? "不限量" : `库存 ${bundle.stock}`,
   };
+  if (!includePricingMeta) {
+    delete normalized.pricing_meta;
+  }
+  return normalized;
 }
 
 function addAuditLog(data, { actorUserId, targetType, targetId, action, detail = null }) {
@@ -1181,1118 +951,277 @@ function addHelperActionLog(
 }
 
 function bindUser(payload) {
-  const data = readData();
-  const timestamp = now();
-  let user = data.users.find(
-    (item) =>
-      item.game_role_id === payload.game_role_id && item.game_server === payload.game_server
-  );
-
-  if (!user) {
-    user = {
-      id: nextId(data.users),
-      role: "user",
-      status: "active",
-      auth_provider: "bind",
-      game_role_id: payload.game_role_id,
-      game_server: payload.game_server,
-      game_role_name: payload.game_role_name,
-      bind_token_id: payload.bind_token_id || null,
-      nickname: payload.nickname || null,
-      password_hash: null,
-      created_at: timestamp,
-      updated_at: timestamp,
-    };
-    data.users.push(user);
-  } else {
-    user.game_role_name = payload.game_role_name;
-    user.bind_token_id = payload.bind_token_id || null;
-    user.nickname = payload.nickname || user.nickname || null;
-    user.auth_provider = user.auth_provider || "bind";
-    user.updated_at = timestamp;
-  }
-
-  ensureQuotaAccount(data, user.id);
-  writeData(data);
-  return withQuota(user, data);
+  return usersStore.bindUser(payload);
 }
 
 async function registerPasswordUser(payload) {
-  const data = readData();
-  const timestamp = now();
-  const gameRoleId = String(payload.game_role_id || "").trim();
-  const gameRoleName = String(payload.game_role_name || "").trim();
-
-  const existing = data.users.find((item) => String(item.game_role_id || "") === gameRoleId);
-  if (existing) {
-    const err = new Error("game_role_id_taken");
-    err.statusCode = 409;
-    throw err;
-  }
-
-  const user = {
-    id: nextId(data.users),
-    role: "user",
-    status: "active",
-    auth_provider: "password",
-    game_role_id: gameRoleId,
-    game_server: "direct",
-    game_role_name: gameRoleName,
-    bind_token_id: null,
-    nickname: null,
-    password_hash: await hashPassword(payload.password),
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-
-  data.users.push(user);
-  ensureQuotaAccount(data, user.id);
-  const signupSeedQuota = getSignupSeedQuota(gameRoleId);
-  if (signupSeedQuota > 0) {
-    applyQuotaChange(data, {
-      userId: user.id,
-      changeAmount: signupSeedQuota,
-      type: "signup_seed_credit",
-      remark: "third_season_signup_seed",
-      bonusAmount: 0,
-    });
-  }
-  writeData(data);
-  return withQuota(user, data);
+  return usersStore.registerPasswordUser(payload);
 }
 
 async function loginPasswordUser(gameRoleId, password) {
-  const data = readData();
-  const normalizedGameRoleId = String(gameRoleId || "").trim();
-  const candidates = (data.users || [])
-    .filter(
-      (item) =>
-        item.auth_provider === "password" && String(item.game_role_id || "") === normalizedGameRoleId
-    )
-    .sort((left, right) => {
-      const leftPriority =
-        String(left.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id && left.role === "admin" ? 1 : 0;
-      const rightPriority =
-        String(right.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id && right.role === "admin" ? 1 : 0;
-      if (leftPriority !== rightPriority) {
-        return rightPriority - leftPriority;
-      }
-      return Number(right.id || 0) - Number(left.id || 0);
-    });
-
-  if (!candidates.length) {
-    const err = new Error("invalid_credentials");
-    err.statusCode = 401;
-    throw err;
-  }
-
-  let user = null;
-  for (const candidate of candidates) {
-    const matched = await verifyPassword(password, candidate.password_hash);
-    if (matched) {
-      user = candidate;
-      break;
-    }
-  }
-
-  if (!user) {
-    const fixedAdminMatched =
-      normalizedGameRoleId === FIXED_ADMIN_ACCOUNT.game_role_id &&
-      (await verifyPassword(password, FIXED_ADMIN_ACCOUNT.password_hash));
-    if (fixedAdminMatched) {
-      const fixedAdminUser =
-        (data.users || []).find(
-          (item) =>
-            item.auth_provider === FIXED_ADMIN_ACCOUNT.auth_provider &&
-            String(item.game_role_id || "") === FIXED_ADMIN_ACCOUNT.game_role_id &&
-            item.role === "admin"
-        ) || null;
-      if (fixedAdminUser) {
-        user = fixedAdminUser;
-      }
-    }
-  }
-
-  if (!user) {
-    const err = new Error("invalid_credentials");
-    err.statusCode = 401;
-    throw err;
-  }
-  if (user.status !== "active") {
-    const err = new Error("user_disabled");
-    err.statusCode = 403;
-    throw err;
-  }
-  return withQuota(user, data);
+  return usersStore.loginPasswordUser(gameRoleId, password);
 }
 
 function getUserById(userId) {
-  const data = readData();
-  const user = data.users.find((item) => item.id === Number(userId));
-  return user ? withQuota(user, data) : null;
+  return usersStore.getUserById(userId);
 }
 
 function getRechargeConfig() {
-  const data = readData();
-  return clone(normalizeRechargeConfig(data.rechargeConfig || {}));
+  return usersStore.getRechargeConfig();
 }
 
-function updateRechargeConfig(patch, actorUserId = null) {
-  const data = readData();
-  const currentConfig = normalizeRechargeConfig(data.rechargeConfig || {});
-  const nextConfig = normalizeRechargeConfig({
-    ...currentConfig,
-    ...patch,
-  });
-  data.rechargeConfig = nextConfig;
-  repriceDataProducts(data);
-
-  if (actorUserId) {
-    addAuditLog(data, {
-      actorUserId,
-      targetType: "recharge_config",
-      targetId: 1,
-      action: "recharge_config_update",
-      detail: {
-        exchange_yuan: nextConfig.exchange_yuan,
-        exchange_quota: nextConfig.exchange_quota,
-        min_amount_yuan: nextConfig.min_amount_yuan,
-        enabled: nextConfig.enabled,
-        residual_transfer_enabled: nextConfig.residual_transfer_enabled,
-        residual_admin_role_id: nextConfig.residual_admin_role_id,
-        residual_admin_role_name: nextConfig.residual_admin_role_name,
-        residual_admin_game_name: nextConfig.residual_admin_game_name,
-        residual_unit_label: nextConfig.residual_unit_label,
-        residual_quota_per_unit: nextConfig.residual_quota_per_unit,
-        season_member_enabled: nextConfig.season_member_enabled,
-        season_member_season_label: nextConfig.season_member_season_label,
-        season_member_expires_at: nextConfig.season_member_expires_at,
-        season_member_price_yuan: nextConfig.season_member_price_yuan,
-        season_member_quota: nextConfig.season_member_quota,
-        season_member_bonus_rate: nextConfig.season_member_bonus_rate,
-        lineup_base_slots: nextConfig.lineup_base_slots,
-        lineup_permanent_slot_quota: nextConfig.lineup_permanent_slot_quota,
-        lineup_permanent_slot_max: nextConfig.lineup_permanent_slot_max,
-        lineup_seasonal_slot_quota: nextConfig.lineup_seasonal_slot_quota,
-        lineup_member_bonus_slots: nextConfig.lineup_member_bonus_slots,
-        residual_instructions: nextConfig.residual_instructions,
-      },
-    });
-  }
-
-  writeData(data);
-  return clone(nextConfig);
+function updateRechargeConfig(patch, actorUserId = null, requestId = null) {
+  return usersStore.updateRechargeConfig(patch, actorUserId, requestId);
 }
 
 function updateSelfProfile(userId, payload) {
-  const data = readData();
-  const user = data.users.find((item) => item.id === Number(userId));
-  if (!user) return null;
-
-  if (payload.game_role_name !== undefined) {
-    user.game_role_name = String(payload.game_role_name).trim();
-  }
-  if (payload.nickname !== undefined) {
-    const nickname = String(payload.nickname || "").trim();
-    user.nickname = nickname || null;
-  }
-  if (payload.game_server !== undefined) {
-    user.game_server = String(payload.game_server).trim();
-  }
-
-  user.updated_at = now();
-  writeData(data);
-  return withQuota(user, data);
+  return usersStore.updateSelfProfile(userId, payload);
 }
 
 function listHelperBindings(userId) {
-  const data = readData();
-  return clone(
-    (data.helperBindings || [])
-      .filter((item) => Number(item.user_id) === Number(userId))
-      .map((item) => ({
-        ...item,
-        helper_token: undefined,
-        helper_ws_url: undefined,
-        helper_import_method: undefined,
-      }))
-      .sort((left, right) => Number(right.id || 0) - Number(left.id || 0))
-  );
+  return helperStore.listHelperBindings(userId);
 }
 
 function resolveHelperBinding(userId, criteria = {}) {
-  const data = readData();
-  const normalizedBindTokenId = String(criteria.bind_token_id || "").trim();
-  const normalizedRoleId = String(criteria.game_role_id || "").trim();
-  const normalizedServer = String(criteria.game_server || "").trim();
-
-  const bindings = (data.helperBindings || []).filter(
-    (item) => Number(item.user_id) === Number(userId) && String(item.bind_status || "active") === "active"
-  );
-
-  let binding = null;
-  if (normalizedBindTokenId) {
-    binding = bindings.find((item) => String(item.bind_token_id || "").trim() === normalizedBindTokenId) || null;
-  }
-  if (!binding && normalizedRoleId) {
-    binding =
-      bindings.find(
-        (item) =>
-          String(item.game_role_id || "").trim() === normalizedRoleId &&
-          (!normalizedServer || String(item.game_server || "").trim() === normalizedServer)
-      ) || null;
-  }
-  if (!binding) {
-    return null;
-  }
-  return clone(binding);
+  return helperStore.resolveHelperBinding(userId, criteria);
 }
 
 function listHelperSnapshots(userId) {
-  const data = readData();
-  return clone(
-    (data.helperSnapshots || [])
-      .filter((item) => Number(item.user_id) === Number(userId))
-      .sort((left, right) => {
-        const pinDiff = Number(Boolean(right?.is_pinned)) - Number(Boolean(left?.is_pinned));
-        if (pinDiff !== 0) return pinDiff;
-        return String(right.updated_at || right.created_at).localeCompare(
-          String(left.updated_at || left.created_at)
-        );
-      })
-  );
-}
-
-function sanitizeHelperBindingForPublic(binding) {
-  if (!binding) return null;
-  return {
-    ...binding,
-    helper_token: undefined,
-    helper_ws_url: undefined,
-    helper_import_method: undefined,
-  };
-}
-
-function getHelperInventoryMergeKey(item) {
-  return [
-    Number(item?.legacy_id || 0),
-    String(item?.display_name || "").trim(),
-    Number(item?.attack_value || 0),
-    Number(item?.hp_value || 0),
-    String(item?.main_attr_text || "").trim(),
-    String(item?.ext_attr_text || "").trim(),
-    Number(Boolean(item?.max)),
-  ].join("::");
-}
-
-function sortHelperInventoryItems(list) {
-  return [...(list || [])].sort((left, right) => {
-    const extDiff = Number(Boolean(right?.has_ext)) - Number(Boolean(left?.has_ext));
-    if (extDiff !== 0) return extDiff;
-    const legacyDiff = Number(right?.legacy_id || 0) - Number(left?.legacy_id || 0);
-    if (legacyDiff !== 0) return legacyDiff;
-    const attackDiff = Number(right?.attack_value || 0) - Number(left?.attack_value || 0);
-    if (attackDiff !== 0) return attackDiff;
-    const hpDiff = Number(right?.hp_value || 0) - Number(left?.hp_value || 0);
-    if (hpDiff !== 0) return hpDiff;
-    return String(left?.display_name || "").localeCompare(String(right?.display_name || ""));
-  });
+  return helperStore.listHelperSnapshots(userId);
 }
 
 function listHelperInventories(userId) {
-  const data = readData();
-  const bindingsById = new Map(
-    (data.helperBindings || [])
-      .filter((item) => Number(item.user_id) === Number(userId))
-      .map((item) => [Number(item.id), sanitizeHelperBindingForPublic(item)])
-  );
-  return clone(
-    (data.helperInventories || [])
-      .filter((item) => Number(item.user_id) === Number(userId))
-      .map((item) => ({
-        ...item,
-        binding: item?.binding_id === null ? null : bindingsById.get(Number(item.binding_id)) || null,
-        items: sortHelperInventoryItems(item?.items || []),
-      }))
-      .sort((left, right) => String(right.updated_at || right.created_at).localeCompare(String(left.updated_at || left.created_at)))
-  );
+  return helperStore.listHelperInventories(userId);
 }
 
 function listMergedHelperInventoryItems(userId) {
-  const inventories = listHelperInventories(userId);
-  const mergedMap = new Map();
-
-  inventories.forEach((inventory) => {
-    const binding = inventory?.binding || null;
-    const sourceRoleName =
-      String(binding?.nickname || "").trim() ||
-      String(binding?.game_role_name || inventory?.summary?.role_name || "").trim() ||
-      "未命名炉子";
-    const sourceServer =
-      String(binding?.game_server || inventory?.summary?.server || "").trim() || "-";
-
-    (inventory?.items || []).forEach((item) => {
-      const key = getHelperInventoryMergeKey(item);
-      const existing = mergedMap.get(key);
-      if (!existing) {
-        mergedMap.set(key, {
-          key,
-          legacy_id: Number(item?.legacy_id || 0),
-          display_name: String(item?.display_name || "").trim(),
-          attack_value: Number(item?.attack_value || 0),
-          hp_value: Number(item?.hp_value || 0),
-          main_attr_text: String(item?.main_attr_text || "").trim(),
-          ext_attr_text: String(item?.ext_attr_text || "").trim(),
-          has_ext: Boolean(item?.has_ext),
-          max: Boolean(item?.max),
-          image_url: String(item?.image_url || "").trim(),
-          total_count: 1,
-          source_roles: [
-            {
-              binding_id: inventory?.binding_id ?? null,
-              role_name: sourceRoleName,
-              server: sourceServer,
-              count: 1,
-            },
-          ],
-        });
-        return;
-      }
-
-      existing.total_count += 1;
-      const sourceRole = existing.source_roles.find(
-        (role) =>
-          Number(role?.binding_id || 0) === Number(inventory?.binding_id || 0) &&
-          String(role?.role_name || "") === sourceRoleName &&
-          String(role?.server || "") === sourceServer
-      );
-      if (sourceRole) {
-        sourceRole.count += 1;
-      } else {
-        existing.source_roles.push({
-          binding_id: inventory?.binding_id ?? null,
-          role_name: sourceRoleName,
-          server: sourceServer,
-          count: 1,
-        });
-      }
-    });
-  });
-
-  return clone(
-    [...mergedMap.values()]
-      .sort((left, right) => {
-        const countDiff = Number(right?.total_count || 0) - Number(left?.total_count || 0);
-        if (countDiff !== 0) return countDiff;
-        const extDiff = Number(Boolean(right?.has_ext)) - Number(Boolean(left?.has_ext));
-        if (extDiff !== 0) return extDiff;
-        const legacyDiff = Number(right?.legacy_id || 0) - Number(left?.legacy_id || 0);
-        if (legacyDiff !== 0) return legacyDiff;
-        return String(left?.display_name || "").localeCompare(String(right?.display_name || ""));
-      })
-      .map((item) => ({
-        ...item,
-        source_roles: (item.source_roles || []).sort((left, right) => {
-          const countDiff = Number(right?.count || 0) - Number(left?.count || 0);
-          if (countDiff !== 0) return countDiff;
-          return String(left?.role_name || "").localeCompare(String(right?.role_name || ""));
-        }),
-      }))
-  );
+  return helperStore.listMergedHelperInventoryItems(userId);
 }
 
-function listHelperActionLogs(userId, { limit = 12 } = {}) {
-  const data = readData();
-  const normalizedLimit = Math.max(Math.min(Number(limit) || 12, 50), 1);
-  return clone(
-    (data.helperActionLogs || [])
-      .filter((item) => Number(item.user_id) === Number(userId))
-      .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))
-      .slice(0, normalizedLimit)
-  );
+function listHelperActionLogs(userId, options = {}) {
+  return helperStore.listHelperActionLogs(userId, options);
 }
 
 function upsertHelperBinding(userId, payload) {
-  const data = readData();
-  const timestamp = now();
-  const normalizedRoleId = String(payload.game_role_id || "").trim();
-  const normalizedServer = String(payload.game_server || "").trim();
-  const normalizedRoleName = String(payload.game_role_name || "").trim();
-  const normalizedBindTokenId = String(payload.bind_token_id || "").trim() || null;
-  const normalizedNickname = String(payload.nickname || "").trim() || null;
-  const normalizedHelperToken = String(payload.helper_token || "").trim() || null;
-  const normalizedHelperWsUrl = String(payload.helper_ws_url || "").trim() || null;
-  const normalizedHelperImportMethod = String(payload.helper_import_method || "").trim() || null;
-
-  let binding = (data.helperBindings || []).find(
-    (item) =>
-      Number(item.user_id) === Number(userId) &&
-      String(item.game_role_id || "") === normalizedRoleId &&
-      String(item.game_server || "") === normalizedServer
-  );
-
-  if (!binding) {
-    binding = {
-      id: nextId(data.helperBindings || []),
-      user_id: Number(userId),
-      game_role_id: normalizedRoleId,
-      game_server: normalizedServer,
-      game_role_name: normalizedRoleName,
-      bind_token_id: normalizedBindTokenId,
-      nickname: normalizedNickname,
-      helper_token: normalizedHelperToken,
-      helper_ws_url: normalizedHelperWsUrl,
-      helper_import_method: normalizedHelperImportMethod,
-      bind_source: "helper_wx_scan",
-      bind_status: "active",
-      created_at: timestamp,
-      updated_at: timestamp,
-    };
-    data.helperBindings.push(binding);
-  } else {
-    binding.game_role_name = normalizedRoleName;
-    binding.bind_token_id = normalizedBindTokenId;
-    binding.nickname = normalizedNickname;
-    binding.helper_token = normalizedHelperToken || binding.helper_token || null;
-    binding.helper_ws_url = normalizedHelperWsUrl || binding.helper_ws_url || null;
-    binding.helper_import_method = normalizedHelperImportMethod || binding.helper_import_method || null;
-    binding.bind_source = "helper_wx_scan";
-    binding.bind_status = "active";
-    binding.updated_at = timestamp;
-  }
-
-  addHelperActionLog(data, {
-    userId,
-    bindingId: binding.id,
-    actionType: "helper_binding_upsert",
-    actionPayload: {
-      game_role_id: binding.game_role_id,
-      game_server: binding.game_server,
-      game_role_name: binding.game_role_name,
-    },
-  });
-
-  writeData(data);
-  return clone(binding);
+  return helperStore.upsertHelperBinding(userId, payload);
 }
 
 function upsertHelperInventory(userId, payload) {
-  const data = readData();
-  const timestamp = now();
-  const normalizedBindingId =
-    payload?.binding_id === undefined || payload?.binding_id === null
-      ? null
-      : Number(payload.binding_id);
-  const normalizedSummary =
-    payload?.summary && typeof payload.summary === "object" && !Array.isArray(payload.summary)
-      ? clone(payload.summary)
-      : {};
-  const normalizedItems = Array.isArray(payload?.items)
-    ? payload.items.map((item) => ({
-        row_key: String(item?.row_key || "").trim(),
-        uid: String(item?.uid || "").trim(),
-        legacy_id: Number(item?.legacy_id || 0),
-        display_name: String(item?.display_name || "").trim(),
-        attack_value: Number(item?.attack_value || 0),
-        hp_value: Number(item?.hp_value || 0),
-        main_attr_text: String(item?.main_attr_text || "").trim(),
-        ext_attr_text: String(item?.ext_attr_text || "").trim(),
-        has_ext: Boolean(item?.has_ext),
-        is_locked: Boolean(item?.is_locked),
-        max: Boolean(item?.max),
-        image_url: String(item?.image_url || "").trim(),
-      }))
-    : [];
+  return helperStore.upsertHelperInventory(userId, payload);
+}
 
-  let inventory = null;
-  if (normalizedBindingId !== null) {
-    inventory = (data.helperInventories || []).find(
-      (item) =>
-        Number(item.user_id) === Number(userId) &&
-        Number(item.binding_id) === Number(normalizedBindingId)
-    );
-  }
-  if (!inventory) {
-    inventory = (data.helperInventories || []).find(
-      (item) =>
-        Number(item.user_id) === Number(userId) &&
-        String(item?.summary?.role_id || "") === String(normalizedSummary?.role_id || "") &&
-        String(item?.summary?.server || "") === String(normalizedSummary?.server || "")
-    );
-  }
-
-  if (!inventory) {
-    inventory = {
-      id: nextId(data.helperInventories || []),
-      user_id: Number(userId),
-      binding_id: normalizedBindingId,
-      source_type: String(payload?.source_type || "helper_bridge").trim() || "helper_bridge",
-      summary: normalizedSummary,
-      items: normalizedItems,
-      created_at: timestamp,
-      updated_at: timestamp,
-    };
-    data.helperInventories.unshift(inventory);
-  } else {
-    inventory.binding_id = normalizedBindingId;
-    inventory.source_type = String(payload?.source_type || inventory.source_type || "helper_bridge").trim() || "helper_bridge";
-    inventory.summary = normalizedSummary;
-    inventory.items = normalizedItems;
-    inventory.updated_at = timestamp;
-  }
-
-  addHelperActionLog(data, {
-    userId,
-    bindingId: normalizedBindingId,
-    actionType: "helper_inventory_sync",
-    actionPayload: {
-      role_id: normalizedSummary?.role_id || "",
-      server: normalizedSummary?.server || "",
-      legacy_count: Number(normalizedSummary?.legacy_count || normalizedItems.length || 0),
-      fragment_count: Number(normalizedSummary?.fragment_count || 0),
-    },
-    resultPayload: {
-      inventory_id: inventory.id,
-      item_count: normalizedItems.length,
-    },
-  });
-
-  writeData(data);
-  return clone({
-    ...inventory,
-    binding:
-      normalizedBindingId === null
-        ? null
-        : sanitizeHelperBindingForPublic(
-            (data.helperBindings || []).find((item) => Number(item.id) === Number(normalizedBindingId))
-          ),
-  });
+function pruneHelperInventories(userId, keepInventoryIds = [], actorUserId = null) {
+  return helperStore.pruneHelperInventories(userId, keepInventoryIds, actorUserId);
 }
 
 function removeHelperBinding(userId, bindingId) {
-  const data = readData();
-  const bindingIndex = (data.helperBindings || []).findIndex(
-    (item) => Number(item.user_id) === Number(userId) && Number(item.id) === Number(bindingId)
-  );
-  if (bindingIndex === -1) return null;
-  const [binding] = data.helperBindings.splice(bindingIndex, 1);
-  addHelperActionLog(data, {
-    userId,
-    bindingId: binding.id,
-    actionType: "helper_binding_remove",
-    actionPayload: {
-      game_role_id: binding.game_role_id,
-      game_server: binding.game_server,
-    },
-  });
-  writeData(data);
-  return clone(binding);
+  return helperStore.removeHelperBinding(userId, bindingId);
 }
 
 function createHelperSnapshot(userId, payload) {
-  const data = readData();
-  const user = data.users.find((item) => Number(item.id) === Number(userId));
-  if (!user) {
-    const err = new Error("user_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  const userSnapshots = (data.helperSnapshots || []).filter(
-    (item) => Number(item.user_id) === Number(userId)
-  );
-  const lineupState = getLineupSlotState(user, data.rechargeConfig || {}, data);
-  if (userSnapshots.length >= lineupState.total_slots) {
-    const err = new Error("helper_snapshot_limit_reached");
-    err.statusCode = 400;
-    err.details = [`每个账号最多保存 ${lineupState.total_slots} 套阵容，请先删除旧阵容。`];
-    throw err;
-  }
-  const timestamp = now();
-  const snapshot = {
-    id: nextId(data.helperSnapshots || []),
-    user_id: Number(userId),
-    binding_id:
-      payload?.binding_id === undefined || payload?.binding_id === null
-        ? null
-        : Number(payload.binding_id),
-    source_type: String(payload?.source_type || "helper_bridge").trim() || "helper_bridge",
-    snapshot_name:
-      String(payload?.snapshot_name || "").trim() ||
-      String(payload?.summary?.role_name || payload?.summary?.roleName || "阵容快照").trim() ||
-      "阵容快照",
-    is_pinned: false,
-    summary:
-      payload?.summary && typeof payload.summary === "object" && !Array.isArray(payload.summary)
-        ? clone(payload.summary)
-        : {},
-    raw:
-      payload?.raw && typeof payload.raw === "object" && !Array.isArray(payload.raw)
-        ? clone(payload.raw)
-        : {},
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-
-  data.helperSnapshots.unshift(snapshot);
-  addHelperActionLog(data, {
-    userId,
-    bindingId: snapshot.binding_id,
-    actionType: "helper_snapshot_create",
-    actionPayload: {
-      snapshot_name: snapshot.snapshot_name,
-      source_type: snapshot.source_type,
-    },
-    resultPayload: {
-      snapshot_id: snapshot.id,
-    },
-  });
-  writeData(data);
-  return clone(snapshot);
+  return helperStore.createHelperSnapshot(userId, payload);
 }
 
 function getHelperSnapshotLimitForUser(userId) {
-  const data = readData();
-  const user = (data.users || []).find((item) => Number(item.id) === Number(userId));
-  if (!user) {
-    return getLineupSlotConfig(data.rechargeConfig || {}).base_slots;
-  }
-  return getLineupSlotState(user, data.rechargeConfig || {}, data).total_slots;
+  return helperStore.getHelperSnapshotLimitForUser(userId);
 }
 
 function purchaseLineupSlot(userId, purchaseType) {
-  const data = readData();
-  const user = data.users.find((item) => Number(item.id) === Number(userId));
-  if (!user) {
-    const err = new Error("user_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (user.status !== "active") {
-    const err = new Error("user_disabled");
-    err.statusCode = 403;
-    throw err;
-  }
-
-  const normalizedType = String(purchaseType || "").trim();
-  const slotConfig = getLineupSlotConfig(data.rechargeConfig || {});
-  const slotRecord = ensureLineupSlotRecord(user);
-  const lineupState = getLineupSlotState(user, data.rechargeConfig || {}, data);
-  const timestamp = now();
-  const account = ensureQuotaAccount(data, userId);
-
-  let costQuota = 0;
-  let detail = {};
-  if (normalizedType === "permanent") {
-    if (lineupState.permanent_purchases >= slotConfig.permanent_slot_max) {
-      const err = new Error("lineup_slot_permanent_max_reached");
-      err.statusCode = 400;
-      throw err;
-    }
-    costQuota = slotConfig.permanent_slot_quota;
-    slotRecord.permanent_purchases = lineupState.permanent_purchases + 1;
-    detail = {
-      purchase_type: "permanent",
-      permanent_purchases: slotRecord.permanent_purchases,
-      permanent_slot_max: slotConfig.permanent_slot_max,
-      cost_quota: costQuota,
-    };
-  } else if (normalizedType === "seasonal") {
-    costQuota = slotConfig.seasonal_slot_quota;
-    const currentSeason = slotConfig.season_label;
-    const currentCount = Math.max(
-      Math.floor(Number(slotRecord.seasonal_slot_counts[currentSeason] || 0) || 0),
-      0
-    );
-    slotRecord.seasonal_slot_counts[currentSeason] = currentCount + 1;
-    detail = {
-      purchase_type: "seasonal",
-      season_label: currentSeason,
-      season_slots: slotRecord.seasonal_slot_counts[currentSeason],
-      season_expires_at: slotConfig.season_expires_at,
-      cost_quota: costQuota,
-    };
-  } else {
-    const err = new Error("lineup_slot_purchase_type_invalid");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  if (Number(account.balance || 0) < Number(costQuota || 0)) {
-    const err = new Error("insufficient_quota");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  applyQuotaChange(data, {
-    userId,
-    changeAmount: -costQuota,
-    type:
-      normalizedType === "permanent"
-        ? "lineup_slot_permanent_purchase"
-        : "lineup_slot_seasonal_purchase",
-    remark:
-      normalizedType === "permanent"
-        ? `lineup_slot_permanent:${slotRecord.permanent_purchases}`
-        : `lineup_slot_seasonal:${slotConfig.season_label}:${slotRecord.seasonal_slot_counts[slotConfig.season_label]}`,
-  });
-  user.updated_at = timestamp;
-
-  addAuditLog(data, {
-    actorUserId: Number(userId),
-    targetType: "user",
-    targetId: Number(userId),
-    action: "lineup_slot_purchase",
-    detail,
-  });
-
-  writeData(data);
-  return {
-    user: withQuota(user, data),
-    purchase: clone(detail),
-  };
+  return helperStore.purchaseLineupSlot(userId, purchaseType);
 }
 
 function removeHelperSnapshot(userId, snapshotId) {
-  const data = readData();
-  const index = (data.helperSnapshots || []).findIndex(
-    (item) => Number(item.user_id) === Number(userId) && Number(item.id) === Number(snapshotId)
-  );
-  if (index === -1) return null;
-  const [snapshot] = data.helperSnapshots.splice(index, 1);
-  addHelperActionLog(data, {
-    userId,
-    bindingId: snapshot.binding_id,
-    actionType: "helper_snapshot_remove",
-    actionPayload: {
-      snapshot_id: snapshot.id,
-      snapshot_name: snapshot.snapshot_name,
-    },
-  });
-  writeData(data);
-  return clone(snapshot);
+  return helperStore.removeHelperSnapshot(userId, snapshotId);
 }
 
 function updateHelperSnapshot(userId, snapshotId, payload) {
-  const data = readData();
-  const snapshot = (data.helperSnapshots || []).find(
-    (item) => Number(item.user_id) === Number(userId) && Number(item.id) === Number(snapshotId)
-  );
-  if (!snapshot) return null;
-
-  if (payload?.snapshot_name !== undefined) {
-    const nextName = String(payload?.snapshot_name || "").trim();
-    if (!nextName) return null;
-    snapshot.snapshot_name = nextName;
-  }
-  if (payload?.is_pinned !== undefined) {
-    const nextPinned = Boolean(payload.is_pinned);
-    if (nextPinned) {
-      (data.helperSnapshots || []).forEach((item) => {
-        if (Number(item.user_id) === Number(userId)) {
-          item.is_pinned = Number(item.id) === Number(snapshotId);
-          if (item.is_pinned) {
-            item.updated_at = now();
-          }
-        }
-      });
-    } else {
-      snapshot.is_pinned = false;
-    }
-  }
-  snapshot.updated_at = now();
-  addHelperActionLog(data, {
-    userId,
-    bindingId: snapshot.binding_id,
-    actionType: "helper_snapshot_update",
-    actionPayload: {
-      snapshot_id: snapshot.id,
-      snapshot_name: snapshot.snapshot_name,
-      is_pinned: Boolean(snapshot.is_pinned),
-    },
-  });
-  writeData(data);
-  return clone(snapshot);
+  return helperStore.updateHelperSnapshot(userId, snapshotId, payload);
 }
 
 function createHelperActionLog(userId, payload) {
-  const data = readData();
-  const normalizedBindingId =
-    payload?.binding_id === undefined || payload?.binding_id === null
-      ? null
-      : Number(payload.binding_id);
-  const log = {
-    id: nextId(data.helperActionLogs || []),
-    user_id: Number(userId),
-    binding_id: normalizedBindingId,
-    action_type: String(payload?.action_type || "").trim(),
-    action_payload:
-      payload?.action_payload && typeof payload.action_payload === "object"
-        ? clone(payload.action_payload)
-        : {},
-    result_status: String(payload?.result_status || "ok").trim() || "ok",
-    result_payload:
-      payload?.result_payload && typeof payload.result_payload === "object"
-        ? clone(payload.result_payload)
-        : {},
-    created_at: now(),
-  };
-  data.helperActionLogs.unshift(log);
-  writeData(data);
-  return clone(log);
+  return helperStore.createHelperActionLog(userId, payload);
 }
 
 async function changeSelfPassword(userId, currentPassword, nextPassword) {
-  const data = readData();
-  const user = data.users.find((item) => item.id === Number(userId));
-  if (!user) {
-    const err = new Error("user_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (user.auth_provider !== "password") {
-    const err = new Error("password_login_only");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const matched = await verifyPassword(currentPassword, user.password_hash);
-  if (!matched) {
-    const err = new Error("invalid_credentials");
-    err.statusCode = 401;
-    throw err;
-  }
-
-  user.password_hash = await hashPassword(nextPassword);
-  user.updated_at = now();
-  writeData(data);
-  return withQuota(user, data);
+  return usersStore.changeSelfPassword(userId, currentPassword, nextPassword);
 }
 
 function listProducts({ keyword = "", sort = "created_desc", publicOnly = false } = {}) {
-  const data = readData();
-  const cards = data.products.filter((item) => {
-    if (!publicOnly) return true;
-    if (item.status !== "on_sale") return false;
-    return getAvailableProductStock(data, item) > 0;
-  });
-  const bundles = (data.bundleSkus || []).filter((item) => (publicOnly ? item.status === "on_sale" : true));
-  let products = [...cards.map(normalizeCardProduct), ...bundles.map(normalizeBundleSku)];
-
-  const trimmed = String(keyword || "").trim().toLowerCase();
-  if (trimmed) {
-    products = products.filter((item) =>
-      [item.name, item.uid, item.main_attrs, item.ext_attrs, item.description]
-        .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(trimmed))
-    );
-  }
-
-  const sorters = {
-    created_desc: (a, b) => String(b.created_at).localeCompare(String(a.created_at)),
-    price_asc: (a, b) => a.price_quota - b.price_quota || b.id - a.id,
-    price_desc: (a, b) => b.price_quota - a.price_quota || b.id - a.id,
-    attack_desc: (a, b) => b.attack_value - a.attack_value || b.id - a.id,
-    hp_desc: (a, b) => b.hp_value - a.hp_value || b.id - a.id,
-  };
-  products.sort(sorters[sort] || sorters.created_desc);
-  return clone(products);
+  return productsStore.listProducts({ keyword, sort, publicOnly });
 }
 
 function getProductById(productId, { publicOnly = false, itemKind = "card" } = {}) {
-  const data = readData();
-  if (itemKind === "bundle") {
-    const bundle = (data.bundleSkus || []).find(
-      (item) => item.id === Number(productId) && (!publicOnly || item.status === "on_sale")
-    );
-    return bundle ? normalizeBundleSku(bundle) : null;
-  }
-  const product = data.products.find(
-    (item) => item.id === Number(productId) && (!publicOnly || item.status === "on_sale")
-  );
-  if (publicOnly && product && getAvailableProductStock(data, product) <= 0) {
-    return null;
-  }
-  return product ? normalizeCardProduct(product) : null;
+  return productsStore.getProductById(productId, { publicOnly, itemKind });
 }
 
 function getQuota(userId) {
-  const data = readData();
-  const account = ensureQuotaAccount(data, Number(userId));
-  writeData(data);
-  return clone(account);
+  return usersStore.getQuota(userId);
 }
 
 function hydrateOrders(data, orders) {
-  return orders.map((order) => {
-    const user = data.users.find((item) => item.id === order.user_id);
-    return {
-      ...clone(order),
-      game_role_id: user?.game_role_id || order?.guest_game_role_id || null,
-      game_server: user?.game_server || order?.guest_game_server || null,
-      game_role_name: user?.game_role_name || order?.guest_game_role_name || null,
-      nickname: user?.nickname || order?.guest_nickname || null,
-      order_source: order?.order_source || "mall",
-      buyer_label: order?.buyer_label || null,
-      items: clone(data.orderItems.filter((item) => item.order_id === order.id)),
-    };
-  });
+  return sharedStoreViews.hydrateOrders(data, orders);
 }
 
 function hydrateRechargeOrders(data, rechargeOrders) {
-  return rechargeOrders.map((order) => {
-    const user = data.users.find((item) => item.id === order.user_id);
-    const reviewer = data.users.find((item) => item.id === order.reviewed_by);
-    const orderTitle =
-      order.order_type === "season_member"
-        ? "赛季会员"
-        : order.order_type === "residual_transfer"
-          ? "残卷转赠"
-          : "普通充值";
-    return {
-      ...clone(order),
-      order_title: orderTitle,
-      game_role_id: user?.game_role_id || null,
-      game_server: user?.game_server || null,
-      game_role_name: user?.game_role_name || null,
-      nickname: user?.nickname || null,
-      reviewer_role_name: reviewer?.game_role_name || null,
-    };
+  return sharedStoreViews.hydrateRechargeOrders(data, rechargeOrders);
+}
+
+function hydrateSingleOrder(data, order) {
+  return sharedStoreViews.hydrateSingleOrder(data, order);
+}
+
+function hydrateSingleRechargeOrder(data, rechargeOrder) {
+  return sharedStoreViews.hydrateSingleRechargeOrder(data, rechargeOrder);
+}
+
+function paginateItems(items, { limit = 20, offset = 0 } = {}) {
+  return sharedStoreViews.paginateItems(items, { limit, offset });
+}
+
+function filterOrdersForAdmin(data, { userId = null, orderId = null, status = null, keyword = "" } = {}) {
+  return sharedStoreViews.filterOrdersForAdmin(data, { userId, orderId, status, keyword });
+}
+
+function filterRechargeOrdersForAdmin(
+  data,
+  { userId = null, rechargeOrderId = null, status = null, keyword = "" } = {}
+) {
+  return sharedStoreViews.filterRechargeOrdersForAdmin(data, {
+    userId,
+    rechargeOrderId,
+    status,
+    keyword,
   });
 }
 
-function hydrateAuction(data, auction, { publicView = false } = {}) {
-  const product = (data.products || []).find((item) => Number(item.id) === Number(auction.product_id));
-  const snapshotBase =
-    auction?.product_snapshot && typeof auction.product_snapshot === "object"
-      ? auction.product_snapshot
-      : product;
-  const item = snapshotBase
-    ? normalizeCardProduct({ ...snapshotBase, id: Number(auction.product_id) })
-    : null;
-  const bids = (data.auctionBids || [])
-    .filter((bid) => Number(bid.auction_id) === Number(auction.id))
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const leadingUser = (data.users || []).find(
-    (user) => Number(user.id) === Number(auction.current_bid_user_id)
-  );
-  const leadingAccount = leadingUser ? ensureQuotaAccount(data, Number(leadingUser.id)) : null;
-  const nextMinBidQuota = auction.current_bid_user_id
-    ? Number(auction.current_price_quota || 0) + Number(auction.min_increment_quota || 0)
-    : Number(auction.starting_price_quota || 0);
-  const winningAmount = Number(auction.current_price_quota || auction.starting_price_quota || 0);
-  const base = {
-    ...clone(auction),
-    item,
-    bid_count: bids.length,
-    next_min_bid_quota: nextMinBidQuota,
-    leading_bidder_label: leadingUser ? getAuctionBuyerLabel(leadingUser) : "无",
-    current_bid_user_name: leadingUser?.game_role_name || null,
-    current_bid_user_game_role_id: leadingUser?.game_role_id || null,
-    current_bid_user_quota_balance: leadingAccount ? Number(leadingAccount.balance || 0) : null,
-    winning_amount_quota: winningAmount,
-    can_direct_settle: leadingAccount ? Number(leadingAccount.balance || 0) >= winningAmount : false,
-  };
+function filterAuditLogsForAdmin(data, { keyword = "", action = "" } = {}) {
+  return sharedStoreViews.filterAuditLogsForAdmin(data, { keyword, action });
+}
 
-  if (publicView) {
-    delete base.product_snapshot;
-    delete base.created_by;
-    delete base.current_bid_user_id;
-    delete base.current_bid_user_name;
-    delete base.current_bid_user_game_role_id;
-    delete base.current_bid_user_quota_balance;
-    delete base.can_direct_settle;
-    delete base.winning_bid_user_id;
-    return base;
-  }
+function filterQuotaLogsForAdmin(data, { userId = null, keyword = "", type = "" } = {}) {
+  return sharedStoreViews.filterQuotaLogsForAdmin(data, { userId, keyword, type });
+}
+
+function buildAdminProductView(data, product) {
+  const blockingAuction = getBlockingAuctionForProduct(data, product.id);
+  const imported = data.productImports.find((item) => item.id === product.import_id);
+  const manualPriceQuota =
+    product?.manual_price_quota === null || product?.manual_price_quota === undefined
+      ? null
+      : Number(product.manual_price_quota);
+  const basePriceQuota = Number.isInteger(manualPriceQuota)
+    ? manualPriceQuota
+    : Number(product.price_quota || 0);
+  const discountRate = normalizeDiscountRate(product.discount_rate);
+  const effectivePriceQuota = getEffectiveQuotaPrice(basePriceQuota, discountRate);
 
   return {
-    ...base,
-    bids: bids.map((bid) => {
-      const bidUser = (data.users || []).find((user) => Number(user.id) === Number(bid.user_id));
-      return {
-        ...clone(bid),
-        game_role_id: bidUser?.game_role_id || null,
-        game_role_name: bidUser?.game_role_name || null,
-        nickname: bidUser?.nickname || null,
-      };
-    }),
+    ...product,
+    discount_rate: discountRate,
+    effective_price_quota: effectivePriceQuota,
+    discount_saved_quota: Math.max(0, basePriceQuota - effectivePriceQuota),
+    discount_label: getDiscountLabel(discountRate),
+    is_discounted: discountRate < 100 && effectivePriceQuota < basePriceQuota,
+    auction_id: blockingAuction ? Number(blockingAuction.id) : null,
+    auction_status: blockingAuction?.status || null,
+    auction_ends_at: blockingAuction?.ends_at || null,
+    auction_current_price_quota: blockingAuction
+      ? Number(blockingAuction.current_price_quota || blockingAuction.starting_price_quota || 0)
+      : null,
+    source_type: imported?.source_type || null,
+    source_file_name: imported?.source_file_name || null,
+    imported_at: imported?.created_at || null,
   };
+}
+
+function queryAdminProducts({
+  keyword = "",
+  status = "all",
+  discount = "all",
+  category = "all",
+  subcategory = "all",
+  detail = "all",
+  fullness = "all",
+  limit = 20,
+  offset = 0,
+} = {}) {
+  return adminQueryStore.queryAdminProducts({
+    keyword,
+    status,
+    discount,
+    category,
+    subcategory,
+    detail,
+    fullness,
+    limit,
+    offset,
+  });
+}
+
+function queryAdminOrders({ userId = null, orderId = null, status = null, keyword = "", limit = 20, offset = 0 } = {}) {
+  return adminQueryStore.queryAdminOrders({ userId, orderId, status, keyword, limit, offset });
+}
+
+function queryAdminRechargeOrders({
+  userId = null,
+  rechargeOrderId = null,
+  status = null,
+  keyword = "",
+  limit = 20,
+  offset = 0,
+} = {}) {
+  return adminQueryStore.queryAdminRechargeOrders({
+    userId,
+    rechargeOrderId,
+    status,
+    keyword,
+    limit,
+    offset,
+  });
+}
+
+function queryAdminBundles({ limit = 20, offset = 0 } = {}) {
+  return adminQueryStore.queryAdminBundles({ limit, offset });
+}
+
+function queryAdminUsers({ keyword = "", limit = 20, offset = 0 } = {}) {
+  return adminQueryStore.queryAdminUsers({ keyword, limit, offset });
+}
+
+function queryAdminAuditLogs({ keyword = "", action = "", limit = 20, offset = 0 } = {}) {
+  return adminQueryStore.queryAdminAuditLogs({ keyword, action, limit, offset });
+}
+
+function queryAdminQuotaLogs({ userId = null, keyword = "", type = "", limit = 20, offset = 0 } = {}) {
+  return adminQueryStore.queryAdminQuotaLogs({ userId, keyword, type, limit, offset });
+}
+
+function getAdminOverview() {
+  return adminQueryStore.getAdminOverview();
+}
+
+function listUsers() {
+  return adminQueryStore.listUsers();
+}
+
+function listAuditLogs(options = {}) {
+  return adminQueryStore.listAuditLogs(options);
+}
+
+function listQuotaLogs(options = {}) {
+  return adminQueryStore.listQuotaLogs(options);
 }
 
 function listAuctions({ status = "all", auctionId = null, publicView = false } = {}) {
-  const data = readData();
-  let auctions = (data.auctions || []).slice();
-
-  if (auctionId !== null && auctionId !== undefined) {
-    auctions = auctions.filter((auction) => Number(auction.id) === Number(auctionId));
-  }
-  if (status && status !== "all") {
-    auctions = auctions.filter(
-      (auction) => String(auction.status || "").trim() === String(status).trim()
-    );
-  }
-
-  const statusOrder = {
-    live: 0,
-    scheduled: 1,
-    ended: 2,
-    settled: 3,
-    cancelled: 4,
-  };
-  auctions.sort(
-    (a, b) =>
-      Number(statusOrder[String(a.status || "").trim()] ?? 9) -
-        Number(statusOrder[String(b.status || "").trim()] ?? 9) ||
-      String(a.ends_at || "").localeCompare(String(b.ends_at || "")) ||
-      String(b.created_at || "").localeCompare(String(a.created_at || ""))
-  );
-
-  return clone(auctions.map((auction) => hydrateAuction(data, auction, { publicView })));
+  return auctionsStore.listAuctions({ status, auctionId, publicView });
 }
 
 function listAuctionBidSummariesForUser(userId) {
-  const data = readData();
-  const bids = (data.auctionBids || []).filter((bid) => Number(bid.user_id) === Number(userId));
-  const grouped = new Map();
-
-  bids.forEach((bid) => {
-    const auctionId = Number(bid.auction_id);
-    const current = grouped.get(auctionId) || {
-      auction_id: auctionId,
-      latest_bid_amount: 0,
-      highest_bid_amount: 0,
-      latest_bid_at: null,
-    };
-    const amount = Number(bid.amount_quota || 0);
-    if (amount >= current.highest_bid_amount) {
-      current.highest_bid_amount = amount;
-    }
-    if (!current.latest_bid_at || String(bid.created_at).localeCompare(String(current.latest_bid_at)) > 0) {
-      current.latest_bid_at = bid.created_at;
-      current.latest_bid_amount = amount;
-    }
-    grouped.set(auctionId, current);
-  });
-
-  return clone(
-    [...grouped.values()].map((entry) => {
-      const auction = (data.auctions || []).find((item) => Number(item.id) === Number(entry.auction_id));
-      return {
-        ...entry,
-        status: auction?.status || null,
-        current_price_quota: Number(auction?.current_price_quota || 0),
-        is_leading: Number(auction?.current_bid_user_id || 0) === Number(userId),
-      };
-    })
-  );
+  return auctionsStore.listAuctionBidSummariesForUser(userId);
 }
 
 function listBundleSkus({ publicOnly = false } = {}) {
-  const data = readData();
-  const bundles = (data.bundleSkus || [])
-    .filter((item) => (!publicOnly || item.status === "on_sale"))
-    .sort((a, b) => Number(a.display_rank || 999) - Number(b.display_rank || 999));
-  return clone(bundles.map(normalizeBundleSku));
+  return productsStore.listBundleSkus({ publicOnly });
 }
 
 function listOrders({
@@ -2303,51 +1232,7 @@ function listOrders({
   limit = 100,
   offset = 0,
 } = {}) {
-  const data = readData();
-  let orders = data.orders.slice();
-  if (orderId !== null) {
-    orders = orders.filter((item) => item.id === Number(orderId));
-  }
-  if (userId !== null) {
-    orders = orders.filter((item) => item.user_id === Number(userId));
-  }
-  if (status !== null && status !== undefined && status !== "" && status !== "all") {
-    orders = orders.filter((item) => item.status === status);
-  }
-  const trimmedKeyword = String(keyword || "").trim().toLowerCase();
-  if (trimmedKeyword) {
-    orders = orders.filter((order) => {
-      const user = data.users.find((item) => item.id === order.user_id);
-      const items = data.orderItems.filter((item) => item.order_id === order.id);
-      return [
-        String(order.id),
-        order?.buyer_label,
-        order?.order_source,
-        order?.remark,
-        order?.guest_game_role_id,
-        order?.guest_game_role_name,
-        order?.guest_nickname,
-        order?.payment_reference,
-        order?.payment_channel,
-        String(order?.payment_amount_yuan || ""),
-        user?.game_role_id,
-        user?.game_server,
-        user?.game_role_name,
-        user?.nickname,
-        ...items.map((item) => item.product_name),
-        ...items.map((item) => String(item.product_id)),
-        ...items.map((item) => String(item.bundle_sku_id)),
-        ...items.map((item) => item.item_kind),
-        JSON.stringify(order?.draw_service || {}),
-      ]
-        .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(trimmedKeyword));
-    });
-  }
-  orders.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const normalizedOffset = Math.max(Number(offset) || 0, 0);
-  const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
-  return hydrateOrders(data, orders.slice(normalizedOffset, end));
+  return ordersStore.listOrders({ userId, orderId, status, keyword, limit, offset });
 }
 
 function createExternalOrder(
@@ -2356,92 +1241,7 @@ function createExternalOrder(
   { buyerLabel, remark = null } = {},
   actorUserId
 ) {
-  const data = readData();
-  const isBundle = itemKind === "bundle";
-  const item = isBundle
-    ? (data.bundleSkus || []).find((bundle) => bundle.id === Number(itemId))
-    : data.products.find((product) => product.id === Number(itemId));
-
-  if (!item) {
-    const err = new Error(isBundle ? "bundle_not_found" : "product_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (!isBundle) {
-    ensureProductNotBlockedByAuction(data, item.id, "product_in_auction");
-  }
-  if (item.status !== "on_sale") {
-    const err = new Error(isBundle ? "bundle_not_on_sale" : "product_not_on_sale");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (!isBundle && Number(item.stock) <= 0) {
-    const err = new Error("product_out_of_stock");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (isBundle && item.stock !== null && item.stock !== undefined && Number(item.stock) <= 0) {
-    const err = new Error("bundle_out_of_stock");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const effectivePriceQuota = getEffectiveQuotaPrice(item.price_quota, item.discount_rate);
-
-  const order = {
-    id: nextId(data.orders),
-    user_id: null,
-    total_quota: effectivePriceQuota,
-    status: "confirmed",
-    remark: remark || null,
-    order_source: "external",
-    buyer_label: String(buyerLabel || "").trim(),
-    created_at: now(),
-    updated_at: now(),
-  };
-  data.orders.push(order);
-
-  data.orderItems.push({
-    id: nextId(data.orderItems),
-    order_id: order.id,
-    item_kind: itemKind,
-    product_id: isBundle ? null : item.id,
-    bundle_sku_id: isBundle ? item.id : null,
-    product_name: item.name,
-    product_snapshot: clone(item),
-    price_quota: effectivePriceQuota,
-    created_at: now(),
-  });
-
-  if (isBundle) {
-    if (item.stock !== null && item.stock !== undefined) {
-      item.stock = Number(item.stock) - 1;
-      if (item.stock <= 0) item.status = "sold";
-    }
-    item.updated_at = now();
-  } else {
-    item.stock = Number(item.stock) - 1;
-    if (item.stock <= 0) item.status = "sold";
-    item.updated_at = now();
-  }
-
-  addAuditLog(data, {
-    actorUserId,
-    targetType: "order",
-    targetId: order.id,
-    action: "external_order_create",
-    detail: {
-      item_kind: itemKind,
-      item_id: item.id,
-      total_quota: effectivePriceQuota,
-      buyer_label: order.buyer_label,
-      remark: order.remark,
-    },
-  });
-
-  repriceDataProducts(data);
-  writeData(data);
-  return listOrders({ orderId: order.id, limit: 1 })[0];
+  return ordersStore.createExternalOrder(itemId, itemKind, { buyerLabel, remark }, actorUserId);
 }
 
 function listRechargeOrders({
@@ -2452,42 +1252,7 @@ function listRechargeOrders({
   limit = 100,
   offset = 0,
 } = {}) {
-  const data = readData();
-  let rechargeOrders = (data.rechargeOrders || []).slice();
-
-  if (rechargeOrderId !== null) {
-    rechargeOrders = rechargeOrders.filter((item) => item.id === Number(rechargeOrderId));
-  }
-  if (userId !== null) {
-    rechargeOrders = rechargeOrders.filter((item) => item.user_id === Number(userId));
-  }
-  if (status !== null && status !== undefined && status !== "" && status !== "all") {
-    rechargeOrders = rechargeOrders.filter((item) => item.status === status);
-  }
-
-  const trimmedKeyword = String(keyword || "").trim().toLowerCase();
-  if (trimmedKeyword) {
-    rechargeOrders = rechargeOrders.filter((order) => {
-      const user = data.users.find((item) => item.id === order.user_id);
-      return [
-        String(order.id),
-        user?.game_role_id,
-        user?.game_server,
-        user?.game_role_name,
-        user?.nickname,
-        order.payment_reference,
-        order.payer_note,
-        order.admin_remark,
-      ]
-        .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(trimmedKeyword));
-    });
-  }
-
-  rechargeOrders.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const normalizedOffset = Math.max(Number(offset) || 0, 0);
-  const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
-  return hydrateRechargeOrders(data, rechargeOrders.slice(normalizedOffset, end));
+  return ordersStore.listRechargeOrders({ userId, rechargeOrderId, status, keyword, limit, offset });
 }
 
 function applyQuotaChange(
@@ -2504,7 +1269,7 @@ function applyQuotaChange(
 
   if (normalizedBonusAmount === null) {
     const memberState = getSeasonMemberState(user, data.rechargeConfig || {});
-    const eligibleBonusTypes = new Set(["admin_add", "recharge_credit"]);
+    const eligibleBonusTypes = new Set([QUOTA_LOG_TYPES.ADMIN_ADD, QUOTA_LOG_TYPES.RECHARGE_CREDIT]);
     if (Number(changeAmount) > 0 && eligibleBonusTypes.has(String(type || "")) && memberState.active) {
       normalizedBonusAmount = Math.floor(Number(changeAmount) * Number(memberState.bonus_rate || 0));
     } else {
@@ -2529,7 +1294,7 @@ function applyQuotaChange(
       id: nextId(data.quotaLogs),
       user_id: Number(userId),
       change_amount: Number(normalizedBonusAmount),
-      type: "member_bonus",
+      type: QUOTA_LOG_TYPES.MEMBER_BONUS,
       order_id: orderId ? Number(orderId) : null,
       remark: `season_member_bonus:${type}`,
       created_at: now(),
@@ -2663,7 +1428,7 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
     actorUserId: importedBy,
     targetType: "import",
     targetId: importId,
-    action: "cards_import",
+    action: AUDIT_ACTIONS.CARDS_IMPORT,
     detail: {
       source_type: importRow.source_type,
       source_file_name: importRow.source_file_name,
@@ -2689,52 +1454,11 @@ function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedPr
 }
 
 function listAdminProducts() {
-  const data = readData();
-  return clone(
-    data.products
-      .map((product) => {
-        const blockingAuction = getBlockingAuctionForProduct(data, product.id);
-        const imported = data.productImports.find((item) => item.id === product.import_id);
-        const manualPriceQuota =
-          product?.manual_price_quota === null || product?.manual_price_quota === undefined
-            ? null
-            : Number(product.manual_price_quota);
-        const basePriceQuota = Number.isInteger(manualPriceQuota)
-          ? manualPriceQuota
-          : Number(product.price_quota || 0);
-        const discountRate = normalizeDiscountRate(product.discount_rate);
-        const effectivePriceQuota = getEffectiveQuotaPrice(basePriceQuota, discountRate);
-        return {
-          ...product,
-          discount_rate: discountRate,
-          effective_price_quota: effectivePriceQuota,
-          discount_saved_quota: Math.max(0, basePriceQuota - effectivePriceQuota),
-          discount_label: getDiscountLabel(discountRate),
-          is_discounted: discountRate < 100 && effectivePriceQuota < basePriceQuota,
-          auction_id: blockingAuction ? Number(blockingAuction.id) : null,
-          auction_status: blockingAuction?.status || null,
-          auction_ends_at: blockingAuction?.ends_at || null,
-          auction_current_price_quota: blockingAuction
-            ? Number(blockingAuction.current_price_quota || blockingAuction.starting_price_quota || 0)
-            : null,
-          source_type: imported?.source_type || null,
-          source_file_name: imported?.source_file_name || null,
-          imported_at: imported?.created_at || null,
-        };
-      })
-      .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
-  );
+  return queryAdminProducts({ limit: null }).items;
 }
 
 function listAdminBundles() {
-  const data = readData();
-  return clone(
-    (data.bundleSkus || []).sort(
-      (a, b) =>
-        Number(a.display_rank || 999) - Number(b.display_rank || 999) ||
-        String(b.updated_at).localeCompare(String(a.updated_at))
-    )
-  );
+  return queryAdminBundles({ limit: null }).items;
 }
 
 function updateProduct(productId, patch, actorUserId) {
@@ -2743,8 +1467,19 @@ function updateProduct(productId, patch, actorUserId) {
   if (!product) return null;
 
   const nextPatch = { ...patch };
+  const manualPrice =
+    Object.prototype.hasOwnProperty.call(nextPatch, "manual_price_quota")
+      ? nextPatch.manual_price_quota
+      : Object.prototype.hasOwnProperty.call(nextPatch, "price_quota")
+      ? nextPatch.price_quota
+      : undefined;
+  if (manualPrice !== undefined) {
+    product.manual_price_quota = Number(manualPrice);
+  }
+  if (Object.prototype.hasOwnProperty.call(nextPatch, "manual_price_quota")) {
+    delete nextPatch.manual_price_quota;
+  }
   if (Object.prototype.hasOwnProperty.call(nextPatch, "price_quota")) {
-    product.manual_price_quota = Number(nextPatch.price_quota);
     delete nextPatch.price_quota;
   }
   if (Object.prototype.hasOwnProperty.call(nextPatch, "discount_rate")) {
@@ -2757,12 +1492,10 @@ function updateProduct(productId, patch, actorUserId) {
     actorUserId,
     targetType: "product",
     targetId: product.id,
-    action: "product_update",
+    action: AUDIT_ACTIONS.PRODUCT_UPDATE,
     detail: {
       ...nextPatch,
-      ...(Object.prototype.hasOwnProperty.call(patch, "price_quota")
-        ? { manual_price_quota: Number(patch.price_quota) }
-        : {}),
+      ...(manualPrice !== undefined ? { manual_price_quota: Number(manualPrice) } : {}),
     },
   });
   writeData(data);
@@ -2783,7 +1516,7 @@ function updateBundleSku(bundleId, patch, actorUserId) {
     actorUserId,
     targetType: "product",
     targetId: bundle.id,
-    action: "bundle_update",
+    action: AUDIT_ACTIONS.BUNDLE_UPDATE,
     detail: patch,
   });
   writeData(data);
@@ -2794,7 +1527,7 @@ function updateBundleSkuStatus(bundleId, status, actorUserId) {
   return updateBundleSku(bundleId, { status }, actorUserId);
 }
 
-function bulkUpdateProductStatus(productIds, status, actorUserId) {
+function bulkUpdateProductStatus(productIds, status, actorUserId, requestId = null) {
   const data = readData();
   const normalizedIds = [...new Set(productIds.map((item) => Number(item)).filter(Boolean))];
   let updatedCount = 0;
@@ -2811,8 +1544,8 @@ function bulkUpdateProductStatus(productIds, status, actorUserId) {
       actorUserId,
       targetType: "product",
       targetId: normalizedIds[0],
-      action: "product_bulk_status_update",
-      detail: { product_ids: normalizedIds, status, updated_count: updatedCount },
+      action: AUDIT_ACTIONS.PRODUCT_BULK_STATUS_UPDATE,
+      detail: { product_ids: normalizedIds, status, updated_count: updatedCount, request_id: requestId },
     });
     writeData(data);
   }
@@ -2820,17 +1553,23 @@ function bulkUpdateProductStatus(productIds, status, actorUserId) {
   return { updated_count: updatedCount, status };
 }
 
-function bulkUpdateProducts(productIds, patch, actorUserId) {
+function bulkUpdateProducts(productIds, patch, actorUserId, requestId = null) {
   const data = readData();
   const normalizedIds = [...new Set(productIds.map((item) => Number(item)).filter(Boolean))];
   let updatedCount = 0;
   const nextPatch = { ...patch };
   const manualPrice =
-    Object.prototype.hasOwnProperty.call(nextPatch, "price_quota") &&
-    Number.isInteger(Number(nextPatch.price_quota))
+    Object.prototype.hasOwnProperty.call(nextPatch, "manual_price_quota") &&
+    Number.isInteger(Number(nextPatch.manual_price_quota))
+      ? Number(nextPatch.manual_price_quota)
+      : Object.prototype.hasOwnProperty.call(nextPatch, "price_quota") &&
+        Number.isInteger(Number(nextPatch.price_quota))
       ? Number(nextPatch.price_quota)
       : null;
 
+  if (Object.prototype.hasOwnProperty.call(nextPatch, "manual_price_quota")) {
+    delete nextPatch.manual_price_quota;
+  }
   if (Object.prototype.hasOwnProperty.call(nextPatch, "price_quota")) {
     delete nextPatch.price_quota;
   }
@@ -2853,7 +1592,7 @@ function bulkUpdateProducts(productIds, patch, actorUserId) {
       actorUserId,
       targetType: "product",
       targetId: normalizedIds[0],
-      action: "product_bulk_update",
+      action: AUDIT_ACTIONS.PRODUCT_BULK_UPDATE,
       detail: {
         product_ids: normalizedIds,
         patch: {
@@ -2861,6 +1600,7 @@ function bulkUpdateProducts(productIds, patch, actorUserId) {
           ...(manualPrice !== null ? { manual_price_quota: manualPrice } : {}),
         },
         updated_count: updatedCount,
+        request_id: requestId,
       },
     });
     writeData(data);
@@ -2876,33 +1616,11 @@ function bulkUpdateProducts(productIds, patch, actorUserId) {
 }
 
 function listUsers() {
-  const data = readData();
-  return clone(
-    data.users
-      .map((user) => withQuota(user, data))
-      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-  );
+  return queryAdminUsers({ limit: null }).items;
 }
 
 function changeUserQuota(userId, changeAmount, remark, actorUserId) {
-  const data = readData();
-  const user = data.users.find((item) => item.id === Number(userId));
-  if (!user) return null;
-  const balance = applyQuotaChange(data, {
-    userId,
-    changeAmount,
-    type: changeAmount > 0 ? "admin_add" : "admin_subtract",
-    remark: remark || null,
-  });
-  addAuditLog(data, {
-    actorUserId,
-    targetType: "user",
-    targetId: Number(userId),
-    action: "user_quota_change",
-    detail: { change_amount: Number(changeAmount), next_balance: balance },
-  });
-  writeData(data);
-  return { user_id: Number(userId), balance };
+  return usersStore.changeUserQuota(userId, changeAmount, remark, actorUserId);
 }
 
 function createRechargeOrder(
@@ -2920,406 +1638,41 @@ function createRechargeOrder(
     orderType = "normal",
   }
 ) {
-  const data = readData();
-  const user = data.users.find((item) => item.id === Number(userId));
-  if (!user) {
-    const err = new Error("user_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (user.status !== "active") {
-    const err = new Error("user_disabled");
-    err.statusCode = 403;
-    throw err;
-  }
-  const config = normalizeRechargeConfig(data.rechargeConfig || {});
-  const normalizedOrderType = String(orderType || "normal").trim() || "normal";
-  const memberState = getSeasonMemberState(user, config);
-  if (normalizedOrderType === "residual_transfer" && !config.residual_transfer_enabled) {
-    const err = new Error("residual_transfer_disabled");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (normalizedOrderType === "season_member") {
-    if (!config.season_member_enabled) {
-      const err = new Error("season_member_disabled");
-      err.statusCode = 400;
-      throw err;
-    }
-    if (memberState.active) {
-      const err = new Error("season_member_already_active");
-      err.statusCode = 400;
-      throw err;
-    }
-    const hasPendingSameSeason = (data.rechargeOrders || []).some(
-      (item) =>
-        Number(item.user_id) === Number(userId) &&
-        item.status === "pending_review" &&
-        item.order_type === "season_member" &&
-        String(item.season_label || "") === String(config.season_member_season_label || "")
-    );
-    if (hasPendingSameSeason) {
-      const err = new Error("season_member_pending_review");
-      err.statusCode = 400;
-      throw err;
-    }
-  }
-
-  const baseQuotaAmount = Number(quotaAmount);
-  const bonusQuotaAmount =
-    (normalizedOrderType === "normal" || normalizedOrderType === "residual_transfer") &&
-    memberState.active
-      ? Math.floor(baseQuotaAmount * Number(config.season_member_bonus_rate || 0))
-      : 0;
-  const normalizedPaymentChannel =
-    normalizedOrderType === "residual_transfer"
-      ? "game_residual_transfer"
-      : String(paymentChannel || "").trim() === "wechat_qr"
-        ? "wechat_qr"
-        : "alipay_qr";
-
-  const rechargeOrder = {
-    id: nextId(data.rechargeOrders || []),
-    user_id: Number(userId),
-    channel: normalizedPaymentChannel,
-    order_type: normalizedOrderType,
-    amount_yuan: Number(amountYuan),
-    transfer_amount:
-      normalizedOrderType === "residual_transfer" ? Number(transferAmount || amountYuan || 0) : null,
-    transfer_unit:
-      normalizedOrderType === "residual_transfer" ? String(transferUnit || config.residual_unit_label || "残卷") : null,
-    transfer_target_role_id:
-      normalizedOrderType === "residual_transfer"
-        ? String(transferTargetRoleId || config.residual_admin_role_id || "584967604")
-        : null,
-    transfer_target_role_name:
-      normalizedOrderType === "residual_transfer"
-        ? String(transferTargetRoleName || config.residual_admin_role_name || "admin残卷")
-        : null,
-    base_quota_amount: baseQuotaAmount,
-    bonus_quota_amount: bonusQuotaAmount,
-    quota_amount: baseQuotaAmount + bonusQuotaAmount,
-    season_label:
-      normalizedOrderType === "season_member" ? String(config.season_member_season_label || "") : null,
-    payment_reference: String(paymentReference || "").trim(),
-    payer_note: payerNote ? String(payerNote).trim() : null,
-    admin_remark: null,
-    status: "pending_review",
-    reviewed_by: null,
-    reviewed_at: null,
-    created_at: now(),
-    updated_at: now(),
-  };
-
-  data.rechargeOrders.push(rechargeOrder);
-  addAuditLog(data, {
-    actorUserId: Number(userId),
-    targetType: "recharge_order",
-    targetId: rechargeOrder.id,
-    action: "recharge_order_create",
-    detail: {
-      amount_yuan: rechargeOrder.amount_yuan,
-      transfer_amount: rechargeOrder.transfer_amount,
-      transfer_unit: rechargeOrder.transfer_unit,
-      quota_amount: rechargeOrder.quota_amount,
-      order_type: rechargeOrder.order_type,
-      channel: rechargeOrder.channel,
-    },
+  return ordersStore.createRechargeOrder(userId, {
+    amountYuan,
+    quotaAmount,
+    transferAmount,
+    transferUnit,
+    transferTargetRoleId,
+    transferTargetRoleName,
+    paymentChannel,
+    paymentReference,
+    payerNote,
+    orderType,
   });
-  writeData(data);
-  return listRechargeOrders({ rechargeOrderId: rechargeOrder.id, userId: Number(userId), limit: 1 })[0];
 }
 
 function createDrawServiceOrder(userId, { amountQuota }) {
-  const data = readData();
-  const user = data.users.find((item) => item.id === Number(userId));
-  if (!user) {
-    const err = new Error("user_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (user.status !== "active") {
-    const err = new Error("user_disabled");
-    err.statusCode = 403;
-    throw err;
-  }
-
-  const normalizedAmount = normalizeDrawAmountQuota(amountQuota);
-  if (!normalizedAmount) {
-    const err = new Error("draw_amount_quota_invalid");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  applyQuotaChange(data, {
-    userId,
-    changeAmount: -normalizedAmount,
-    type: "order_deduct",
-    remark: `draw_service_order_create:${normalizedAmount}`,
-  });
-
-  const drawService = {
-    amount_quota: normalizedAmount,
-    season_label: getCurrentDrawSeasonLabel(data),
-    returned_cards_text: null,
-    best_gold_card: null,
-    rebate_quota: 0,
-    reward_summary: null,
-    reward_milestones: 0,
-    atlas_bonus_granted: false,
-    atlas_bonus_label: null,
-    video_notice: DRAW_SERVICE_VIDEO_NOTICE,
-    rule_summary: DRAW_SERVICE_RULE_SUMMARY,
-    settled_at: null,
-  };
-
-  const order = {
-    id: nextId(data.orders),
-    user_id: Number(userId),
-    total_quota: normalizedAmount,
-    status: "pending",
-    remark: null,
-    order_source: "draw_service",
-    draw_service: drawService,
-    created_at: now(),
-    updated_at: now(),
-  };
-  data.orders.push(order);
-
-  data.orderItems.push({
-    id: nextId(data.orderItems),
-    order_id: order.id,
-    item_kind: "service",
-    product_id: null,
-    bundle_sku_id: null,
-    product_name: `代抽 ${normalizedAmount} 额度`,
-    product_snapshot: getDrawServiceSnapshot(drawService),
-    price_quota: normalizedAmount,
-    created_at: now(),
-  });
-
-  const quotaLog = data.quotaLogs[data.quotaLogs.length - 1];
-  if (quotaLog && quotaLog.type === "order_deduct" && !quotaLog.order_id) {
-    quotaLog.order_id = order.id;
-  }
-
-  addAuditLog(data, {
-    actorUserId: Number(userId),
-    targetType: "order",
-    targetId: order.id,
-    action: "draw_service_order_create",
-    detail: {
-      amount_quota: normalizedAmount,
-      season_label: drawService.season_label,
-    },
-  });
-
-  writeData(data);
-  return listOrders({ orderId: order.id, userId: Number(userId), limit: 1 })[0];
+  return ordersStore.createDrawServiceOrder(userId, { amountQuota });
 }
 
 function reviewRechargeOrder(rechargeOrderId, { status, adminRemark = null }, actorUserId) {
-  const data = readData();
-  const rechargeOrder = (data.rechargeOrders || []).find(
-    (item) => item.id === Number(rechargeOrderId)
-  );
-  if (!rechargeOrder) return null;
-  if (rechargeOrder.status !== "pending_review") {
-    const err = new Error("recharge_order_review_not_allowed");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  rechargeOrder.status = status;
-  rechargeOrder.admin_remark = adminRemark ? String(adminRemark).trim() : null;
-  rechargeOrder.reviewed_by = Number(actorUserId);
-  rechargeOrder.reviewed_at = now();
-  rechargeOrder.updated_at = now();
-
-  if (status === "approved") {
-    const user = data.users.find((item) => item.id === Number(rechargeOrder.user_id));
-    const config = normalizeRechargeConfig(data.rechargeConfig || {});
-    if (rechargeOrder.order_type === "season_member" && user) {
-      user.season_member = {
-        season_label: String(rechargeOrder.season_label || config.season_member_season_label || ""),
-        activated_at: now(),
-        source_recharge_order_id: Number(rechargeOrder.id),
-      };
-      user.updated_at = now();
-      applyQuotaChange(data, {
-        userId: rechargeOrder.user_id,
-        changeAmount: Number(rechargeOrder.base_quota_amount || rechargeOrder.quota_amount || 0),
-        type: "season_member_credit",
-        remark: rechargeOrder.admin_remark || `season_member#${rechargeOrder.id}`,
-        bonusAmount: 0,
-      });
-    } else {
-      applyQuotaChange(data, {
-        userId: rechargeOrder.user_id,
-        changeAmount: Number(rechargeOrder.base_quota_amount || rechargeOrder.quota_amount || 0),
-        type:
-          rechargeOrder.order_type === "residual_transfer"
-            ? "residual_transfer_credit"
-            : "recharge_credit",
-        remark: rechargeOrder.admin_remark || `recharge_order#${rechargeOrder.id}`,
-        bonusAmount: Number(rechargeOrder.bonus_quota_amount || 0),
-      });
-    }
-    maybeGrantBeginnerGuideReward(data, rechargeOrder.user_id, actorUserId, "recharge_approved");
-  }
-
-  addAuditLog(data, {
-    actorUserId: Number(actorUserId),
-    targetType: "recharge_order",
-    targetId: rechargeOrder.id,
-    action: "recharge_order_review",
-    detail: {
-      status,
-      quota_amount: rechargeOrder.quota_amount,
-      base_quota_amount: rechargeOrder.base_quota_amount,
-      bonus_quota_amount: rechargeOrder.bonus_quota_amount,
-      amount_yuan: rechargeOrder.amount_yuan,
-      transfer_amount: rechargeOrder.transfer_amount,
-      transfer_unit: rechargeOrder.transfer_unit,
-      order_type: rechargeOrder.order_type,
-      admin_remark: rechargeOrder.admin_remark,
-    },
-  });
-
-  writeData(data);
-  return listRechargeOrders({ rechargeOrderId: rechargeOrder.id, limit: 1 })[0];
+  return ordersStore.reviewRechargeOrder(rechargeOrderId, { status, adminRemark }, actorUserId);
 }
 
 function updateUserStatus(userId, status, actorUserId) {
-  const data = readData();
-  const user = data.users.find((item) => item.id === Number(userId));
-  if (!user) return null;
-  user.status = status;
-  user.updated_at = now();
-  addAuditLog(data, {
-    actorUserId,
-    targetType: "user",
-    targetId: user.id,
-    action: "user_status_update",
-    detail: { status },
-  });
-  writeData(data);
-  return withQuota(user, data);
+  return usersStore.updateUserStatus(userId, status, actorUserId);
 }
 
-function createOrder(userId, itemId, itemKind = "card") {
-  const data = readData();
-  const user = data.users.find((item) => item.id === Number(userId));
-  if (!user) {
-    const err = new Error("user_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (user.status !== "active") {
-    const err = new Error("user_disabled");
-    err.statusCode = 403;
-    throw err;
-  }
-
-  const isBundle = itemKind === "bundle";
-  const item = isBundle
-    ? (data.bundleSkus || []).find((bundle) => bundle.id === Number(itemId))
-    : data.products.find((product) => product.id === Number(itemId));
-
-  if (!item) {
-    const err = new Error(isBundle ? "bundle_not_found" : "product_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (!isBundle) {
-    ensureProductNotBlockedByAuction(data, item.id, "product_in_auction");
-  }
-  if (item.status !== "on_sale") {
-    const err = new Error(isBundle ? "bundle_not_on_sale" : "product_not_on_sale");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (!isBundle && Number(item.stock) <= 0) {
-    const err = new Error("product_out_of_stock");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (isBundle && item.stock !== null && item.stock !== undefined && Number(item.stock) <= 0) {
-    const err = new Error("bundle_out_of_stock");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const effectivePriceQuota = getEffectiveQuotaPrice(item.price_quota, item.discount_rate);
-
-  applyQuotaChange(data, {
-    userId,
-    changeAmount: -effectivePriceQuota,
-    type: "order_deduct",
-    remark: `order create for ${itemKind} ${item.id}`,
-  });
-
-  const order = {
-    id: nextId(data.orders),
-    user_id: Number(userId),
-    total_quota: effectivePriceQuota,
-    status: "pending",
-    remark: null,
-    created_at: now(),
-    updated_at: now(),
-  };
-  data.orders.push(order);
-
-  data.orderItems.push({
-    id: nextId(data.orderItems),
-    order_id: order.id,
-    item_kind: itemKind,
-    product_id: isBundle ? null : item.id,
-    bundle_sku_id: isBundle ? item.id : null,
-    product_name: item.name,
-    product_snapshot: clone(item),
-    price_quota: effectivePriceQuota,
-    created_at: now(),
-  });
-
-  if (isBundle) {
-    if (item.stock !== null && item.stock !== undefined) {
-      item.stock = Number(item.stock) - 1;
-      if (item.stock <= 0) {
-        item.status = "sold";
-      }
-    }
-    item.updated_at = now();
-  } else {
-    item.stock = Number(item.stock) - 1;
-    item.updated_at = now();
-    if (item.stock <= 0) {
-      item.status = "sold";
-    }
-  }
-
-  const quotaLog = data.quotaLogs[data.quotaLogs.length - 1];
-  if (quotaLog && quotaLog.type === "order_deduct" && !quotaLog.order_id) {
-    quotaLog.order_id = order.id;
-  }
-
-  addAuditLog(data, {
-    actorUserId: userId,
-    targetType: "order",
-    targetId: order.id,
-    action: "order_create",
-    detail: { item_kind: itemKind, item_id: item.id, total_quota: effectivePriceQuota },
-  });
-
-  repriceDataProducts(data);
-  writeData(data);
-  return listOrders({ orderId: order.id, userId: Number(userId), limit: 1 })[0];
+function createOrder(userId, itemId, itemKind = "card", { remark = null } = {}) {
+  return ordersStore.createOrder(userId, itemId, itemKind, { remark });
 }
 
 function createGuestTransferOrder(
   itemId,
   itemKind = "card",
   {
+    userId = null,
     gameRoleId,
     gameRoleName,
     nickname = null,
@@ -3330,323 +1683,29 @@ function createGuestTransferOrder(
     payerNote = null,
   } = {}
 ) {
-  const data = readData();
-  const isBundle = itemKind === "bundle";
-  const item = isBundle
-    ? (data.bundleSkus || []).find((bundle) => bundle.id === Number(itemId))
-    : data.products.find((product) => product.id === Number(itemId));
-
-  if (!item) {
-    const err = new Error(isBundle ? "bundle_not_found" : "product_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (!isBundle) {
-    ensureProductNotBlockedByAuction(data, item.id, "product_in_auction");
-  }
-  if (item.status !== "on_sale") {
-    const err = new Error(isBundle ? "bundle_not_on_sale" : "product_not_on_sale");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (!isBundle && Number(item.stock) <= 0) {
-    const err = new Error("product_out_of_stock");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (isBundle && item.stock !== null && item.stock !== undefined && Number(item.stock) <= 0) {
-    const err = new Error("bundle_out_of_stock");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const effectivePriceQuota = getEffectiveQuotaPrice(item.price_quota, item.discount_rate);
-  const normalizedPaymentChannel =
-    String(paymentChannel || "").trim() === "wechat_qr"
-      ? "wechat_qr"
-      : String(paymentChannel || "").trim() === "game_residual_transfer"
-        ? "game_residual_transfer"
-        : "alipay_qr";
-  const normalizedAmountYuan =
-    normalizedPaymentChannel === "game_residual_transfer"
-      ? null
-      : Number(Number(amountYuan || 0).toFixed(2));
-  const config = normalizeRechargeConfig(data?.rechargeConfig || buildDefaultRechargeConfig());
-  const expectedAmountYuan = getQuotaCashAmountFromStore(data, effectivePriceQuota);
-  const normalizedTransferAmount =
-    normalizedPaymentChannel === "game_residual_transfer"
-      ? Math.max(Number(transferAmount || 0), 0)
-      : null;
-  const expectedTransferAmount =
-    normalizedPaymentChannel === "game_residual_transfer"
-      ? Math.ceil(effectivePriceQuota / Math.max(Number(config.residual_quota_per_unit || 1), 1))
-      : null;
-
-  if (normalizedPaymentChannel === "game_residual_transfer") {
-    if (!config.residual_transfer_enabled) {
-      const err = new Error("residual_transfer_disabled");
-      err.statusCode = 400;
-      throw err;
-    }
-    if (!Number.isInteger(normalizedTransferAmount) || normalizedTransferAmount <= 0) {
-      const err = new Error("transfer_amount_invalid");
-      err.statusCode = 400;
-      throw err;
-    }
-    if (normalizedTransferAmount !== expectedTransferAmount) {
-      const err = new Error("transfer_amount_mismatch");
-      err.statusCode = 400;
-      err.payload = {
-        expected_transfer_amount: expectedTransferAmount,
-        transfer_unit: config.residual_unit_label || "残卷",
-      };
-      throw err;
-    }
-  } else if (
-    !Number.isFinite(normalizedAmountYuan) ||
-    normalizedAmountYuan <= 0 ||
-    Math.abs(normalizedAmountYuan - expectedAmountYuan) > 0.01
-  ) {
-    const err = new Error("amount_yuan_mismatch");
-    err.statusCode = 400;
-    err.payload = { expected_amount_yuan: expectedAmountYuan };
-    throw err;
-  }
-
-  const order = {
-    id: nextId(data.orders),
-    user_id: null,
-    total_quota: effectivePriceQuota,
-    status: "pending",
-    remark: payerNote ? String(payerNote).trim() : null,
-    order_source: "guest_transfer",
-    buyer_label: String(gameRoleName || "").trim(),
-    guest_game_role_id: String(gameRoleId || "").trim(),
-    guest_game_role_name: String(gameRoleName || "").trim(),
-    guest_game_server: null,
-    guest_nickname: nickname ? String(nickname).trim() : null,
-    payment_channel: normalizedPaymentChannel,
-    payment_reference: String(paymentReference || "").trim(),
-    payment_amount_yuan: normalizedAmountYuan,
-    transfer_amount: normalizedTransferAmount,
-    transfer_unit:
-      normalizedPaymentChannel === "game_residual_transfer"
-        ? String(config.residual_unit_label || "残卷")
-        : null,
-    transfer_target_role_id:
-      normalizedPaymentChannel === "game_residual_transfer"
-        ? String(config.residual_admin_role_id || "584967604")
-        : null,
-    transfer_target_role_name:
-      normalizedPaymentChannel === "game_residual_transfer"
-        ? String(config.residual_admin_role_name || "admin残卷")
-        : null,
-    created_at: now(),
-    updated_at: now(),
-  };
-  data.orders.push(order);
-
-  data.orderItems.push({
-    id: nextId(data.orderItems),
-    order_id: order.id,
-    item_kind: itemKind,
-    product_id: isBundle ? null : item.id,
-    bundle_sku_id: isBundle ? item.id : null,
-    product_name: item.name,
-    product_snapshot: clone(item),
-    price_quota: effectivePriceQuota,
-    created_at: now(),
+  return ordersStore.createGuestTransferOrder(itemId, itemKind, {
+    userId,
+    gameRoleId,
+    gameRoleName,
+    nickname,
+    amountYuan,
+    transferAmount,
+    paymentChannel,
+    paymentReference,
+    payerNote,
   });
-
-  if (isBundle) {
-    if (item.stock !== null && item.stock !== undefined) {
-      item.stock = Number(item.stock) - 1;
-      if (item.stock <= 0) item.status = "sold";
-    }
-    item.updated_at = now();
-  } else {
-    item.stock = Number(item.stock) - 1;
-    if (item.stock <= 0) item.status = "sold";
-    item.updated_at = now();
-  }
-
-  addAuditLog(data, {
-    actorUserId: null,
-    targetType: "order",
-    targetId: order.id,
-    action: "guest_transfer_order_create",
-    detail: {
-      item_kind: itemKind,
-      item_id: item.id,
-      total_quota: effectivePriceQuota,
-      game_role_id: order.guest_game_role_id,
-      game_role_name: order.guest_game_role_name,
-      payment_channel: order.payment_channel,
-      payment_amount_yuan: order.payment_amount_yuan,
-      transfer_amount: order.transfer_amount,
-      transfer_unit: order.transfer_unit,
-    },
-  });
-
-  repriceDataProducts(data);
-  writeData(data);
-  return listOrders({ orderId: order.id, limit: 1 })[0];
 }
 
 function requestOrderCancellation(orderId, userId, remark = null) {
-  const data = readData();
-  const order = data.orders.find(
-    (item) => item.id === Number(orderId) && item.user_id === Number(userId)
-  );
-  if (!order) return null;
-
-  if (order.status !== "pending") {
-    const err = new Error("order_cancel_request_not_allowed");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  order.status = "cancel_requested";
-  order.remark = remark || order.remark || null;
-  order.updated_at = now();
-
-  addAuditLog(data, {
-    actorUserId: userId,
-    targetType: "order",
-    targetId: order.id,
-    action: "order_cancel_request",
-    detail: { remark: remark || null },
-  });
-
-  writeData(data);
-  return listOrders({ orderId: order.id, userId: Number(userId), limit: 1 })[0];
+  return ordersStore.requestOrderCancellation(orderId, userId, remark);
 }
 
 function updateOrderStatus(orderId, status, remark, actorUserId, options = {}) {
-  const data = readData();
-  const order = data.orders.find((item) => item.id === Number(orderId));
-  if (!order) return null;
-  const previousStatus = order.status;
-  if (order.status === "cancelled" && status !== "cancelled") {
-    const err = new Error("invalid_order_transition");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  if (status === "cancelled" && order.status !== "cancelled") {
-    const items = data.orderItems.filter((item) => item.order_id === order.id);
-    items.forEach((item) => {
-      if (item.item_kind === "bundle") {
-        const bundle = (data.bundleSkus || []).find((entry) => entry.id === item.bundle_sku_id);
-        if (bundle) {
-          if (bundle.stock !== null && bundle.stock !== undefined) {
-            bundle.stock = Number(bundle.stock) + 1;
-          }
-          if (bundle.status === "sold") bundle.status = "on_sale";
-          bundle.updated_at = now();
-        }
-        return;
-      }
-
-      const product = data.products.find((p) => p.id === item.product_id);
-      if (product) {
-        product.stock = Number(product.stock) + 1;
-        if (product.status === "sold") product.status = "on_sale";
-        product.updated_at = now();
-      }
-    });
-    if (order.user_id !== null && order.user_id !== undefined) {
-      applyQuotaChange(data, {
-        userId: order.user_id,
-        changeAmount: Number(order.total_quota),
-        type: "order_refund",
-        orderId: order.id,
-        remark: remark || "admin cancel order",
-      });
-    }
-  }
-
-  order.status = status;
-  order.remark = remark || null;
-  order.updated_at = now();
-  if (status === "confirmed" && previousStatus !== "confirmed" && isDrawServiceOrder(order)) {
-    const returnedCardsText = String(options.returnedCardsText || "").trim();
-    const bestGoldCard = String(options.bestGoldCard || "").trim();
-    if (!returnedCardsText) {
-      const err = new Error("draw_returned_cards_required");
-      err.statusCode = 400;
-      throw err;
-    }
-
-    const reward = calculateDrawServiceReward(data, order);
-    if (reward.grantsAtlasBonus && !bestGoldCard) {
-      const err = new Error("draw_best_gold_card_required");
-      err.statusCode = 400;
-      throw err;
-    }
-
-    order.draw_service = {
-      ...(order.draw_service || {}),
-      season_label: reward.seasonLabel,
-      returned_cards_text: returnedCardsText,
-      best_gold_card: bestGoldCard || null,
-      rebate_quota: reward.rebateQuota,
-      reward_summary: reward.rewardSummary,
-      reward_milestones: reward.crossedMilestones,
-      atlas_bonus_granted: reward.grantsAtlasBonus,
-      atlas_bonus_label: reward.atlasBonusLabel,
-      season_total_before: reward.previousTotal,
-      season_total_after: reward.nextTotal,
-      video_notice: DRAW_SERVICE_VIDEO_NOTICE,
-      settled_at: now(),
-    };
-
-    if (reward.rebateQuota > 0) {
-      applyQuotaChange(data, {
-        userId: order.user_id,
-        changeAmount: reward.rebateQuota,
-        type: "draw_service_rebate",
-        orderId: order.id,
-        remark: reward.rewardSummary,
-        bonusAmount: 0,
-      });
-    }
-  }
-  if (status === "confirmed" && previousStatus !== "confirmed") {
-    maybeGrantBeginnerGuideReward(data, order.user_id, actorUserId, "order_confirmed");
-  }
-
-  addAuditLog(data, {
-    actorUserId,
-    targetType: "order",
-    targetId: order.id,
-    action: "order_status_update",
-    detail: { from: previousStatus, to: status, remark: remark || null },
-  });
-
-  repriceDataProducts(data);
-  writeData(data);
-  return listOrders({ orderId: order.id, limit: 1 })[0];
+  return ordersStore.updateOrderStatus(orderId, status, remark, actorUserId, options);
 }
 
 function updateOrderRemark(orderId, remark, actorUserId) {
-  const data = readData();
-  const order = data.orders.find((item) => item.id === Number(orderId));
-  if (!order) return null;
-
-  order.remark = remark || null;
-  order.updated_at = now();
-
-  addAuditLog(data, {
-    actorUserId,
-    targetType: "order",
-    targetId: order.id,
-    action: "order_remark_update",
-    detail: { remark: order.remark },
-  });
-
-  writeData(data);
-  return listOrders({ orderId: order.id, limit: 1 })[0];
+  return ordersStore.updateOrderRemark(orderId, remark, actorUserId);
 }
 
 function clearProductManualPrice(productId, actorUserId) {
@@ -3662,7 +1721,7 @@ function clearProductManualPrice(productId, actorUserId) {
     actorUserId,
     targetType: "product",
     targetId: product.id,
-    action: "product_manual_price_clear",
+    action: AUDIT_ACTIONS.PRODUCT_MANUAL_PRICE_CLEAR,
     detail: null,
   });
 
@@ -3670,15 +1729,15 @@ function clearProductManualPrice(productId, actorUserId) {
   return clone(data.products.find((item) => item.id === Number(productId)));
 }
 
-function recalculatePricing(actorUserId = null) {
+function recalculatePricing(actorUserId = null, requestId = null) {
   const data = readData();
   repriceDataProducts(data);
   addAuditLog(data, {
     actorUserId,
     targetType: "product",
     targetId: 0,
-    action: "product_pricing_recalculate",
-    detail: { product_count: data.products.length },
+    action: AUDIT_ACTIONS.PRODUCT_PRICING_RECALCULATE,
+    detail: { product_count: data.products.length, request_id: requestId },
   });
   writeData(data);
   return clone(data.products);
@@ -3696,413 +1755,135 @@ function createAuction(
   },
   actorUserId
 ) {
-  const data = readData();
-  const product = data.products.find((item) => Number(item.id) === Number(productId));
-  if (!product) {
-    const err = new Error("product_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  const productStatus = String(product.status || "").trim();
-  const canAuctionOffSale =
-    productStatus === "off_sale" && Number(product.stock) > 0 && !hasConfirmedSaleRecord(data, product.id);
-  if (productStatus !== "on_sale" && !canAuctionOffSale) {
-    const err = new Error("product_not_on_sale");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (Number(product.stock) <= 0) {
-    const err = new Error("product_out_of_stock");
-    err.statusCode = 400;
-    throw err;
-  }
-  ensureProductNotBlockedByAuction(data, product.id, "product_in_auction");
-
-  const normalizedStartingPrice = Number(startingPriceQuota);
-  const normalizedIncrement = Number(minIncrementQuota);
-  const startValue = startsAt ? new Date(startsAt) : new Date();
-  const endValue = new Date(endsAt);
-  if (!Number.isInteger(normalizedStartingPrice) || normalizedStartingPrice <= 0) {
-    const err = new Error("auction_starting_price_invalid");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (!Number.isInteger(normalizedIncrement) || normalizedIncrement <= 0) {
-    const err = new Error("auction_min_increment_invalid");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (Number.isNaN(startValue.getTime()) || Number.isNaN(endValue.getTime())) {
-    const err = new Error("auction_time_invalid");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (endValue.getTime() <= startValue.getTime()) {
-    const err = new Error("auction_end_before_start");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const auction = {
-    id: nextId(data.auctions || []),
-    item_kind: "card",
-    product_id: Number(product.id),
-    title: String(title || "").trim() || product.name,
-    remark: remark ? String(remark).trim() : null,
-    status: startValue.getTime() > Date.now() ? "scheduled" : "live",
-    product_snapshot: clone(product),
-    starting_price_quota: normalizedStartingPrice,
-    min_increment_quota: normalizedIncrement,
-    current_price_quota: normalizedStartingPrice,
-    current_bid_user_id: null,
-    current_bid_at: null,
-    starts_at: startValue.toISOString(),
-    ends_at: endValue.toISOString(),
-    settled_order_id: null,
-    settled_at: null,
-    cancelled_at: null,
-    cancelled_reason: null,
-    winning_bid_amount: null,
-    winning_bid_user_id: null,
-    created_by: Number(actorUserId),
-    created_at: now(),
-    updated_at: now(),
-  };
-  data.auctions.push(auction);
-
-  addAuditLog(data, {
-    actorUserId,
-    targetType: "auction",
-    targetId: auction.id,
-    action: "auction_create",
-    detail: {
-      product_id: Number(product.id),
-      starting_price_quota: normalizedStartingPrice,
-      min_increment_quota: normalizedIncrement,
-      starts_at: auction.starts_at,
-      ends_at: auction.ends_at,
-    },
-  });
-
-  writeData(data);
-  return listAuctions({ auctionId: auction.id })[0];
+  return auctionsStore.createAuction(
+    productId,
+    { title, startingPriceQuota, minIncrementQuota, startsAt, endsAt, remark },
+    actorUserId
+  );
 }
 
 function placeAuctionBid(auctionId, userId, amountQuota) {
-  const data = readData();
-  const user = data.users.find((item) => Number(item.id) === Number(userId));
-  if (!user) {
-    const err = new Error("user_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (user.status !== "active") {
-    const err = new Error("user_disabled");
-    err.statusCode = 403;
-    throw err;
-  }
-
-  refreshAuctionStatuses(data);
-  const auction = (data.auctions || []).find((item) => Number(item.id) === Number(auctionId));
-  if (!auction) {
-    const err = new Error("auction_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (String(auction.status || "") !== "live") {
-    const err = new Error("auction_not_live");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const normalizedAmount = Number(amountQuota);
-  if (!Number.isInteger(normalizedAmount) || normalizedAmount <= 0) {
-    const err = new Error("auction_bid_amount_invalid");
-    err.statusCode = 400;
-    throw err;
-  }
-  const nextMinBidQuota = auction.current_bid_user_id
-    ? Number(auction.current_price_quota || 0) + Number(auction.min_increment_quota || 0)
-    : Number(auction.starting_price_quota || 0);
-  if (normalizedAmount < nextMinBidQuota) {
-    const err = new Error("auction_bid_too_low");
-    err.statusCode = 400;
-    err.payload = { next_min_bid_quota: nextMinBidQuota };
-    throw err;
-  }
-
-  const bid = {
-    id: nextId(data.auctionBids || []),
-    auction_id: Number(auction.id),
-    user_id: Number(userId),
-    amount_quota: normalizedAmount,
-    created_at: now(),
-  };
-  data.auctionBids.push(bid);
-  auction.current_price_quota = normalizedAmount;
-  auction.current_bid_user_id = Number(userId);
-  auction.current_bid_at = bid.created_at;
-  auction.updated_at = now();
-
-  addAuditLog(data, {
-    actorUserId: Number(userId),
-    targetType: "auction",
-    targetId: Number(auction.id),
-    action: "auction_bid_create",
-    detail: {
-      amount_quota: normalizedAmount,
-      next_min_bid_quota: normalizedAmount + Number(auction.min_increment_quota || 0),
-    },
-  });
-
-  writeData(data);
-  return listAuctions({ auctionId: auction.id, publicView: true })[0];
+  return auctionsStore.placeAuctionBid(auctionId, userId, amountQuota);
 }
 
 function settleAuction(auctionId, { remark = null, settlementMode = "offline" } = {}, actorUserId) {
-  const data = readData();
-  refreshAuctionStatuses(data);
-  const auction = (data.auctions || []).find((item) => Number(item.id) === Number(auctionId));
-  if (!auction) {
-    const err = new Error("auction_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (!["ended", "live"].includes(String(auction.status || "").trim())) {
-    const err = new Error("auction_settle_not_allowed");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (String(auction.status || "").trim() === "live" && new Date(auction.ends_at).getTime() > Date.now()) {
-    const err = new Error("auction_not_ended");
-    err.statusCode = 400;
-    throw err;
-  }
-  if (!auction.current_bid_user_id) {
-    const err = new Error("auction_no_bids");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const product = data.products.find((item) => Number(item.id) === Number(auction.product_id));
-  if (!product) {
-    const err = new Error("product_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (Number(product.stock) <= 0) {
-    const err = new Error("product_out_of_stock");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const winningAmount = Number(auction.current_price_quota || auction.starting_price_quota || 0);
-  const normalizedSettlementMode =
-    String(settlementMode || "").trim() === "direct_quota" ? "direct_quota" : "offline";
-
-  if (normalizedSettlementMode === "direct_quota") {
-    applyQuotaChange(data, {
-      userId: Number(auction.current_bid_user_id),
-      changeAmount: -winningAmount,
-      type: "order_deduct",
-      remark: `auction_settle:${auction.id}`,
-      bonusAmount: 0,
-    });
-  }
-
-  const order = {
-    id: nextId(data.orders),
-    user_id: Number(auction.current_bid_user_id),
-    total_quota: winningAmount,
-    status: "confirmed",
-    remark: remark ? String(remark).trim() : null,
-    order_source: "auction",
-    auction_id: Number(auction.id),
-    payment_mode: normalizedSettlementMode,
-    created_at: now(),
-    updated_at: now(),
-  };
-  data.orders.push(order);
-
-  data.orderItems.push({
-    id: nextId(data.orderItems),
-    order_id: order.id,
-    item_kind: "card",
-    product_id: Number(product.id),
-    bundle_sku_id: null,
-    product_name: product.name,
-    product_snapshot: clone(product),
-    price_quota: winningAmount,
-    created_at: now(),
-  });
-
-  if (normalizedSettlementMode === "direct_quota") {
-    const quotaLog = data.quotaLogs[data.quotaLogs.length - 1];
-    if (quotaLog && quotaLog.type === "order_deduct" && !quotaLog.order_id) {
-      quotaLog.order_id = order.id;
-    }
-  }
-
-  product.stock = Number(product.stock) - 1;
-  product.updated_at = now();
-  if (product.stock <= 0) {
-    product.status = "sold";
-  }
-
-  auction.status = "settled";
-  auction.settled_order_id = Number(order.id);
-  auction.settled_at = now();
-  auction.winning_bid_amount = winningAmount;
-  auction.winning_bid_user_id = Number(auction.current_bid_user_id);
-  auction.remark = remark ? String(remark).trim() : auction.remark || null;
-  auction.updated_at = now();
-
-  addAuditLog(data, {
-    actorUserId,
-    targetType: "auction",
-    targetId: Number(auction.id),
-    action: "auction_settle",
-    detail: {
-      order_id: Number(order.id),
-      product_id: Number(product.id),
-      winning_bid_amount: winningAmount,
-      winning_bid_user_id: Number(auction.current_bid_user_id),
-      settlement_mode: normalizedSettlementMode,
-    },
-  });
-
-  repriceDataProducts(data);
-  writeData(data);
-  return listAuctions({ auctionId: auction.id })[0];
+  return auctionsStore.settleAuction(auctionId, { remark, settlementMode }, actorUserId);
 }
 
 function cancelAuction(auctionId, { reason = null, remark = null } = {}, actorUserId) {
-  const data = readData();
-  refreshAuctionStatuses(data);
-  const auction = (data.auctions || []).find((item) => Number(item.id) === Number(auctionId));
-  if (!auction) {
-    const err = new Error("auction_not_found");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (["settled", "cancelled"].includes(String(auction.status || "").trim())) {
-    const err = new Error("auction_cancel_not_allowed");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  auction.status = "cancelled";
-  auction.cancelled_at = now();
-  auction.cancelled_reason = reason ? String(reason).trim() : null;
-  auction.remark = remark ? String(remark).trim() : auction.remark || null;
-  auction.updated_at = now();
-
-  addAuditLog(data, {
-    actorUserId,
-    targetType: "auction",
-    targetId: Number(auction.id),
-    action: "auction_cancel",
-    detail: {
-      reason: auction.cancelled_reason,
-      remark: auction.remark,
-      bid_count: Number(
-        (data.auctionBids || []).filter((bid) => Number(bid.auction_id) === Number(auction.id)).length
-      ),
-    },
-  });
-
-  writeData(data);
-  return listAuctions({ auctionId: auction.id })[0];
+  return auctionsStore.cancelAuction(auctionId, { reason, remark }, actorUserId);
 }
 
 function listAuditLogs({ keyword = "", action = "", limit = 200, offset = 0 } = {}) {
-  const data = readData();
-  let logs = (data.auditLogs || []).slice();
-  const trimmedKeyword = String(keyword || "").trim().toLowerCase();
-  const trimmedAction = String(action || "").trim().toLowerCase();
-
-  if (trimmedAction && trimmedAction !== "all") {
-    logs = logs.filter((log) => String(log.action || "").toLowerCase() === trimmedAction);
-  }
-
-  if (trimmedKeyword) {
-    logs = logs.filter((log) => {
-      const actor = data.users.find((item) => item.id === log.actor_user_id);
-      return [
-        log.action,
-        log.target_type,
-        String(log.target_id || ""),
-        actor?.game_role_name,
-        actor?.nickname,
-        JSON.stringify(log.detail || {}),
-      ]
-        .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(trimmedKeyword));
-    });
-  }
-
-  logs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const normalizedOffset = Math.max(Number(offset) || 0, 0);
-  const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
-
-  return clone(
-    logs.slice(normalizedOffset, end).map((log) => {
-      const actor = data.users.find((item) => item.id === log.actor_user_id);
-      return {
-        ...log,
-        actor_role_name: actor?.game_role_name || null,
-        actor_nickname: actor?.nickname || null,
-      };
-    })
-  );
+  return queryAdminAuditLogs({ keyword, action, limit, offset }).items;
 }
 
 function listQuotaLogs({ userId = null, keyword = "", type = "", limit = 200, offset = 0 } = {}) {
-  const data = readData();
-  let logs = (data.quotaLogs || []).slice();
-  const trimmedKeyword = String(keyword || "").trim().toLowerCase();
-  const trimmedType = String(type || "").trim().toLowerCase();
-
-  if (userId !== null && userId !== undefined && userId !== "") {
-    logs = logs.filter((item) => Number(item.user_id) === Number(userId));
-  }
-
-  if (trimmedType && trimmedType !== "all") {
-    logs = logs.filter((item) => String(item.type || "").toLowerCase() === trimmedType);
-  }
-
-  if (trimmedKeyword) {
-    logs = logs.filter((log) => {
-      const user = data.users.find((item) => Number(item.id) === Number(log.user_id));
-      return [
-        user?.game_role_id,
-        user?.game_role_name,
-        user?.game_server,
-        log.type,
-        String(log.order_id || ""),
-        log.remark,
-      ]
-        .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(trimmedKeyword));
-    });
-  }
-
-  logs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const normalizedOffset = Math.max(Number(offset) || 0, 0);
-  const end = limit === null ? undefined : normalizedOffset + Math.max(Number(limit) || 0, 0);
-
-  return clone(
-    logs.slice(normalizedOffset, end).map((log) => {
-      const user = data.users.find((item) => Number(item.id) === Number(log.user_id));
-      return {
-        ...log,
-        game_role_id: user?.game_role_id || null,
-        game_role_name: user?.game_role_name || null,
-        game_server: user?.game_server || null,
-      };
-    })
-  );
+  return queryAdminQuotaLogs({ userId, keyword, type, limit, offset }).items;
 }
+
+configureStoreRuntime({
+  readData,
+  writeData,
+  clone,
+  now,
+  nextId,
+  paginateItems,
+  buildAdminProductView,
+  buildAdminProductQueryResult,
+  hydrateOrders,
+  hydrateRechargeOrders,
+  hydrateSingleOrder,
+  hydrateSingleRechargeOrder,
+  filterOrdersForAdmin,
+  filterRechargeOrdersForAdmin,
+  filterAuditLogsForAdmin,
+  filterQuotaLogsForAdmin,
+  normalizeDiscountRate,
+  buildCardSeasonMeta,
+  getConfiguredCurrentSeasonScheduleId,
+  getLineupSlotConfig,
+  ensureLineupSlotRecord,
+  getLineupSlotState,
+  sanitizeUser,
+  hashPassword,
+  verifyPassword,
+  getSignupSeedQuota,
+  normalizeRechargeConfig,
+  repriceDataProducts,
+  buildRepriceSummary,
+  buildRepriceFailureSummary,
+  attachRepriceStatus,
+  buildDefaultRechargeConfig,
+  normalizeCardProduct,
+  normalizeBundleSku,
+  getAvailableProductStock,
+  getAuctionBuyerLabel,
+  hasConfirmedSaleRecord,
+  ensureProductNotBlockedByAuction,
+  refreshAuctionStatuses,
+  getEffectiveQuotaPrice,
+  getQuotaCashAmountFromStore,
+  getSeasonMemberState,
+  beginnerGuideRewardQuota: BEGINNER_GUIDE_REWARD_QUOTA,
+  maybeGrantBeginnerGuideReward,
+  getCurrentDrawSeasonLabel,
+  isDrawServiceOrder,
+  normalizeDrawAmountQuota,
+  getDrawServiceSnapshot,
+  calculateDrawServiceReward,
+  drawServiceVideoNotice: DRAW_SERVICE_VIDEO_NOTICE,
+  drawServiceRuleSummary: DRAW_SERVICE_RULE_SUMMARY,
+  ensureQuotaAccount,
+  applyQuotaChange,
+  addAuditLog,
+  addHelperActionLog,
+  withQuota,
+  fixedAdminAccount: FIXED_ADMIN_ACCOUNT,
+  actions: {
+    listProducts,
+    getProductById,
+    listAdminBundles,
+    updateBundleSku,
+    updateBundleSkuStatus,
+    bulkUpdateProductStatus,
+    bulkUpdateProducts,
+    updateProduct,
+    clearProductManualPrice,
+    updateProductStatus,
+    importCards,
+    recalculatePricing,
+    listRechargeOrders,
+    createRechargeOrder,
+    reviewRechargeOrder,
+    updateOrderStatus,
+    updateOrderRemark,
+    createGuestTransferOrder,
+    createOrder,
+    createDrawServiceOrder,
+    listAuctionBidSummariesForUser,
+    placeAuctionBid,
+    requestOrderCancellation,
+    listOrders,
+    createExternalOrder,
+    registerPasswordUser,
+    loginPasswordUser,
+    bindUser,
+    getUserById,
+    getQuota,
+    changeUserQuota,
+    updateUserStatus,
+    getRechargeConfig,
+    updateRechargeConfig,
+    updateSelfProfile,
+    changeSelfPassword,
+    purchaseLineupSlot,
+    listAuctions,
+    createAuction,
+    settleAuction,
+    cancelAuction,
+  },
+});
 
 module.exports = {
   HELPER_SNAPSHOT_BASE_PER_USER,
@@ -4128,6 +1909,14 @@ module.exports = {
   importCards,
   listAdminProducts,
   listAdminBundles,
+  queryAdminProducts,
+  queryAdminBundles,
+  queryAdminUsers,
+  queryAdminOrders,
+  queryAdminRechargeOrders,
+  queryAdminQuotaLogs,
+  queryAdminAuditLogs,
+  getAdminOverview,
   updateProduct,
   updateProductStatus,
   updateBundleSku,
@@ -4148,6 +1937,7 @@ module.exports = {
   purchaseLineupSlot,
   upsertHelperBinding,
   upsertHelperInventory,
+  pruneHelperInventories,
   resolveHelperBinding,
   removeHelperBinding,
   createHelperSnapshot,

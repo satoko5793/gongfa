@@ -1,7 +1,7 @@
-const devStore = require("../../services/dev-store");
+const ordersStore = require("../../domain/store/repositories/orders-file-store");
 
 async function createExternalOrder({ itemId, itemKind, buyerLabel, remark, actorUserId }) {
-  return devStore.createExternalOrder(
+  return ordersStore.createExternalOrder(
     itemId,
     itemKind,
     {

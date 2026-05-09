@@ -11,4 +11,6 @@ echo - Frontend and API are served from the same origin
 echo.
 
 cd backend
+if "%JWT_SECRET%"=="" set JWT_SECRET=dev-secret
+if "%USE_FILE_STORE%"=="" set USE_FILE_STORE=1
 node src\server.js

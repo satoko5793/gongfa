@@ -85,6 +85,9 @@ export function normalizeBindPayload(payload) {
     source.game_role_name || source.roleName || source.role_name || source.name;
   const bindTokenId = source.bind_token_id || source.tokenId || source.token_id || "";
   const nickname = source.nickname || source.nickName || "";
+  const helperToken = source.helper_token || source.helperToken || "";
+  const helperWsUrl = source.helper_ws_url || source.helperWsUrl || "";
+  const helperImportMethod = source.helper_import_method || source.helperImportMethod || "";
 
   if (!gameRoleId || !gameServer || !gameRoleName) return null;
 
@@ -94,6 +97,9 @@ export function normalizeBindPayload(payload) {
     game_role_name: String(gameRoleName),
     bind_token_id: String(bindTokenId || ""),
     nickname: String(nickname || ""),
+    helper_token: String(helperToken || ""),
+    helper_ws_url: String(helperWsUrl || ""),
+    helper_import_method: String(helperImportMethod || ""),
   };
 }
 
@@ -121,8 +127,10 @@ export async function apiFetch(path, options = {}) {
   }
 
   if (!response.ok) {
-    const error = new Error(data?.error || response.statusText);
+    const error = new Error(data?.message || data?.error || response.statusText);
     error.status = response.status;
+    error.code = data?.error || null;
+    error.requestId = data?.request_id || null;
     error.payload = data;
     throw error;
   }

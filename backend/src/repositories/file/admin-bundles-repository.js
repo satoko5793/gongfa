@@ -1,4 +1,4 @@
-const devStore = require("../../services/dev-store");
+const productsStore = require("../../domain/store/repositories/products-file-store");
 
 function notFoundError(message) {
   const err = new Error(message);
@@ -7,11 +7,11 @@ function notFoundError(message) {
 }
 
 async function listBundles() {
-  return devStore.listAdminBundles();
+  return productsStore.listAdminBundles();
 }
 
 async function updateBundle({ bundleId, patch, actorUserId }) {
-  const updated = devStore.updateBundleSku(bundleId, patch, actorUserId);
+  const updated = productsStore.updateBundleSku(bundleId, patch, actorUserId);
   if (!updated) {
     throw notFoundError("bundle_not_found");
   }
@@ -19,7 +19,7 @@ async function updateBundle({ bundleId, patch, actorUserId }) {
 }
 
 async function updateBundleStatus({ bundleId, status, actorUserId }) {
-  const updated = devStore.updateBundleSkuStatus(bundleId, status, actorUserId);
+  const updated = productsStore.updateBundleSkuStatus(bundleId, status, actorUserId);
   if (!updated) {
     throw notFoundError("bundle_not_found");
   }

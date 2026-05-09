@@ -4,7 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>功法卡片商城 - 后台</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260411-helper1" />
     <link rel="stylesheet" href="styles.css?v=20260331g" />
+    <link rel="stylesheet" href="styles/base.css?v=release-20260421-170500" />
+    <link rel="stylesheet" href="styles/admin.css?v=release-20260421-170500" />
+    <link rel="stylesheet" href="styles/admin-products.css?v=release-20260421-170500" />
+    <link rel="stylesheet" href="styles/admin-recharge.css?v=release-20260421-170500" />
+    <link rel="stylesheet" href="styles/admin-logs.css?v=release-20260421-170500" />
+    <link rel="stylesheet" href="styles/helper.css?v=release-20260421-170500" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -66,7 +73,7 @@
         <div class="section-head">
           <div>
             <div class="card-title">后台分页</div>
-            <div class="card-sub">一次只显示一个模块。订单、充值单、额度流水、审计日志按页加载。</div>
+            <div class="card-sub">一次只加载一个模块，商品、套餐、用户、订单、充值单和日志都按页请求。</div>
           </div>
         </div>
         <div class="admin-page-tabs">
@@ -82,7 +89,7 @@
       <div class="admin-page-panel" data-admin-page-panel="imports">
         <section id="imports" class="card">
           <div class="card-title">导入卡片 JSON</div>
-          <div class="card-sub">粘贴 `legacy_getinfo*.json` 后自动解析、合并并默认上架。</div>
+          <div class="card-sub">支持单份立即导入，也支持先把大号、小号的 `legacy_getinfo*.json` 暂存后再一次性合并导入。</div>
           <div class="actions">
             <button id="load-sample-json-btn" class="ghost" type="button">载入示例 JSON</button>
           </div>
@@ -96,9 +103,42 @@
               <textarea id="import-json-input" rows="12" placeholder="粘贴 JSON"></textarea>
             </label>
             <div class="actions">
+              <button id="import-batch-add-btn" type="button" class="ghost">加入批量导入</button>
               <button id="import-submit-btn" type="button" class="primary">导入并生成商品</button>
             </div>
           </form>
+          <div class="panel muted-panel" style="margin-top: 16px;">
+            <div class="panel-title">批量手工导入</div>
+            <div class="muted">适合分别准备大号、小号 JSON 后一次性合并导入，避免一份覆盖一份。</div>
+            <div class="actions" style="margin-top: 12px;">
+              <input id="import-batch-file-input" type="file" accept=".json,application/json" multiple />
+              <button id="import-batch-clear-btn" class="ghost" type="button">清空批量队列</button>
+              <button id="import-batch-submit-btn" class="primary" type="button">批量合并导入</button>
+            </div>
+            <div class="chip-row" style="margin-top: 12px;">
+              <span id="import-batch-count-chip" class="chip">已暂存 0 份</span>
+            </div>
+            <div id="import-batch-list" class="stack-list" style="margin-top: 12px;">
+              <div class="stack-item">暂时还没有加入批量导入的 JSON。</div>
+            </div>
+          </div>
+
+          <div class="panel muted-panel" style="margin-top: 16px;">
+            <div class="panel-title">双炉子手工导入功法仓库</div>
+            <div class="muted">适合 bridge 同步失败时分别上传两份炉子 JSON。支持 `legacy_getinfo*.json`，会自动按游戏 ID 匹配当前账号下的炉子绑定，再合并进功法仓库。</div>
+            <div class="actions" style="margin-top: 12px;">
+              <input id="helper-import-file-input" type="file" accept=".json,application/json" multiple />
+              <button id="helper-import-clear-btn" class="ghost" type="button">清空功法队列</button>
+              <button id="helper-import-submit-btn" class="ghost" type="button">导入到功法仓库</button>
+              <button id="helper-import-submit-products-btn" class="primary" type="button">导入并生成商品</button>
+            </div>
+            <div class="chip-row" style="margin-top: 12px;">
+              <span id="helper-import-count-chip" class="chip">已暂存 0 份功法 JSON</span>
+            </div>
+            <div id="helper-import-list" class="stack-list" style="margin-top: 12px;">
+              <div class="stack-item">暂时还没有加入功法仓库导入的 JSON。</div>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -135,7 +175,7 @@
             </div>
             <div class="actions">
               <button id="recalculate-pricing-btn" class="ghost" type="button">重算定价</button>
-              <button id="select-all-products-btn" class="ghost" type="button">按当前筛选全选</button>
+              <button id="select-all-products-btn" class="ghost" type="button">按当前页全选</button>
               <button id="select-discounted-products-btn" class="ghost" type="button">选中打折商品</button>
               <button id="clear-selected-products-btn" class="ghost" type="button">清空</button>
               <button id="bulk-on-sale-btn" class="ghost" type="button">批量上架</button>
@@ -155,7 +195,7 @@
               <input id="bulk-discount-rate-input" type="number" min="1" max="100" placeholder="折扣率，例如 90" />
               <button id="bulk-discount-btn" class="ghost" type="button">选中商品打折</button>
               <button id="bulk-restore-discount-btn" class="ghost" type="button">选中恢复原价</button>
-              <button id="filtered-restore-discount-btn" class="ghost" type="button">当前筛选恢复原价</button>
+              <button id="filtered-restore-discount-btn" class="ghost" type="button">当前页恢复原价</button>
             </div>
           </div>
           <div class="bulk-toolbar">
@@ -301,11 +341,11 @@
           </label>
           <label>
             赛季名称
-            <input id="admin-season-member-label" type="text" placeholder="例如 S3 黄金赛季" />
+            <input id="admin-season-member-label" type="text" placeholder="例如 S5 朱明赛季" />
           </label>
           <label>
             会员截止时间
-            <input id="admin-season-member-expires-at" type="text" placeholder="例如 2026-04-10T00:00:00+08:00" />
+            <input id="admin-season-member-expires-at" type="text" placeholder="例如 2026-06-04T23:59:59+08:00" />
           </label>
           <label>
             会员价格（元）
@@ -397,6 +437,22 @@
               placeholder="每行一条说明"
             ></textarea>
           </label>
+          <div class="panel muted-panel" style="grid-column: 1 / -1;">
+            <div class="panel-title">定价调控</div>
+            <div class="muted">
+              这里控制各档位的参考价区间。属性价按“满属性到最低属性”拉开，词条价按“最高词条到最低词条”拉开；单卡手动覆盖价仍然优先于整套规则。
+            </div>
+            <div class="actions" style="margin-top: 12px;">
+              <label style="min-width: 220px;">
+                定价编辑模式
+                <select id="admin-pricing-display-mode">
+                  <option value="quota">按额度编辑</option>
+                  <option value="cash">按现金编辑</option>
+                </select>
+              </label>
+            </div>
+            <div id="admin-pricing-controls" class="pricing-control-table" style="margin-top: 14px;"></div>
+          </div>
           <div class="actions">
             <button id="save-recharge-config-btn" class="primary" type="submit">保存充值配置</button>
           </div>
@@ -498,7 +554,7 @@
 
     <aside id="admin-debug-panel" class="debug-panel">
       <div class="debug-title">后台调试</div>
-      <div id="admin-debug-version" class="debug-line">version: admin.js?v=20260404-fix1</div>
+      <div id="admin-debug-version" class="debug-line">version: admin.js entry managed by deploy</div>
       <div id="admin-debug-action" class="debug-line">action: page_loaded</div>
       <div id="admin-debug-session" class="debug-line">session: unknown</div>
       <div id="admin-debug-error" class="debug-line">error: none</div>
@@ -508,6 +564,6 @@
     <script>
       window.__adminModuleReady = false;
     </script>
-    <script type="module" src="./admin.js?v=20260404-fix1"></script>
+    <script type="module" src="./admin.js?v=release-20260509-160631"></script>
   </body>
 </html>

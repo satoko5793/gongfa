@@ -22,9 +22,29 @@ if ! command -v rsync >/dev/null 2>&1; then
   echo "rsync is required" >&2
   exit 1
 fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required" >&2
+  exit 1
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "node is required" >&2
+  exit 1
+fi
+
+FRONTEND_MODULE_VERSION="${FRONTEND_MODULE_VERSION:-release-$(date +%Y%m%d-%H%M%S)}"
+
+echo "[deploy] syncing frontend entry pages for ${FRONTEND_MODULE_VERSION}"
+python3 "${SCRIPT_DIR}/sync_frontend_entries.py" --version "${FRONTEND_MODULE_VERSION}"
+python3 "${SCRIPT_DIR}/version_frontend_modules.py" --version "${FRONTEND_MODULE_VERSION}"
+python3 "${SCRIPT_DIR}/validate_frontend.py"
+node "${SCRIPT_DIR}/validate_backend_contracts.js"
 
 echo "[deploy] syncing repo to ${SSH_HOST}:${REMOTE_DIR}"
 rsync -az --delete \
+  --filter "P backend/dev-data.json" \
+  --filter "P backend/dev-data.json*" \
+  --filter "P backend/*.bak*" \
+  --exclude "backups" \
   --exclude ".git" \
   --exclude ".DS_Store" \
   --exclude "node_modules" \

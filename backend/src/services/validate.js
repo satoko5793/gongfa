@@ -6,6 +6,7 @@ const {
   validateDrawOrderCreate,
   validateAuctionBidCreate,
 } = require("../modules/orders/validators");
+const { normalizeHelperCapabilities } = require("../domain/helper-capabilities");
 
 function requiredString(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -17,6 +18,39 @@ function optionalString(value) {
 
 function isInteger(value) {
   return Number.isInteger(value);
+}
+
+function isNonNegativeInteger(value) {
+  return Number.isInteger(value) && Number(value) >= 0;
+}
+
+function isPricingDecaySpeed(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0.2 && numeric <= 5;
+}
+
+function isPricingBonusRate(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 && numeric <= 3;
+}
+
+function isPricingThresholdRate(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0.5 && numeric <= 1;
+}
+
+function isPricingPenaltyRate(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 && numeric <= 1;
+}
+
+function isPricingTermValue(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 && numeric <= 10;
+}
+
+function isPricingPercent(value, min = 0, max = 300) {
+  return Number.isInteger(value) && Number(value) >= min && Number(value) <= max;
 }
 
 function isPositiveMoneyAmount(value) {
@@ -127,7 +161,17 @@ function validateHelperActionLogInput(body) {
   if (!requiredString(body?.action_type)) {
     errors.push("action_type_required");
   } else if (
-    !["helper_team_switch", "helper_team_restore"].includes(String(body.action_type || "").trim())
+    ![
+      "helper_binding_upsert",
+      "helper_binding_remove",
+      "helper_inventory_sync",
+      "helper_snapshot_create",
+      "helper_snapshot_update",
+      "helper_snapshot_remove",
+      "helper_team_switch",
+      "helper_team_restore",
+      "helper_game_feature",
+    ].includes(String(body.action_type || "").trim())
   ) {
     errors.push("action_type_invalid");
   }
@@ -151,6 +195,9 @@ function validateHelperActionLogInput(body) {
         errors.push("snapshot_id_invalid");
       }
     }
+    if (actionType === "helper_game_feature" && !requiredString(body.action_payload.feature)) {
+      errors.push("feature_required");
+    }
   }
   if (
     body?.result_status !== undefined &&
@@ -165,6 +212,18 @@ function validateHelperActionLogInput(body) {
     errors.push("result_payload_invalid");
   }
   return [...new Set(errors)];
+}
+
+function validateHelperCapabilitiesUpdateInput(body) {
+  const errors = [];
+  if (!Array.isArray(body?.helper_capabilities)) {
+    errors.push("helper_capabilities_required");
+    return errors;
+  }
+  if (normalizeHelperCapabilities(body.helper_capabilities).length !== body.helper_capabilities.length) {
+    errors.push("helper_capabilities_invalid");
+  }
+  return errors;
 }
 
 function validatePasswordRegisterInput(body) {
@@ -252,7 +311,11 @@ function validateRechargeOrderCreate(body) {
 
 function validateRechargeReviewInput(body) {
   const errors = [];
-  if (!["approved", "rejected"].includes(String(body.status || ""))) {
+  if (
+    ![RECHARGE_ORDER_STATUS.APPROVED, RECHARGE_ORDER_STATUS.REJECTED].includes(
+      String(body.status || "")
+    )
+  ) {
     errors.push("status_invalid");
   }
   if (body.admin_remark !== undefined && !optionalString(body.admin_remark)) {
@@ -348,7 +411,7 @@ function validateRechargeConfigUpdateInput(body) {
     "season_member_season_label",
     "season_member_expires_at",
   ]) {
-    if (body[field] !== undefined && !requiredString(body[field])) {
+    if (body[field] !== undefined && !optionalString(body[field])) {
       errors.push(`${field}_invalid`);
     }
   }
@@ -364,6 +427,156 @@ function validateRechargeConfigUpdateInput(body) {
       errors.push("residual_instructions_invalid");
     } else if (body.residual_instructions.some((item) => !requiredString(item))) {
       errors.push("residual_instructions_invalid");
+    }
+  }
+  if (body.pricing_controls !== undefined) {
+    const pricingControls = body.pricing_controls;
+    if (!pricingControls || typeof pricingControls !== "object" || Array.isArray(pricingControls)) {
+      errors.push("pricing_controls_invalid");
+    } else {
+      if (pricingControls.enabled !== undefined && typeof pricingControls.enabled !== "boolean") {
+        errors.push("pricing_controls_enabled_invalid");
+      }
+      if (
+        pricingControls.legacy_discount_rate !== undefined &&
+        !isPricingPercent(pricingControls.legacy_discount_rate, 1, 100)
+      ) {
+        errors.push("pricing_controls_legacy_discount_rate_invalid");
+      }
+      if (
+        pricingControls.legacy_double_term_discount_rate !== undefined &&
+        !isPricingPercent(pricingControls.legacy_double_term_discount_rate, 1, 100)
+      ) {
+        errors.push("pricing_controls_legacy_double_term_discount_rate_invalid");
+      }
+      if (
+        pricingControls.double_term_bonus_percent !== undefined &&
+        !isPricingPercent(pricingControls.double_term_bonus_percent, 0, 300)
+      ) {
+        errors.push("pricing_controls_double_term_bonus_percent_invalid");
+      }
+      if (
+        pricingControls.tiers !== undefined &&
+        (!pricingControls.tiers ||
+          typeof pricingControls.tiers !== "object" ||
+          Array.isArray(pricingControls.tiers))
+      ) {
+        errors.push("pricing_controls_tiers_invalid");
+      } else {
+        for (const tierKey of ["green", "blue", "purple", "orange", "red", "gold"]) {
+          const tier = pricingControls.tiers?.[tierKey];
+          if (tier === undefined) continue;
+          if (!tier || typeof tier !== "object" || Array.isArray(tier)) {
+            errors.push(`pricing_controls_${tierKey}_invalid`);
+            continue;
+          }
+          const quotaFields = [
+            "atlas_min_quota",
+            "atlas_max_quota",
+            "atlas_double_full_quota",
+            "term_min_quota",
+            "term_max_quota",
+            "term_attack_reference_min_value",
+            "term_attack_reference_max_value",
+          ];
+          const noTermFields = [
+            "no_term_min_quota",
+            "no_term_full_attack_quota",
+            "no_term_double_full_quota",
+            "no_term_hp_bonus_start_value",
+          ];
+          for (const field of tierKey === "gold" ? quotaFields.concat(noTermFields) : quotaFields) {
+            if (tier[field] !== undefined && !isNonNegativeInteger(tier[field])) {
+              errors.push(`pricing_controls_${tierKey}_${field}_invalid`);
+            }
+          }
+          for (const field of ["atlas_decay_speed", "term_decay_speed"]) {
+            if (tier[field] !== undefined && !isPricingDecaySpeed(tier[field])) {
+              errors.push(`pricing_controls_${tierKey}_${field}_invalid`);
+            }
+          }
+          if (
+            tier.term_attack_bonus_rate !== undefined &&
+            !isPricingBonusRate(tier.term_attack_bonus_rate)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_term_attack_bonus_rate_invalid`);
+          }
+          if (
+            tier.term_attack_bonus_start_rate !== undefined &&
+            !isPricingThresholdRate(tier.term_attack_bonus_start_rate)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_term_attack_bonus_start_rate_invalid`);
+          }
+          if (
+            tier.term_attack_penalty_rate !== undefined &&
+            !isPricingPenaltyRate(tier.term_attack_penalty_rate)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_term_attack_penalty_rate_invalid`);
+          }
+          if (
+            tier.term_attack_penalty_start_rate !== undefined &&
+            !isPricingThresholdRate(tier.term_attack_penalty_start_rate)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_term_attack_penalty_start_rate_invalid`);
+          }
+          for (const field of ["term_value_reference_min", "term_value_reference_max"]) {
+            if (tier[field] !== undefined && !isPricingTermValue(tier[field])) {
+              errors.push(`pricing_controls_${tierKey}_${field}_invalid`);
+            }
+          }
+          if (
+            tier.atlas_min_quota !== undefined &&
+            tier.atlas_max_quota !== undefined &&
+            Number(tier.atlas_max_quota) < Number(tier.atlas_min_quota)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_atlas_range_invalid`);
+          }
+          if (
+            tier.atlas_max_quota !== undefined &&
+            tier.atlas_double_full_quota !== undefined &&
+            Number(tier.atlas_double_full_quota) < Number(tier.atlas_max_quota)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_atlas_double_full_range_invalid`);
+          }
+          if (
+            tier.term_min_quota !== undefined &&
+            tier.term_max_quota !== undefined &&
+            Number(tier.term_max_quota) < Number(tier.term_min_quota)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_term_range_invalid`);
+          }
+          if (
+            tier.term_attack_reference_min_value !== undefined &&
+            tier.term_attack_reference_max_value !== undefined &&
+            Number(tier.term_attack_reference_max_value) < Number(tier.term_attack_reference_min_value)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_term_attack_reference_range_invalid`);
+          }
+          if (
+            tier.term_value_reference_min !== undefined &&
+            tier.term_value_reference_max !== undefined &&
+            Number(tier.term_value_reference_max) < Number(tier.term_value_reference_min)
+          ) {
+            errors.push(`pricing_controls_${tierKey}_term_value_reference_range_invalid`);
+          }
+          if (tierKey === "gold") {
+            if (
+              tier.no_term_min_quota !== undefined &&
+              tier.no_term_full_attack_quota !== undefined &&
+              Number(tier.no_term_full_attack_quota) < Number(tier.no_term_min_quota)
+            ) {
+              errors.push(`pricing_controls_${tierKey}_no_term_full_attack_range_invalid`);
+            }
+            if (
+              tier.no_term_full_attack_quota !== undefined &&
+              tier.no_term_double_full_quota !== undefined &&
+              Number(tier.no_term_double_full_quota) < Number(tier.no_term_full_attack_quota)
+            ) {
+              errors.push(`pricing_controls_${tierKey}_no_term_double_full_range_invalid`);
+            }
+          }
+        }
+      }
     }
   }
   return [...new Set(errors)];
@@ -393,11 +606,75 @@ function validateImportInput(body) {
   return errors;
 }
 
+function validateBatchImportInput(body) {
+  const errors = [];
+  const imports = Array.isArray(body?.imports) ? body.imports : null;
+  if (!imports || imports.length === 0) {
+    errors.push("imports_required");
+    return errors;
+  }
+  imports.forEach((item, index) => {
+    const itemErrors = validateImportInput(item || {});
+    itemErrors.forEach((error) => {
+      errors.push(`imports_${index}_${error}`);
+    });
+  });
+  return [...new Set(errors)];
+}
+
+function validateHelperInventoryImportInput(body) {
+  const errors = [];
+  if (!body || body.raw_json === undefined || body.raw_json === null) {
+    errors.push("raw_json_required");
+  }
+  if (
+    body?.binding_id !== undefined &&
+    body?.binding_id !== null &&
+    !Number.isInteger(Number(body.binding_id))
+  ) {
+    errors.push("binding_id_invalid");
+  }
+  if (body?.source_file_name !== undefined && !optionalString(body.source_file_name)) {
+    errors.push("source_file_name_invalid");
+  }
+  if (body?.role_name !== undefined && !optionalString(body.role_name)) {
+    errors.push("role_name_invalid");
+  }
+  if (body?.server !== undefined && !optionalString(body.server)) {
+    errors.push("server_invalid");
+  }
+  return [...new Set(errors)];
+}
+
+function validateHelperInventoryBatchImportInput(body) {
+  const errors = [];
+  const imports = Array.isArray(body?.imports) ? body.imports : null;
+  if (!imports || imports.length === 0) {
+    errors.push("imports_required");
+    return errors;
+  }
+  if (body?.import_products !== undefined && typeof body.import_products !== "boolean") {
+    errors.push("import_products_invalid");
+  }
+  imports.forEach((item, index) => {
+    const itemErrors = validateHelperInventoryImportInput(item || {});
+    itemErrors.forEach((error) => {
+      errors.push(`imports_${index}_${error}`);
+    });
+  });
+  return [...new Set(errors)];
+}
+
 function validateProductUpdate(body) {
   const errors = [];
-  const intFields = ["attack_value", "hp_value", "price_quota", "stock", "discount_rate"];
+  const intFields = ["attack_value", "hp_value", "price_quota", "manual_price_quota", "stock", "discount_rate"];
   for (const field of intFields) {
     if (body[field] !== undefined && !isInteger(body[field])) {
+      errors.push(`${field}_invalid`);
+    }
+  }
+  for (const field of ["price_quota", "manual_price_quota", "stock"]) {
+    if (body[field] !== undefined && Number(body[field]) < 0) {
       errors.push(`${field}_invalid`);
     }
   }
@@ -514,6 +791,7 @@ module.exports = {
   validateHelperSnapshotInput,
   validateHelperSnapshotUpdateInput,
   validateHelperActionLogInput,
+  validateHelperCapabilitiesUpdateInput,
   validatePasswordRegisterInput,
   validatePasswordLoginInput,
   validateProfileUpdateInput,
@@ -523,6 +801,9 @@ module.exports = {
   validateRechargeConfigUpdateInput,
   validateLineupSlotPurchaseInput,
   validateImportInput,
+  validateBatchImportInput,
+  validateHelperInventoryImportInput,
+  validateHelperInventoryBatchImportInput,
   validateProductStatus,
   validateProductUpdate,
   validateBundleUpdate,
@@ -537,3 +818,4 @@ module.exports = {
   validateAuctionBidCreate,
   validateAuctionCancelInput,
 };
+const { RECHARGE_ORDER_STATUS } = require("../domain/recharge-order-status");

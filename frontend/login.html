@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>25000 繁星功法商城 - 登录</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260410-fix1" />
+    <link rel="stylesheet" href="styles.css?v=20260409-home-trim1" />
+    <link rel="stylesheet" href="styles/base.css?v=release-20260421-194048" />
+  </head>
+  <body data-page-entry="login">
+    <div class="bg-gradient"></div>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">G</span>
+        <div>
+          <div class="brand-title">功法卡片商城</div>
+          <div class="brand-sub">多页面拆分进行中</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a data-page-link="shop" href="shop.html">商城</a>
+        <a id="nav-bind-link" data-page-link="login" href="login.html">登录</a>
+        <a data-page-link="script" href="script.html">功法检测</a>
+        <a data-page-link="auction" href="auction.html">拍卖代抽</a>
+        <a data-page-link="me" href="me.html">个人后台</a>
+        <a id="nav-admin-link" class="hidden" href="admin.html">后台</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="site-banner card" role="status" aria-live="polite">
+        <div class="site-banner-title">数据异常说明</div>
+        <div class="site-banner-copy">
+          4月9日正式服发布过程中出现数据异常，部分账号信息、额度、阵容槽及相关记录可能出现回退或显示不一致。
+        </div>
+        <div class="site-banner-copy">
+          如果你发现自己的信息和实际情况对不上，请加群或直接联系我们，我们会逐一核实处理；确认异常后会协助恢复额度和阵容槽，并统一补偿
+          3000 额度。
+        </div>
+      </section>
+
+      <section id="bind" class="card">
+        <div class="card-title">账号登录与注册</div>
+        <div class="card-sub">可以直接用密码，也可以扫码把商城账号和游戏角色对应起来。未登录时扫码会自动注册或进入对应账号。</div>
+
+        <div class="auth-entry-grid">
+          <div class="panel guide-panel">
+            <div class="panel-title">游戏 ID 获取指导</div>
+            <div class="muted">注册前先按下图去游戏内确认区服和游戏 ID，避免注册错账号。</div>
+            <img class="guide-image" src="./guides/id-guide.jpg" alt="游戏 ID 获取指导" />
+          </div>
+
+          <div class="panel auth-entry-panel">
+            <div class="panel auth-scan-panel">
+              <div class="panel-title">扫码登录商城账号</div>
+              <div id="helper-auth-note" class="muted">
+                直接用微信扫码选择角色，商城会自动进入对应账号。之后阵容保存和一键还原也会默认跟着这个角色走。
+              </div>
+              <div class="actions">
+                <button id="helper-open-auth-popup-btn" type="button" class="primary">扫码登录商城账号</button>
+              </div>
+              <div id="helper-auth-message" class="notice hidden"></div>
+            </div>
+
+            <div class="section-divider-text">或者使用密码</div>
+
+            <div class="section-tabs compact">
+              <button class="section-tab active" type="button" data-auth-tab="register">快速注册</button>
+              <button class="section-tab" type="button" data-auth-tab="login">密码登录</button>
+            </div>
+
+            <div class="section-panel" data-auth-panel="register">
+              <div class="panel-title">快速注册</div>
+              <form id="register-form" class="form-grid">
+                <label>
+                  游戏 ID
+                  <input id="register-role-id" name="game_role_id" type="text" required />
+                </label>
+                <label>
+                  游戏名称
+                  <input id="register-role-name" name="game_role_name" type="text" required />
+                </label>
+                <label>
+                  登录密码
+                  <input id="register-password" name="password" type="password" minlength="6" required />
+                </label>
+                <label>
+                  确认密码
+                  <input
+                    id="register-password-confirm"
+                    name="password_confirm"
+                    type="password"
+                    minlength="6"
+                    required
+                  />
+                </label>
+                <div class="actions">
+                  <button type="submit" class="primary">注册并登录</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="section-panel hidden" data-auth-panel="login">
+              <div class="panel-title">密码登录</div>
+              <form id="login-form" class="form-grid">
+                <label>
+                  游戏 ID
+                  <input id="login-role-id" name="game_role_id" type="text" required />
+                </label>
+                <label>
+                  密码
+                  <input id="login-password" name="password" type="password" required />
+                </label>
+                <div class="actions">
+                  <button type="submit" class="primary">登录</button>
+                  <button id="logout-btn" type="button" class="ghost">退出登录</button>
+                </div>
+              </form>
+            </div>
+
+            <details class="more-methods">
+              <summary>更多方式</summary>
+              <div class="method-grid">
+                <div class="panel muted-panel">
+                  <div class="panel-title">调试工具入口</div>
+                  <label>
+                    工具地址
+                    <input id="helper-origin-input" type="text" placeholder="例如 http://localhost:3000" />
+                  </label>
+                  <div class="actions">
+                    <button id="save-helper-origin-btn" class="ghost">保存地址</button>
+                    <button id="open-helper-btn" class="ghost">打开工具页</button>
+                  </div>
+                  <div id="helper-entry-note" class="muted">这里仅保留给历史兼容或调试使用，正常用户不需要单独打开此页。</div>
+                </div>
+
+                <div class="panel muted-panel">
+                  <div class="panel-title">手动绑定</div>
+                  <form id="bind-form" class="form-grid">
+                    <label>
+                      角色 ID
+                      <input id="bind-role-id" name="game_role_id" type="text" required />
+                    </label>
+                    <label>
+                      区服
+                      <input id="bind-server" name="game_server" type="text" required />
+                    </label>
+                    <label>
+                      角色名称
+                      <input id="bind-role-name" name="game_role_name" type="text" required />
+                    </label>
+                    <label>
+                      helper token 标识
+                      <input id="bind-token-id" name="bind_token_id" type="text" />
+                    </label>
+                    <label>
+                      备注昵称
+                      <input id="bind-nickname" name="nickname" type="text" />
+                    </label>
+                    <div class="actions">
+                      <button type="submit" class="ghost">绑定并登录</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div id="bind-message" class="notice"></div>
+      </section>
+    </main>
+
+<div id="helper-bridge-modal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-card helper-bridge-modal" role="dialog" aria-modal="true" aria-labelledby="helper-bridge-modal-title">
+        <div class="modal-head">
+          <div>
+            <div class="card-title" id="helper-bridge-modal-title">绑定游戏角色</div>
+            <div id="helper-bridge-modal-message" class="card-sub">
+              在当前页面完成角色绑定，选择后会自动带回商城。
+            </div>
+          </div>
+          <button id="close-helper-bridge-modal-btn" class="ghost" type="button">关闭</button>
+        </div>
+        <div class="helper-bridge-modal-body">
+          <iframe
+            id="helper-bridge-iframe"
+            class="helper-bridge-iframe"
+            title="游戏角色绑定"
+            src="about:blank"
+            loading="eager"
+            referrerpolicy="strict-origin-when-cross-origin"
+          ></iframe>
+        </div>
+        <div id="helper-bridge-modal-hint" class="muted">
+          支持扫码或 BIN 导入，完成后会自动返回商城，不需要手动回跳。
+        </div>
+      </div>
+    </div>
+    <iframe
+      id="helper-bridge-hidden-frame"
+      class="helper-bridge-hidden-frame"
+      title="阵容同步后台帧"
+      src="about:blank"
+      tabindex="-1"
+      aria-hidden="true"
+    ></iframe>
+    <script type="module" src="./login-entry.js?v=release-20260509-160631"></script>
+
+</body>
+</html>

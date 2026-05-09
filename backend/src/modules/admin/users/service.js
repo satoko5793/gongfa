@@ -19,7 +19,17 @@ async function updateUserStatus(actorUser, userId, status) {
   });
 }
 
+async function updateUserHelperCapabilities(actorUser, userId, body = {}) {
+  const repository = getAdminUsersRepository();
+  return await repository.updateUserHelperCapabilities({
+    userId,
+    capabilities: body.helper_capabilities,
+    actorUserId: actorUser.id,
+  });
+}
+
 module.exports = {
   changeUserQuota,
   updateUserStatus,
+  updateUserHelperCapabilities,
 };

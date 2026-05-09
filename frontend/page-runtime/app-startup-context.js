@@ -1,0 +1,28 @@
+export function createAppStartupContext(ctx) {
+  return {
+    applyPageMode: ctx.applyPageMode,
+    hydrateSessionProfile: ctx.hydrateSessionProfile,
+    shouldDeferAccountBootstrap: ctx.shouldDeferAccountBootstrap,
+    scheduleDeferredAccountBootstrap: ctx.scheduleDeferredAccountBootstrap,
+    activateAuthTab: () => ctx.activateAuthTab(ctx.activeAuthTab),
+    activateAccountTab: () => ctx.activateAccountTab(ctx.activeAccountTab),
+    syncAccountTabWithHash: ctx.syncAccountTabWithHash,
+    syncDockWithViewport: ctx.syncDockWithViewport,
+    getPageModeConfig: ctx.getPageModeConfig,
+    setActiveGuidePage: ctx.setActiveGuidePage,
+    renderBeginnerGuide: ctx.renderBeginnerGuide,
+    renderRecentSales: ctx.renderRecentSales,
+    loadProducts: ctx.loadProducts,
+    setNotice: ctx.setNotice,
+    loadRecentSales: ctx.loadRecentSales,
+    helperOriginInput: ctx.helperOriginInput,
+    getHelperOrigin: ctx.getHelperOrigin,
+    loadHelperConfig: ctx.loadHelperConfig,
+    renderHelperBindingPanel: ctx.renderHelperBindingPanel,
+    renderHelperInventoryPanel: ctx.renderHelperInventoryPanel,
+    renderHelperSnapshotPanel: ctx.renderHelperSnapshotPanel,
+    renderHelperRestorePreviewPanel: ctx.renderHelperRestorePreviewPanel,
+    loadAuctions: ctx.loadAuctions,
+    loadAccount: ctx.loadAccount,
+  };
+}

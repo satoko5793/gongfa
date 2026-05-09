@@ -1,0 +1,8 @@
+.capability-list,
+.capability-chip,
+.snapshot-card,
+.helper-panel,
+.helper-entry,
+.helper-inventory-card {
+  box-sizing: border-box;
+}

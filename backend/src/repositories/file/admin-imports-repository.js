@@ -1,7 +1,7 @@
-const devStore = require("../../services/dev-store");
+const productsStore = require("../../domain/store/repositories/products-file-store");
 
 async function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedProducts }) {
-  return devStore.importCards({
+  return productsStore.importCards({
     sourceType,
     sourceFileName,
     rawJson,

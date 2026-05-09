@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>25000 繁星功法商城 - 个人后台</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260410-fix1" />
+    <link rel="stylesheet" href="styles.css?v=20260409-home-trim1" />
+    <link rel="stylesheet" href="styles/base.css?v=release-20260421-194048" />
+  </head>
+  <body data-page-entry="me">
+    <div class="bg-gradient"></div>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">G</span>
+        <div>
+          <div class="brand-title">功法卡片商城</div>
+          <div class="brand-sub">多页面拆分进行中</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a data-page-link="shop" href="shop.html">商城</a>
+        <a id="nav-bind-link" data-page-link="login" href="login.html">登录</a>
+        <a data-page-link="script" href="script.html">功法检测</a>
+        <a data-page-link="auction" href="auction.html">拍卖代抽</a>
+        <a data-page-link="me" href="me.html">个人后台</a>
+        <a id="nav-admin-link" class="hidden" href="admin.html">后台</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="site-banner card" role="status" aria-live="polite">
+        <div class="site-banner-title">数据异常说明</div>
+        <div class="site-banner-copy">
+          4月9日正式服发布过程中出现数据异常，部分账号信息、额度、阵容槽及相关记录可能出现回退或显示不一致。
+        </div>
+        <div class="site-banner-copy">
+          如果你发现自己的信息和实际情况对不上，请加群或直接联系我们，我们会逐一核实处理；确认异常后会协助恢复额度和阵容槽，并统一补偿
+          3000 额度。
+        </div>
+      </section>
+
+      <section id="account" class="card dock-target-section">
+        <div class="card-title">我的账户</div>
+        <div class="card-sub">把常用操作拆开后，查看余额、改资料、充值和查订单都会更直接。</div>
+
+        <div class="section-tabs">
+          <button class="section-tab active" type="button" data-account-tab="overview">概览</button>
+          <button class="section-tab" type="button" data-account-tab="profile">资料</button>
+          <button class="section-tab" type="button" data-account-tab="security">安全</button>
+          <button class="section-tab" type="button" data-account-tab="recharge">充值</button>
+          <button class="section-tab" type="button" data-account-tab="orders">订单帮助</button>
+        </div>
+
+        <div id="account-message" class="notice"></div>
+
+        <div class="section-panel" data-account-panel="overview">
+          <div class="account-grid">
+            <div class="panel">
+              <div class="panel-title">账户信息</div>
+              <div id="account-profile" class="stack-list"></div>
+              <div class="actions" style="margin-top: 12px;">
+                <button id="account-logout-btn" type="button" class="ghost">退出登录</button>
+                <a id="account-switch-link" class="ghost-link" href="login.html">切换账号</a>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">额度余额</div>
+              <div id="quota-balance" class="quota-balance">-</div>
+              <div class="muted">充值审核通过后会自动到账，订单扣减和退款也会同步更新。</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="panel-title">功法检测已拆分</div>
+            <div class="muted">功法检测、功法仓库同步和阵容快照已经移到独立页面，个人后台只保留账户、充值和订单相关功能。</div>
+            <div class="actions" style="margin-top: 12px;">
+              <a class="ghost-link" href="script.html">前往功法检测</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-panel hidden" data-account-panel="profile">
+          <div class="panel">
+            <div class="panel-title">修改资料</div>
+            <form id="account-profile-form" class="form-grid">
+              <label>
+                游戏名称
+                <input id="account-role-name" type="text" />
+              </label>
+              <label>
+                区服
+                <input id="account-server" type="text" />
+              </label>
+              <label>
+                昵称
+                <input id="account-nickname" type="text" />
+              </label>
+              <div class="actions">
+                <button type="submit" class="primary">保存资料</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="account-password-panel" class="section-panel hidden" data-account-panel="security">
+          <div class="panel">
+            <div class="panel-title">修改密码</div>
+            <form id="account-password-form" class="form-grid">
+              <label>
+                当前密码
+                <input id="account-current-password" type="password" autocomplete="current-password" />
+              </label>
+              <label>
+                新密码
+                <input id="account-new-password" type="password" autocomplete="new-password" />
+              </label>
+              <label>
+                确认新密码
+                <input id="account-confirm-password" type="password" autocomplete="new-password" />
+              </label>
+              <div class="actions">
+                <button type="submit" class="primary">更新密码</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="section-panel hidden" data-account-panel="recharge">
+          <div class="panel-grid">
+            <div id="recharge-panel" class="panel">
+              <div class="panel-title">额度充值</div>
+              <div id="recharge-body" class="stack-list"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">充值记录</div>
+              <div id="recharge-order-list" class="stack-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-panel hidden" data-account-panel="orders">
+          <div class="panel-grid">
+            <div class="panel" id="help-panel">
+              <div class="panel-title">有问题加群咨询</div>
+              <div class="muted">遇到注册、充值、下单、补货或订单处理问题，可以扫码进群联系管理员。</div>
+              <img class="guide-image help-qr-image" src="./guides/wechat-group.png" alt="微信群二维码" />
+            </div>
+            <div id="order-panel" class="panel">
+              <div class="panel-title">最近订单</div>
+              <div id="order-list" class="stack-list"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">当前先把网页商城主流程跑通，支付与更多自动化能力后续再补。</footer>
+    <script type="module" src="./me-entry.js?v=release-20260509-160631"></script>
+
+</body>
+</html>

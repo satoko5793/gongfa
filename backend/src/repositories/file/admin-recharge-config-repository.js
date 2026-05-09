@@ -1,12 +1,12 @@
-const devStore = require("../../services/dev-store");
+const usersStore = require("../../domain/store/repositories/users-file-store");
 const { getRechargeConfig } = require("../../config/recharge-config");
 
 async function getAdminRechargeConfig() {
-  return getRechargeConfig(devStore.getRechargeConfig());
+  return getRechargeConfig(usersStore.getRechargeConfig());
 }
 
-async function updateRechargeConfig({ patch, actorUserId }) {
-  return devStore.updateRechargeConfig(patch, actorUserId);
+async function updateRechargeConfig({ patch, actorUserId, requestId = null }) {
+  return usersStore.updateRechargeConfig(patch, actorUserId, requestId);
 }
 
 module.exports = {

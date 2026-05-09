@@ -4,13 +4,14 @@
 
 - 前台商城：商品浏览、注册登录、额度充值、残卷转赠、赛季会员、下单、订单查询、取消申请
 - 后台管理：商品导入、商品管理、用户额度、订单处理、充值审核、充值配置、额度流水、审计日志
-- 后端 API：Node.js + Express 单体服务，同时托管前台静态页和接口
+- 后端 API：Node.js + Express 单体服务，同时托管前台静态页、helper 桥接页和接口
 
 当前主线：
 
 - `frontend/`：网页前台和网页后台
 - `backend/`：API、认证、商品、订单、充值
 - `infra/`：Docker 部署配置
+- `docs/`：发布记录、运维手册、重构计划和排障说明
 
 当前暂停：
 
@@ -50,11 +51,16 @@
 - `frontend/admin.html`：后台入口
 - `frontend/app.js`：前台交互逻辑
 - `frontend/admin.js`：后台交互逻辑
+- `frontend/shop.html`、`frontend/me.html`、`frontend/login.html`、`frontend/script.html`：拆分后的前台页面入口
+- `frontend/page-renderers/`、`frontend/page-runtime/`、`frontend/page-actions/`：前台拆分后的渲染、事件绑定和业务动作
+- `frontend/admin-pages/`、`frontend/admin-renderers/`、`frontend/admin-runtime/`：后台拆分后的页面、渲染和运行时模块
 - `frontend/styles.css`：前后台主样式
 - `frontend/gongfa/`：功法图片静态资源
 - `frontend/guides/`：注册与咨询图片素材
 - `frontend/payment/`：支付二维码素材
 - `frontend/legacy-json/`：后台导入用的历史数据快照
+- `scripts/sync_frontend_entries.py`：从 `frontend/index.html` 重新生成拆页入口
+- `scripts/version_frontend_modules.py`：统一整条前端 ES module 依赖链版本号
 - `scripts/validate_frontend.py`：发版前端校验脚本
 - `infra/docker-compose.app.yml`：线上容器启动文件
 - `infra/docker-compose.staging.yml`：测试服容器启动文件
@@ -70,8 +76,11 @@ start-local.cmd
 ```bash
 cd backend
 npm install
-node src/server.js
+JWT_SECRET=dev-secret USE_FILE_STORE=1 node src/server.js
 ```
+
+至少要提供 `JWT_SECRET`，否则注册/登录会在签发 token 时直接报错。
+如果本地走文件存储开发模式，建议同时带上 `USE_FILE_STORE=1`。
 
 ## 当前功能范围
 
@@ -80,8 +89,11 @@ node src/server.js
 - 商品 JSON 导入
 - 商品上架、下架、改价、改库存
 - 用户密码注册、登录、资料修改、改密码
+- helper 扫码登录商城账号
 - 指定账号注册赠送额度
 - 前台商品详情与额度购买
+- S5 赛季首周额度购买限制
+- 图鉴动态套餐，按同攻击同血量的一整套库存自动计算价格
 - 后台确认订单、取消订单、取消审核
 - 支付宝收款码充值申请
 - 游戏内残卷转赠充值申请
@@ -104,9 +116,17 @@ node src/server.js
 - [网页版上线检查清单](docs/13-web-release-checklist.md)
 - [运维手册](docs/14-operations-handbook.md)
 - [前端校验说明](docs/15-frontend-validation.md)
+- [上线准备记录](docs/27-web-release-readiness.md)
+- [正式发布 Runbook](docs/28-production-release-runbook.md)
 - [测试服测试流程](docs/16-staging-test-flow.md)
 - [基于 Claude Code 的工程优化方案](docs/17-claude-code-reference-optimization.md)
 - [第一期实施任务清单](docs/18-iteration-1-execution-plan.md)
+- [项目重构 Roadmap](docs/32-project-refactor-roadmap.md)
+- [第一期价格系统重构计划](docs/33-phase-1-pricing-refactor-plan.md)
+- [第二期 dev-store 与 Repository 收口计划](docs/34-phase-2-dev-store-and-repository-plan.md)
+- [第三期后台前端拆分计划](docs/35-phase-3-admin-frontend-split-plan.md)
+- [第四阶段统一枚举、错误信封与发布检查计划](docs/36-phase-4-enums-errors-logs-release-checks-plan.md)
+- [2026-05-09 正式服阶段摘要](docs/37-release-summary-2026-05-09.md)
 - [前端结构说明](frontend/README.md)
 
 ## 部署说明
@@ -158,6 +178,10 @@ ssh gongfa-staging
 
 脚本行为：
 
+- 自动生成新的前端模块版本号，可通过环境变量 `FRONTEND_MODULE_VERSION` 覆盖
+- 自动执行 `scripts/sync_frontend_entries.py`，确保拆页入口和当前 `index.html` 同步
+- 自动执行 `scripts/version_frontend_modules.py`，把整条 ES module 依赖链改成同一版本
+- 自动执行 `scripts/validate_frontend.py`，发布前先拦住模块版本不一致和语法错误
 - 自动用 `rsync` 同步仓库到服务器目录
 - 自动排除本地 `.git`、`node_modules`、环境文件和本地数据文件
 - 如果本机存在同级目录 `../xyzw_web_helper/public`，会一并同步 helper 静态资源

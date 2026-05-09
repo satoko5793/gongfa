@@ -2,7 +2,6 @@ const express = require("express");
 const { pool } = require("../db/pool");
 const { authRequired } = require("../middlewares/auth");
 const { useFileStore } = require("../services/runtime");
-const devStore = require("../services/dev-store");
 const { ensureQuotaAccount } = require("../services/quota");
 const { listOrders } = require("../services/order-query");
 const {
@@ -18,6 +17,16 @@ const {
   validateLineupSlotPurchaseInput,
 } = require("../services/validate");
 const { hashPassword, verifyPassword } = require("../services/password-auth");
+const {
+  changeUserPassword,
+  createUserRechargeOrder,
+  getUserQuota,
+  getUserRechargeConfig,
+  listUserOrders,
+  listUserRechargeOrders,
+  purchaseUserLineupSlot,
+  updateUserProfile,
+} = require("../modules/me/file-service");
 
 const meRouter = express.Router();
 meRouter.use(authRequired);
@@ -25,7 +34,7 @@ meRouter.use(authRequired);
 meRouter.get("/quota", async (req, res, next) => {
   try {
     if (useFileStore()) {
-      return res.json(devStore.getQuota(req.user.id));
+      return res.json(getUserQuota(req.user.id));
     }
     await ensureQuotaAccount(pool, req.user.id);
     const result = await pool.query(
@@ -41,7 +50,7 @@ meRouter.get("/quota", async (req, res, next) => {
 meRouter.get("/orders", async (req, res, next) => {
   try {
     if (useFileStore()) {
-      return res.json(devStore.listOrders({ userId: req.user.id, limit: 100 }));
+      return res.json(listUserOrders(req.user.id, 100));
     }
     const orders = await listOrders(pool, { userId: req.user.id, limit: 100 });
     return res.json(orders);
@@ -53,7 +62,7 @@ meRouter.get("/orders", async (req, res, next) => {
 meRouter.get("/recharge-config", async (req, res, next) => {
   try {
     if (useFileStore()) {
-      return res.json(getRechargeConfig(devStore.getRechargeConfig()));
+      return res.json(getUserRechargeConfig());
     }
     return res.json(getRechargeConfig());
   } catch (error) {
@@ -64,7 +73,7 @@ meRouter.get("/recharge-config", async (req, res, next) => {
 meRouter.get("/recharge-orders", async (req, res, next) => {
   try {
     if (useFileStore()) {
-      return res.json(devStore.listRechargeOrders({ userId: req.user.id, limit: 100 }));
+      return res.json(listUserRechargeOrders(req.user.id, 100));
     }
     return res.status(501).json({ error: "recharge_order_not_supported_in_db_mode" });
   } catch (error) {
@@ -82,7 +91,7 @@ meRouter.post("/recharge-orders", async (req, res, next) => {
     const orderType = String(body.order_type || "normal").trim() || "normal";
 
     const rechargeConfig = useFileStore()
-      ? getRechargeConfig(devStore.getRechargeConfig())
+      ? getUserRechargeConfig()
       : getRechargeConfig();
     if (orderType === "residual_transfer" && !rechargeConfig.residual_transfer_enabled) {
       return res.status(400).json({ error: "residual_transfer_disabled" });
@@ -99,7 +108,7 @@ meRouter.post("/recharge-orders", async (req, res, next) => {
 
     if (useFileStore()) {
       return res.json(
-        devStore.createRechargeOrder(req.user.id, {
+        createUserRechargeOrder(req.user.id, {
           amountYuan: quote.amount_yuan,
           quotaAmount: quote.quota_amount,
           transferAmount: quote.transfer_amount || null,
@@ -130,7 +139,7 @@ meRouter.post("/lineup-slots/purchase", async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "lineup_slot_not_supported_in_db_mode" });
     }
-    return res.json(devStore.purchaseLineupSlot(req.user.id, body.purchase_type));
+    return res.json(purchaseUserLineupSlot(req.user.id, body.purchase_type));
   } catch (error) {
     return next(error);
   }
@@ -145,7 +154,7 @@ meRouter.patch("/profile", async (req, res, next) => {
     }
 
     if (useFileStore()) {
-      const user = devStore.updateSelfProfile(req.user.id, {
+      const user = updateUserProfile(req.user.id, {
         game_role_name:
           body.game_role_name !== undefined ? body.game_role_name.trim() : undefined,
         nickname: body.nickname !== undefined ? body.nickname.trim() : undefined,
@@ -215,7 +224,7 @@ meRouter.patch("/password", async (req, res, next) => {
     }
 
     if (useFileStore()) {
-      await devStore.changeSelfPassword(req.user.id, body.current_password, body.new_password);
+      await changeUserPassword(req.user.id, body.current_password, body.new_password);
       return res.json({ ok: true });
     }
 

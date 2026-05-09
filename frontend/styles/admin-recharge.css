@@ -1,0 +1,227 @@
+.pricing-overview-card,
+.pricing-overview-head,
+.pricing-overview-meta,
+.pricing-global-grid,
+.pricing-global-panel,
+.pricing-global-row,
+.pricing-global-field,
+.pricing-tier-section,
+.pricing-tier-section-head,
+.pricing-tier-grid,
+.pricing-tier-field,
+.pricing-scroll-hint {
+  box-sizing: border-box;
+}
+
+#recharge-order-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.pricing-control-table {
+  display: grid;
+  gap: 16px;
+}
+
+.pricing-overview-card,
+.pricing-global-panel,
+.pricing-tier-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.pricing-overview-card {
+  background:
+    radial-gradient(circle at top left, rgba(224, 139, 71, 0.12), transparent 34%),
+    rgba(255, 255, 255, 0.82);
+}
+
+.pricing-overview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pricing-overview-head strong {
+  font-size: 18px;
+}
+
+.pricing-overview-head small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pricing-overview-meta,
+.pricing-tier-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pricing-overview-meta span,
+.pricing-tier-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(196, 85, 45, 0.14);
+  background: rgba(196, 85, 45, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pricing-global-grid,
+.pricing-tier-card-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.pricing-global-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.pricing-tier-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+
+.pricing-global-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.pricing-global-panel.accent,
+.pricing-tier-section.accent {
+  background: rgba(255, 248, 242, 0.92);
+  border-color: rgba(196, 85, 45, 0.18);
+}
+
+.pricing-global-field {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.pricing-global-field span {
+  font-weight: 700;
+}
+
+.pricing-global-field small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pricing-control-tier {
+  display: grid;
+  gap: 4px;
+}
+
+.pricing-control-tier strong {
+  font-size: 15px;
+}
+
+.pricing-control-tier small,
+.pricing-control-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pricing-tier-card-head {
+  display: grid;
+  gap: 10px;
+}
+
+.pricing-tier-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(73, 44, 17, 0.08);
+  background: rgba(248, 244, 237, 0.78);
+}
+
+.pricing-tier-section-head {
+  display: grid;
+  gap: 4px;
+}
+
+.pricing-tier-section-head strong {
+  font-size: 15px;
+}
+
+.pricing-tier-section-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pricing-tier-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.pricing-tier-field {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(73, 44, 17, 0.08);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.pricing-tier-field > span {
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.pricing-tier-field small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pricing-tier-field.is-muted {
+  opacity: 0.64;
+}
+
+.admin-detail-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .pricing-global-grid,
+  .pricing-tier-card-grid,
+  .pricing-global-row,
+  .pricing-tier-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pricing-overview-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

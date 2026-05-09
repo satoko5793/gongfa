@@ -35,9 +35,354 @@ function parseRate(value, fallback) {
   return Number(numeric.toFixed(4));
 }
 
+function parsePricingDecaySpeed(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const normalized = Number(numeric.toFixed(2));
+  if (normalized < 0.2 || normalized > 5) return fallback;
+  return normalized;
+}
+
+function parsePricingBonusRate(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const normalized = Number(numeric.toFixed(4));
+  if (normalized < 0 || normalized > 3) return fallback;
+  return normalized;
+}
+
+function parsePricingThresholdRate(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const normalized = Number(numeric.toFixed(4));
+  if (normalized < 0.5 || normalized > 1) return fallback;
+  return normalized;
+}
+
+function parsePricingPenaltyRate(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const normalized = Number(numeric.toFixed(4));
+  if (normalized < 0 || normalized > 1) return fallback;
+  return normalized;
+}
+
+function parsePricingTermValue(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const normalized = Number(numeric.toFixed(2));
+  if (normalized < 0 || normalized > 10) return fallback;
+  return normalized;
+}
+
+function parsePricingDiscountRate(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const normalized = Math.round(numeric);
+  if (normalized < 1 || normalized > 100) return fallback;
+  return normalized;
+}
+
+function parsePricingPercent(value, fallback, { min = 0, max = 300 } = {}) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const normalized = Math.round(numeric);
+  if (normalized < min || normalized > max) return fallback;
+  return normalized;
+}
+
 function parseText(value, fallback) {
   const text = String(value ?? "").trim();
   return text || fallback;
+}
+
+const PRICING_CONTROL_TIER_ORDER = ["green", "blue", "purple", "orange", "red", "gold"];
+const PRICING_CONTROL_TIER_LABELS = {
+  green: "绿卡",
+  blue: "蓝卡",
+  purple: "紫卡",
+  orange: "橙卡",
+  red: "红卡",
+  gold: "金卡",
+};
+
+function buildDefaultPricingControls() {
+  return {
+    enabled: true,
+    legacy_discount_rate: 100,
+    legacy_double_term_discount_rate: 100,
+    double_term_bonus_percent: 0,
+    tiers: {
+      green: {
+        key: "green",
+        label: PRICING_CONTROL_TIER_LABELS.green,
+        atlas_min_quota: 100,
+        atlas_max_quota: 600,
+        atlas_double_full_quota: 600,
+        atlas_decay_speed: 1,
+        term_min_quota: 0,
+        term_max_quota: 0,
+        term_decay_speed: 1,
+        term_attack_bonus_rate: 0,
+        term_attack_bonus_start_rate: 0.95,
+        term_attack_penalty_rate: 0,
+        term_attack_penalty_start_rate: 0.85,
+        term_attack_reference_min_value: 0,
+        term_attack_reference_max_value: 0,
+        term_value_reference_min: 0,
+        term_value_reference_max: 0,
+      },
+      blue: {
+        key: "blue",
+        label: PRICING_CONTROL_TIER_LABELS.blue,
+        atlas_min_quota: 120,
+        atlas_max_quota: 1000,
+        atlas_double_full_quota: 1000,
+        atlas_decay_speed: 1,
+        term_min_quota: 0,
+        term_max_quota: 0,
+        term_decay_speed: 1,
+        term_attack_bonus_rate: 0,
+        term_attack_bonus_start_rate: 0.95,
+        term_attack_penalty_rate: 0,
+        term_attack_penalty_start_rate: 0.85,
+        term_attack_reference_min_value: 0,
+        term_attack_reference_max_value: 0,
+        term_value_reference_min: 0,
+        term_value_reference_max: 0,
+      },
+      purple: {
+        key: "purple",
+        label: PRICING_CONTROL_TIER_LABELS.purple,
+        atlas_min_quota: 120,
+        atlas_max_quota: 1500,
+        atlas_double_full_quota: 1500,
+        atlas_decay_speed: 1,
+        term_min_quota: 0,
+        term_max_quota: 300,
+        term_decay_speed: 1,
+        term_attack_bonus_rate: 0,
+        term_attack_bonus_start_rate: 0.95,
+        term_attack_penalty_rate: 0,
+        term_attack_penalty_start_rate: 0.85,
+        term_attack_reference_min_value: 0,
+        term_attack_reference_max_value: 0,
+        term_value_reference_min: 0,
+        term_value_reference_max: 0,
+      },
+      orange: {
+        key: "orange",
+        label: PRICING_CONTROL_TIER_LABELS.orange,
+        atlas_min_quota: 160,
+        atlas_max_quota: 2500,
+        atlas_double_full_quota: 2500,
+        atlas_decay_speed: 1,
+        term_min_quota: 0,
+        term_max_quota: 500,
+        term_decay_speed: 1,
+        term_attack_bonus_rate: 0,
+        term_attack_bonus_start_rate: 0.95,
+        term_attack_penalty_rate: 0,
+        term_attack_penalty_start_rate: 0.85,
+        term_attack_reference_min_value: 0,
+        term_attack_reference_max_value: 0,
+        term_value_reference_min: 0,
+        term_value_reference_max: 0,
+      },
+      red: {
+        key: "red",
+        label: PRICING_CONTROL_TIER_LABELS.red,
+        atlas_min_quota: 200,
+        atlas_max_quota: 12000,
+        atlas_double_full_quota: 12000,
+        atlas_decay_speed: 1,
+        term_min_quota: 0,
+        term_max_quota: 1800,
+        term_decay_speed: 1,
+        term_attack_bonus_rate: 0,
+        term_attack_bonus_start_rate: 0.95,
+        term_attack_penalty_rate: 0,
+        term_attack_penalty_start_rate: 0.85,
+        term_attack_reference_min_value: 0,
+        term_attack_reference_max_value: 0,
+        term_value_reference_min: 0,
+        term_value_reference_max: 0,
+      },
+      gold: {
+        key: "gold",
+        label: PRICING_CONTROL_TIER_LABELS.gold,
+        atlas_min_quota: 500,
+        atlas_max_quota: 50000,
+        atlas_double_full_quota: 50000,
+        atlas_decay_speed: 1,
+        term_min_quota: 0,
+        term_max_quota: 45000,
+        term_decay_speed: 1,
+        term_attack_bonus_rate: 0,
+        term_attack_bonus_start_rate: 0.95,
+        term_attack_penalty_rate: 0,
+        term_attack_penalty_start_rate: 0.85,
+        term_attack_reference_min_value: 8100000,
+        term_attack_reference_max_value: 10000000,
+        term_value_reference_min: 2.1,
+        term_value_reference_max: 3.0,
+        no_term_min_quota: 500,
+        no_term_full_attack_quota: 20000,
+        no_term_double_full_quota: 35000,
+        no_term_hp_bonus_start_value: 198000000,
+      },
+    },
+  };
+}
+
+function normalizePricingControls(rawPricingControls = {}, defaults = buildDefaultPricingControls()) {
+  const source = rawPricingControls && typeof rawPricingControls === "object" ? rawPricingControls : {};
+  const normalizedTiers = {};
+
+  for (const tierKey of PRICING_CONTROL_TIER_ORDER) {
+    const defaultTier = defaults.tiers[tierKey];
+    const rawTier =
+      source.tiers && typeof source.tiers === "object" && source.tiers[tierKey]
+        ? source.tiers[tierKey]
+        : {};
+
+    const atlasMinQuota = parseNonNegativeInteger(
+      rawTier.atlas_min_quota,
+      defaultTier.atlas_min_quota
+    );
+    const atlasMaxQuota = Math.max(
+      atlasMinQuota,
+      parseNonNegativeInteger(rawTier.atlas_max_quota, defaultTier.atlas_max_quota)
+    );
+    const atlasDoubleFullQuota = Math.max(
+      atlasMaxQuota,
+      parseNonNegativeInteger(
+        rawTier.atlas_double_full_quota,
+        rawTier.atlas_double_full_quota === undefined
+          ? atlasMaxQuota
+          : defaultTier.atlas_double_full_quota
+      )
+    );
+    const termMinQuota = parseNonNegativeInteger(
+      rawTier.term_min_quota,
+      defaultTier.term_min_quota
+    );
+    const termMaxQuota = Math.max(
+      termMinQuota,
+      parseNonNegativeInteger(rawTier.term_max_quota, defaultTier.term_max_quota)
+    );
+    const atlasDecaySpeed = parsePricingDecaySpeed(
+      rawTier.atlas_decay_speed,
+      defaultTier.atlas_decay_speed
+    );
+    const termDecaySpeed = parsePricingDecaySpeed(
+      rawTier.term_decay_speed,
+      defaultTier.term_decay_speed
+    );
+    const termAttackBonusRate = parsePricingBonusRate(
+      rawTier.term_attack_bonus_rate,
+      defaultTier.term_attack_bonus_rate
+    );
+    const termAttackBonusStartRate = parsePricingThresholdRate(
+      rawTier.term_attack_bonus_start_rate,
+      defaultTier.term_attack_bonus_start_rate
+    );
+    const termAttackPenaltyRate = parsePricingPenaltyRate(
+      rawTier.term_attack_penalty_rate,
+      defaultTier.term_attack_penalty_rate
+    );
+    const termAttackPenaltyStartRate = parsePricingThresholdRate(
+      rawTier.term_attack_penalty_start_rate,
+      defaultTier.term_attack_penalty_start_rate
+    );
+    const termAttackReferenceMinValue = parseNonNegativeInteger(
+      rawTier.term_attack_reference_min_value,
+      defaultTier.term_attack_reference_min_value
+    );
+    const termAttackReferenceMaxValue = Math.max(
+      termAttackReferenceMinValue,
+      parseNonNegativeInteger(
+        rawTier.term_attack_reference_max_value,
+        defaultTier.term_attack_reference_max_value
+      )
+    );
+    const termValueReferenceMin = parsePricingTermValue(
+      rawTier.term_value_reference_min,
+      defaultTier.term_value_reference_min
+    );
+    const termValueReferenceMax = Math.max(
+      termValueReferenceMin,
+      parsePricingTermValue(
+        rawTier.term_value_reference_max,
+        defaultTier.term_value_reference_max
+      )
+    );
+    const noTermMinQuota = parseNonNegativeInteger(
+      rawTier.no_term_min_quota,
+      defaultTier.no_term_min_quota
+    );
+    const noTermFullAttackQuota = Math.max(
+      noTermMinQuota,
+      parseNonNegativeInteger(
+        rawTier.no_term_full_attack_quota,
+        defaultTier.no_term_full_attack_quota
+      )
+    );
+    const noTermDoubleFullQuota = Math.max(
+      noTermFullAttackQuota,
+      parseNonNegativeInteger(
+        rawTier.no_term_double_full_quota,
+        defaultTier.no_term_double_full_quota
+      )
+    );
+    const noTermHpBonusStartValue = parseNonNegativeInteger(
+      rawTier.no_term_hp_bonus_start_value,
+      defaultTier.no_term_hp_bonus_start_value
+    );
+
+    normalizedTiers[tierKey] = {
+      key: tierKey,
+      label: PRICING_CONTROL_TIER_LABELS[tierKey],
+      atlas_min_quota: atlasMinQuota,
+      atlas_max_quota: atlasMaxQuota,
+      atlas_double_full_quota: atlasDoubleFullQuota,
+      atlas_decay_speed: atlasDecaySpeed,
+      term_min_quota: termMinQuota,
+      term_max_quota: termMaxQuota,
+      term_decay_speed: termDecaySpeed,
+      term_attack_bonus_rate: termAttackBonusRate,
+      term_attack_bonus_start_rate: termAttackBonusStartRate,
+      term_attack_penalty_rate: termAttackPenaltyRate,
+      term_attack_penalty_start_rate: termAttackPenaltyStartRate,
+      term_attack_reference_min_value: termAttackReferenceMinValue,
+      term_attack_reference_max_value: termAttackReferenceMaxValue,
+      term_value_reference_min: termValueReferenceMin,
+      term_value_reference_max: termValueReferenceMax,
+      no_term_min_quota: noTermMinQuota,
+      no_term_full_attack_quota: noTermFullAttackQuota,
+      no_term_double_full_quota: noTermDoubleFullQuota,
+      no_term_hp_bonus_start_value: noTermHpBonusStartValue,
+    };
+  }
+
+  return {
+    enabled:
+      source.enabled === undefined ? defaults.enabled : Boolean(source.enabled),
+    legacy_discount_rate: parsePricingDiscountRate(
+      source.legacy_discount_rate,
+      defaults.legacy_discount_rate
+    ),
+    legacy_double_term_discount_rate: parsePricingDiscountRate(
+      source.legacy_double_term_discount_rate,
+      defaults.legacy_double_term_discount_rate
+    ),
+    double_term_bonus_percent: parsePricingPercent(
+      source.double_term_bonus_percent,
+      defaults.double_term_bonus_percent,
+      { min: 0, max: 300 }
+    ),
+    tiers: normalizedTiers,
+  };
 }
 
 function parsePresetAmounts(value, minimumAmount, exchangeYuan) {
@@ -62,11 +407,11 @@ function buildDefaultRechargeConfig() {
   );
   const seasonMemberSeasonLabel = parseText(
     process.env.SEASON_MEMBER_SEASON_LABEL,
-    "S3 黄金赛季"
+    "S5 朱明赛季"
   );
   const seasonMemberExpiresAt = parseText(
     process.env.SEASON_MEMBER_EXPIRES_AT,
-    "2026-04-10T00:00:00+08:00"
+    "2026-06-04T23:59:59+08:00"
   );
   const seasonMemberPriceYuan = parsePositiveMoney(
     process.env.SEASON_MEMBER_PRICE_YUAN,
@@ -166,6 +511,7 @@ function buildDefaultRechargeConfig() {
       "2. 管理员游戏 ID：584967604，1 残卷 = 1 额度。",
       "3. 提交时填写转赠时间即可，管理员会按时间核对。",
     ],
+    pricing_controls: buildDefaultPricingControls(),
   };
 }
 
@@ -212,6 +558,10 @@ function normalizeRechargeConfig(rawConfig = {}) {
   const lineupMemberBonusSlots = parseNonNegativeInteger(
     rawConfig.lineup_member_bonus_slots,
     defaults.lineup_member_bonus_slots
+  );
+  const pricingControls = normalizePricingControls(
+    rawConfig.pricing_controls,
+    defaults.pricing_controls
   );
 
   const normalized = {
@@ -283,6 +633,7 @@ function normalizeRechargeConfig(rawConfig = {}) {
       Array.isArray(rawConfig.residual_instructions) && rawConfig.residual_instructions.length > 0
         ? rawConfig.residual_instructions.map((item) => String(item || "").trim()).filter(Boolean)
         : defaults.residual_instructions,
+    pricing_controls: pricingControls,
   };
 
   return normalized;
@@ -290,6 +641,39 @@ function normalizeRechargeConfig(rawConfig = {}) {
 
 function getRechargeConfig(rawConfig = null) {
   return normalizeRechargeConfig(rawConfig || {});
+}
+
+function sanitizeAdminRechargeConfig(config = {}) {
+  const normalized = getRechargeConfig(config);
+  const nextPricingControls =
+    normalized.pricing_controls &&
+    typeof normalized.pricing_controls === "object" &&
+    !Array.isArray(normalized.pricing_controls)
+      ? {
+          ...normalized.pricing_controls,
+          tiers: { ...(normalized.pricing_controls.tiers || {}) },
+        }
+      : normalized.pricing_controls;
+
+  if (nextPricingControls?.tiers) {
+    for (const tierKey of PRICING_CONTROL_TIER_ORDER) {
+      const tier = nextPricingControls.tiers[tierKey];
+      if (!tier || typeof tier !== "object" || Array.isArray(tier)) continue;
+      if (tierKey !== "gold") {
+        const nextTier = { ...tier };
+        delete nextTier.no_term_min_quota;
+        delete nextTier.no_term_full_attack_quota;
+        delete nextTier.no_term_double_full_quota;
+        delete nextTier.no_term_hp_bonus_start_value;
+        nextPricingControls.tiers[tierKey] = nextTier;
+      }
+    }
+  }
+
+  return {
+    ...normalized,
+    pricing_controls: nextPricingControls,
+  };
 }
 
 function buildRechargeQuote(amountYuan, rechargeConfig) {
@@ -341,9 +725,14 @@ function buildResidualTransferQuote(amount, rechargeConfig) {
 
 module.exports = {
   buildDefaultRechargeConfig,
+  buildDefaultPricingControls,
+  normalizePricingControls,
   normalizeRechargeConfig,
   getRechargeConfig,
+  sanitizeAdminRechargeConfig,
   buildRechargeQuote,
   buildSeasonMemberQuote,
   buildResidualTransferQuote,
+  PRICING_CONTROL_TIER_ORDER,
+  PRICING_CONTROL_TIER_LABELS,
 };

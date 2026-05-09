@@ -2,8 +2,13 @@ const express = require("express");
 const { pool } = require("../db/pool");
 const { authRequired } = require("../middlewares/auth");
 const { useFileStore } = require("../services/runtime");
-const devStore = require("../services/dev-store");
 const { signUser } = require("../services/jwt");
+const {
+  bindUser: bindPasswordUserFromFileStore,
+  getCurrentUser: getCurrentFileUser,
+  loginPasswordUser: loginPasswordUserFromFileStore,
+  registerPasswordUser: registerPasswordUserFromFileStore,
+} = require("../modules/auth/file-service");
 const {
   validateBindInput,
   validatePasswordRegisterInput,
@@ -24,7 +29,7 @@ authRouter.post("/register", async (req, res, next) => {
     }
 
     if (useFileStore()) {
-      const user = await devStore.registerPasswordUser({
+      const user = await registerPasswordUserFromFileStore({
         game_role_id: body.game_role_id.trim(),
         game_role_name: body.game_role_name.trim(),
         password: body.password,
@@ -63,7 +68,7 @@ authRouter.post("/register", async (req, res, next) => {
         userId: user.id,
         changeAmount: signupSeedQuota,
         type: "signup_seed_credit",
-        remark: "third_season_signup_seed",
+        remark: "fourth_season_signup_seed",
       });
     }
     const token = signUser(user);
@@ -85,7 +90,7 @@ authRouter.post("/login", async (req, res, next) => {
     }
 
     if (useFileStore()) {
-      const user = await devStore.loginPasswordUser(body.game_role_id.trim(), body.password);
+      const user = await loginPasswordUserFromFileStore(body.game_role_id.trim(), body.password);
       const token = signUser(user);
       return res.json({ token, user });
     }
@@ -140,7 +145,7 @@ authRouter.post("/game/bind", async (req, res, next) => {
     }
 
     if (useFileStore()) {
-      const user = devStore.bindUser({
+      const user = bindPasswordUserFromFileStore({
         game_role_id: body.game_role_id.trim(),
         game_server: body.game_server.trim(),
         game_role_name: body.game_role_name.trim(),
@@ -154,26 +159,51 @@ authRouter.post("/game/bind", async (req, res, next) => {
       return res.json({ token, user });
     }
 
-    const result = await pool.query(
-      `INSERT INTO users
-        (role, status, auth_provider, game_role_id, game_server, game_role_name, bind_token_id, nickname, password_hash, created_at, updated_at)
-       VALUES ('user', 'active', 'bind', $1, $2, $3, $4, $5, NULL, NOW(), NOW())
-       ON CONFLICT (game_role_id, game_server)
-       DO UPDATE SET
-        auth_provider='bind',
-        game_role_name=EXCLUDED.game_role_name,
-        bind_token_id=EXCLUDED.bind_token_id,
-        nickname=COALESCE(EXCLUDED.nickname, users.nickname),
-        updated_at=NOW()
+    const passwordUserResult = await pool.query(
+      `UPDATE users
+         SET game_role_name=$2,
+             bind_token_id=$3,
+             nickname=COALESCE($4, nickname),
+             updated_at=NOW()
+       WHERE id = (
+         SELECT id
+           FROM users
+          WHERE auth_provider='password'
+            AND game_role_id=$1
+          ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END, id DESC
+          LIMIT 1
+       )
        RETURNING id, role, status, auth_provider, game_role_id, game_server, game_role_name, bind_token_id, nickname`,
       [
         body.game_role_id.trim(),
-        body.game_server.trim(),
         body.game_role_name.trim(),
         body.bind_token_id?.trim() || null,
         body.nickname?.trim() || null,
       ]
     );
+
+    const result = passwordUserResult.rowCount
+      ? passwordUserResult
+      : await pool.query(
+          `INSERT INTO users
+            (role, status, auth_provider, game_role_id, game_server, game_role_name, bind_token_id, nickname, password_hash, created_at, updated_at)
+           VALUES ('user', 'active', 'bind', $1, $2, $3, $4, $5, NULL, NOW(), NOW())
+           ON CONFLICT (game_role_id, game_server)
+           DO UPDATE SET
+            auth_provider=COALESCE(users.auth_provider, 'bind'),
+            game_role_name=EXCLUDED.game_role_name,
+            bind_token_id=EXCLUDED.bind_token_id,
+            nickname=COALESCE(EXCLUDED.nickname, users.nickname),
+            updated_at=NOW()
+           RETURNING id, role, status, auth_provider, game_role_id, game_server, game_role_name, bind_token_id, nickname`,
+          [
+            body.game_role_id.trim(),
+            body.game_server.trim(),
+            body.game_role_name.trim(),
+            body.bind_token_id?.trim() || null,
+            body.nickname?.trim() || null,
+          ]
+        );
 
     const user = result.rows[0];
     if (user.status !== "active") {
@@ -191,7 +221,7 @@ authRouter.post("/game/bind", async (req, res, next) => {
 authRouter.get("/me", authRequired, async (req, res, next) => {
   try {
     if (useFileStore()) {
-      return res.json(devStore.getUserById(req.user.id));
+      return res.json(getCurrentFileUser(req.user.id));
     }
     const result = await pool.query(
       `SELECT

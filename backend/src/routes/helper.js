@@ -1,8 +1,14 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const { authRequired } = require("../middlewares/auth");
+const { getCurrentUser: getCurrentFileUser } = require("../modules/auth/file-service");
+const {
+  HELPER_CAPABILITIES,
+  getUserHelperCapabilities,
+  hasAnyHelperCapability,
+  hasHelperCapability,
+} = require("../domain/helper-capabilities");
 const { useFileStore } = require("../services/runtime");
-const devStore = require("../services/dev-store");
 const {
   validateHelperBindingInput,
   validateHelperInventoryInput,
@@ -10,6 +16,23 @@ const {
   validateHelperSnapshotUpdateInput,
   validateHelperActionLogInput,
 } = require("../services/validate");
+const {
+  createHelperActionLog,
+  createHelperSnapshot,
+  getHelperRechargeConfig,
+  getHelperSnapshotLimitForUser,
+  listHelperActionLogs,
+  listHelperBindings,
+  listHelperInventories,
+  listHelperSnapshots,
+  listMergedHelperInventoryItems,
+  removeHelperBinding,
+  removeHelperSnapshot,
+  resolveHelperBinding,
+  updateHelperSnapshot,
+  upsertHelperBinding,
+  upsertHelperInventory,
+} = require("../modules/helper/file-service");
 
 function readBooleanEnv(name, defaultValue = false) {
   const raw = process.env[name];
@@ -32,21 +55,37 @@ function getOptionalAuthUser(req) {
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return null;
   try {
-    return jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (useFileStore()) {
+      const currentUser = getCurrentFileUser(payload.id);
+      return currentUser?.status === "active" ? currentUser : null;
+    }
+    return payload;
   } catch {
     return null;
   }
 }
 
-function getHelperLineupAccess(user) {
+function isAdminUser(user) {
+  return String(user?.role || "").trim() === "admin";
+}
+
+function getHelperLineupAccess(user, hasHelperAccess) {
   const allowedUserIds = new Set(parseCsvEnv("HELPER_ALLOWED_USER_IDS"));
   const allowedGameRoleIds = new Set(parseCsvEnv("HELPER_ALLOWED_GAME_ROLE_IDS"));
   const whitelistActive = allowedUserIds.size > 0 || allowedGameRoleIds.size > 0;
-  if (!whitelistActive) {
+  if (!whitelistActive && hasHelperAccess) {
     return {
       whitelist_active: false,
       lineup_allowed: true,
       reason: "",
+    };
+  }
+  if (!hasHelperAccess) {
+    return {
+      whitelist_active: whitelistActive,
+      lineup_allowed: false,
+      reason: user ? "当前账号暂未开放 helper 功能。" : "请先登录已开通 helper 功能的账号。",
     };
   }
 
@@ -81,12 +120,17 @@ function getHelperConfig(req) {
     bridgeEnabled && readBooleanEnv("HELPER_TEAM_SWITCH_ENABLED", false);
   const teamRestoreEnabled =
     bridgeEnabled && readBooleanEnv("HELPER_TEAM_RESTORE_ENABLED", false);
+  const gameFeaturesEnabled =
+    bridgeEnabled && readBooleanEnv("HELPER_GAME_FEATURES_ENABLED", false);
   const user = getOptionalAuthUser(req);
-  const access = getHelperLineupAccess(user);
-  const rechargeConfig = useFileStore() ? devStore.getRechargeConfig() : {};
+  const helperCapabilities = getUserHelperCapabilities(user);
+  const helperAccessEnabled = helperCapabilities.length > 0;
+  const access = getHelperLineupAccess(user, helperAccessEnabled);
+  const accessAllowed = access.lineup_allowed !== false;
+  const rechargeConfig = useFileStore() ? getHelperRechargeConfig() : {};
   const lineupBaseSlots = Math.max(Number(rechargeConfig.lineup_base_slots || 3) || 3, 1);
   const snapshotLimit =
-    useFileStore() && user?.id ? devStore.getHelperSnapshotLimitForUser(user.id) : lineupBaseSlots;
+    useFileStore() && user?.id ? getHelperSnapshotLimitForUser(user.id) : lineupBaseSlots;
 
   return {
     enabled: bridgeEnabled,
@@ -94,12 +138,21 @@ function getHelperConfig(req) {
     public_base: String(process.env.HELPER_PUBLIC_BASE || "/xyzw-helper").trim() || "/xyzw-helper",
     api_base: String(process.env.HELPER_API_BASE || "/api").trim() || "/api",
     features: {
-      scan_bind: scanBindEnabled,
-      legacy_inventory: legacyInventoryEnabled,
-      team_snapshot: teamSnapshotEnabled,
-      team_switch: teamSwitchEnabled,
-      team_restore: teamRestoreEnabled,
+      scan_auth: scanBindEnabled,
+      scan_bind: scanBindEnabled && accessAllowed && helperAccessEnabled,
+      legacy_inventory:
+        legacyInventoryEnabled &&
+        accessAllowed &&
+        (hasHelperCapability(user, HELPER_CAPABILITIES.INVENTORY_SYNC_CURRENT) ||
+          hasHelperCapability(user, HELPER_CAPABILITIES.INVENTORY_SYNC_ALL)),
+      team_snapshot:
+        teamSnapshotEnabled && accessAllowed && hasHelperCapability(user, HELPER_CAPABILITIES.SNAPSHOT_CREATE),
+      team_switch: teamSwitchEnabled && accessAllowed && isAdminUser(user),
+      team_restore: teamRestoreEnabled && accessAllowed && isAdminUser(user),
+      action_logs: accessAllowed && hasHelperCapability(user, HELPER_CAPABILITIES.LOGS_READ),
+      game_features: gameFeaturesEnabled && accessAllowed && helperAccessEnabled,
     },
+    capabilities: helperCapabilities,
     limits: {
       snapshots_per_user: Number(snapshotLimit || lineupBaseSlots),
     },
@@ -118,6 +171,29 @@ function getHelperConfig(req) {
 
 const helperRouter = express.Router();
 
+function requireAnyHelperCapability(req, res) {
+  if (hasAnyHelperCapability(req.user)) return true;
+  res.status(403).json({ error: "helper_capability_required" });
+  return false;
+}
+
+function requireHelperCapability(req, res, capability) {
+  if (hasHelperCapability(req.user, capability)) return true;
+  res.status(403).json({ error: "helper_capability_required", capability });
+  return false;
+}
+
+function requireHelperInventoryCapability(req, res) {
+  if (
+    hasHelperCapability(req.user, HELPER_CAPABILITIES.INVENTORY_SYNC_CURRENT) ||
+    hasHelperCapability(req.user, HELPER_CAPABILITIES.INVENTORY_SYNC_ALL)
+  ) {
+    return true;
+  }
+  res.status(403).json({ error: "helper_capability_required", capability: "inventory.sync" });
+  return false;
+}
+
 helperRouter.get("/config", (req, res) => {
   res.json(getHelperConfig(req));
 });
@@ -127,7 +203,7 @@ helperRouter.get("/bindings/current", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_bindings_not_supported_in_db_mode" });
     }
-    return res.json(devStore.listHelperBindings(req.user.id));
+    return res.json(listHelperBindings(req.user.id));
   } catch (error) {
     return next(error);
   }
@@ -138,7 +214,8 @@ helperRouter.get("/bindings/current/resolve", authRequired, async (req, res, nex
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_bindings_not_supported_in_db_mode" });
     }
-    const binding = devStore.resolveHelperBinding(req.user.id, {
+    if (!requireAnyHelperCapability(req, res)) return;
+    const binding = resolveHelperBinding(req.user.id, {
       bind_token_id: req.query?.bind_token_id,
       game_role_id: req.query?.game_role_id,
       game_server: req.query?.game_server,
@@ -165,7 +242,7 @@ helperRouter.post("/bindings/current", authRequired, async (req, res, next) => {
     if (errors.length) {
       return res.status(400).json({ error: "invalid_input", details: errors });
     }
-    return res.json(devStore.upsertHelperBinding(req.user.id, body));
+    return res.json(upsertHelperBinding(req.user.id, body));
   } catch (error) {
     return next(error);
   }
@@ -176,7 +253,7 @@ helperRouter.delete("/bindings/current/:id", authRequired, async (req, res, next
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_bindings_not_supported_in_db_mode" });
     }
-    const removed = devStore.removeHelperBinding(req.user.id, req.params.id);
+    const removed = removeHelperBinding(req.user.id, req.params.id);
     if (!removed) {
       return res.status(404).json({ error: "helper_binding_not_found" });
     }
@@ -191,7 +268,8 @@ helperRouter.get("/snapshots", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_snapshots_not_supported_in_db_mode" });
     }
-    return res.json(devStore.listHelperSnapshots(req.user.id));
+    if (!requireHelperCapability(req, res, HELPER_CAPABILITIES.SNAPSHOT_CREATE)) return;
+    return res.json(listHelperSnapshots(req.user.id));
   } catch (error) {
     return next(error);
   }
@@ -202,9 +280,10 @@ helperRouter.get("/inventories", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_inventories_not_supported_in_db_mode" });
     }
+    if (!requireHelperInventoryCapability(req, res)) return;
     return res.json({
-      inventories: devStore.listHelperInventories(req.user.id),
-      merged_items: devStore.listMergedHelperInventoryItems(req.user.id),
+      inventories: listHelperInventories(req.user.id),
+      merged_items: listMergedHelperInventoryItems(req.user.id),
     });
   } catch (error) {
     return next(error);
@@ -216,12 +295,13 @@ helperRouter.post("/inventories", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_inventories_not_supported_in_db_mode" });
     }
+    if (!requireHelperInventoryCapability(req, res)) return;
     const body = req.body || {};
     const errors = validateHelperInventoryInput(body);
     if (errors.length) {
       return res.status(400).json({ error: "invalid_input", details: errors });
     }
-    return res.json(devStore.upsertHelperInventory(req.user.id, body));
+    return res.json(upsertHelperInventory(req.user.id, body));
   } catch (error) {
     return next(error);
   }
@@ -232,12 +312,13 @@ helperRouter.post("/snapshots", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_snapshots_not_supported_in_db_mode" });
     }
+    if (!requireHelperCapability(req, res, HELPER_CAPABILITIES.SNAPSHOT_CREATE)) return;
     const body = req.body || {};
     const errors = validateHelperSnapshotInput(body);
     if (errors.length) {
       return res.status(400).json({ error: "invalid_input", details: errors });
     }
-    return res.json(devStore.createHelperSnapshot(req.user.id, body));
+    return res.json(createHelperSnapshot(req.user.id, body));
   } catch (error) {
     return next(error);
   }
@@ -248,12 +329,13 @@ helperRouter.patch("/snapshots/:id", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_snapshots_not_supported_in_db_mode" });
     }
+    if (!requireHelperCapability(req, res, HELPER_CAPABILITIES.SNAPSHOT_CREATE)) return;
     const body = req.body || {};
     const errors = validateHelperSnapshotUpdateInput(body);
     if (errors.length) {
       return res.status(400).json({ error: "invalid_input", details: errors });
     }
-    const updated = devStore.updateHelperSnapshot(req.user.id, req.params.id, body);
+    const updated = updateHelperSnapshot(req.user.id, req.params.id, body);
     if (!updated) {
       return res.status(404).json({ error: "helper_snapshot_not_found" });
     }
@@ -268,7 +350,8 @@ helperRouter.delete("/snapshots/:id", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_snapshots_not_supported_in_db_mode" });
     }
-    const removed = devStore.removeHelperSnapshot(req.user.id, req.params.id);
+    if (!requireHelperCapability(req, res, HELPER_CAPABILITIES.SNAPSHOT_CREATE)) return;
+    const removed = removeHelperSnapshot(req.user.id, req.params.id);
     if (!removed) {
       return res.status(404).json({ error: "helper_snapshot_not_found" });
     }
@@ -283,8 +366,9 @@ helperRouter.get("/action-logs", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_action_logs_not_supported_in_db_mode" });
     }
+    if (!requireHelperCapability(req, res, HELPER_CAPABILITIES.LOGS_READ)) return;
     const limit = req.query?.limit;
-    return res.json(devStore.listHelperActionLogs(req.user.id, { limit }));
+    return res.json(listHelperActionLogs(req.user.id, { limit }));
   } catch (error) {
     return next(error);
   }
@@ -295,12 +379,13 @@ helperRouter.post("/action-logs", authRequired, async (req, res, next) => {
     if (!useFileStore()) {
       return res.status(501).json({ error: "helper_action_logs_not_supported_in_db_mode" });
     }
+    if (!requireAnyHelperCapability(req, res)) return;
     const body = req.body || {};
     const errors = validateHelperActionLogInput(body);
     if (errors.length) {
       return res.status(400).json({ error: "invalid_input", details: errors });
     }
-    return res.json(devStore.createHelperActionLog(req.user.id, body));
+    return res.json(createHelperActionLog(req.user.id, body));
   } catch (error) {
     return next(error);
   }

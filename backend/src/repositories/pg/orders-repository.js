@@ -1,10 +1,15 @@
 const { pool } = require("../../db/pool");
 const { ORDER_STATUS } = require("../../domain/order-status");
+const { QUOTA_LOG_TYPES } = require("../../domain/quota-log-types");
+const { AUDIT_ACTIONS } = require("../../domain/audit-actions");
 const { writeAuditLog } = require("../../services/audit");
 const { ensureBundleSeeds } = require("../../services/bundle-catalog");
 const { listOrders } = require("../../services/order-query");
 const { recalculateDatabasePricing } = require("../../services/pricing");
 const { applyQuotaChange } = require("../../services/quota");
+const { getRechargeConfig } = require("../../config/recharge-config");
+const { assertQuotaPurchaseAllowed } = require("../../domain/purchase-policy");
+const { findDynamicBundleById, isDynamicBundleItem } = require("../../domain/dynamic-bundles");
 
 function createUnsupportedError(errorCode) {
   const err = new Error(errorCode);
@@ -12,7 +17,39 @@ function createUnsupportedError(errorCode) {
   return err;
 }
 
-async function createOrder({ userId, itemId, itemKind }) {
+async function getDynamicBundleForOrder(client, itemId, selection = null) {
+  const result = await client.query(
+    `SELECT
+      id,
+      'card'::text AS item_kind,
+      id AS item_id,
+      legacy_id,
+      uid,
+      name,
+      image_url,
+      schedule_id,
+      current_schedule_id,
+      is_current_season,
+      season_tag,
+      season_label,
+      season_display,
+      attack_value,
+      hp_value,
+      main_attrs,
+      ext_attrs,
+      price_quota,
+      stock,
+      status,
+      created_at,
+      updated_at
+     FROM products
+     WHERE status='on_sale' AND stock > 0
+     FOR UPDATE`
+  );
+  return findDynamicBundleById(result.rows, itemId, selection);
+}
+
+async function createOrder({ userId, itemId, itemKind, remark = null, bundleSelection = null }) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -34,39 +71,50 @@ async function createOrder({ userId, itemId, itemKind }) {
 
     let item = null;
     const isBundle = itemKind === "bundle";
+    let dynamicBundle = null;
 
     if (isBundle) {
-      const bundleResult = await client.query(
-        `SELECT
-          id,
-          code,
-          name,
-          description,
-          image_url,
-          tags,
-          price_quota,
-          stock,
-          status
-         FROM bundle_skus
-         WHERE id=$1
-         FOR UPDATE`,
-        [itemId]
-      );
-      if (bundleResult.rowCount === 0) {
-        const err = new Error("bundle_not_found");
-        err.statusCode = 404;
-        throw err;
-      }
-      item = { ...bundleResult.rows[0], item_kind: "bundle" };
-      if (item.status !== "on_sale") {
-        const err = new Error("bundle_not_on_sale");
-        err.statusCode = 400;
-        throw err;
-      }
-      if (item.stock !== null && Number(item.stock) <= 0) {
-        const err = new Error("bundle_out_of_stock");
-        err.statusCode = 400;
-        throw err;
+      if (Number(itemId) < 0) {
+        dynamicBundle = await getDynamicBundleForOrder(client, itemId, bundleSelection);
+        if (!dynamicBundle) {
+          const err = new Error("bundle_not_found");
+          err.statusCode = 404;
+          throw err;
+        }
+        item = dynamicBundle;
+      } else {
+        const bundleResult = await client.query(
+          `SELECT
+            id,
+            code,
+            name,
+            description,
+            image_url,
+            tags,
+            price_quota,
+            stock,
+            status
+           FROM bundle_skus
+           WHERE id=$1
+           FOR UPDATE`,
+          [itemId]
+        );
+        if (bundleResult.rowCount === 0) {
+          const err = new Error("bundle_not_found");
+          err.statusCode = 404;
+          throw err;
+        }
+        item = { ...bundleResult.rows[0], item_kind: "bundle" };
+        if (item.status !== "on_sale") {
+          const err = new Error("bundle_not_on_sale");
+          err.statusCode = 400;
+          throw err;
+        }
+        if (item.stock !== null && Number(item.stock) <= 0) {
+          const err = new Error("bundle_out_of_stock");
+          err.statusCode = 400;
+          throw err;
+        }
       }
     } else {
       const productResult = await client.query(
@@ -76,6 +124,12 @@ async function createOrder({ userId, itemId, itemKind }) {
           uid,
           name,
           image_url,
+          schedule_id,
+          current_schedule_id,
+          is_current_season,
+          season_tag,
+          season_label,
+          season_display,
           attack_value,
           hp_value,
           main_attrs,
@@ -104,20 +158,21 @@ async function createOrder({ userId, itemId, itemKind }) {
         err.statusCode = 400;
         throw err;
       }
+      assertQuotaPurchaseAllowed(item, getRechargeConfig());
     }
 
     await applyQuotaChange(client, {
       userId,
       changeAmount: -Number(item.price_quota),
-      type: "order_deduct",
-      remark: `order create for ${itemKind} ${item.id}`,
+      type: QUOTA_LOG_TYPES.ORDER_DEDUCT,
+      remark: remark || `order create for ${itemKind} ${item.id}`,
     });
 
     const orderResult = await client.query(
-      `INSERT INTO orders (user_id, total_quota, status, created_at, updated_at)
-       VALUES ($1, $2, $3, NOW(), NOW())
+      `INSERT INTO orders (user_id, total_quota, status, remark, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
        RETURNING *`,
-      [userId, item.price_quota, ORDER_STATUS.PENDING]
+      [userId, item.price_quota, ORDER_STATUS.PENDING, remark || null]
     );
     const order = orderResult.rows[0];
 
@@ -129,6 +184,8 @@ async function createOrder({ userId, itemId, itemKind }) {
             description: item.description,
             image_url: item.image_url,
             tags: item.tags,
+            dynamic_bundle: Boolean(dynamicBundle),
+            bundle_components: dynamicBundle ? item.bundle_components || [] : undefined,
           }
         : {
             legacy_id: item.legacy_id,
@@ -149,14 +206,26 @@ async function createOrder({ userId, itemId, itemKind }) {
         order.id,
         itemKind,
         isBundle ? null : item.id,
-        isBundle ? item.id : null,
+        isBundle && !dynamicBundle ? item.id : null,
         item.name,
         snapshot,
         item.price_quota,
       ]
     );
 
-    if (isBundle) {
+    if (dynamicBundle) {
+      for (const component of item.bundle_components || []) {
+        await client.query(
+          `UPDATE products
+           SET
+            stock=stock-1,
+            status=CASE WHEN stock-1 <= 0 THEN 'sold' ELSE status END,
+            updated_at=NOW()
+           WHERE id=$1`,
+          [component.product_id]
+        );
+      }
+    } else if (isBundle) {
       if (item.stock !== null) {
         await client.query(
           `UPDATE bundle_skus
@@ -187,8 +256,13 @@ async function createOrder({ userId, itemId, itemKind }) {
         actorUserId: userId,
         targetType: "order",
         targetId: order.id,
-        action: "order_create",
-        detail: { item_kind: itemKind, item_id: item.id, total_quota: item.price_quota },
+        action: AUDIT_ACTIONS.ORDER_CREATE,
+        detail: {
+          item_kind: itemKind,
+          item_id: item.id,
+          total_quota: item.price_quota,
+          remark: remark || null,
+        },
       },
       client
     );
@@ -234,7 +308,7 @@ async function requestCancellation({ orderId, userId, remark }) {
         actorUserId: userId,
         targetType: "order",
         targetId: order.id,
-        action: "order_cancel_request",
+        action: AUDIT_ACTIONS.ORDER_CANCEL_REQUEST,
         detail: { remark: remark || null },
       },
       client

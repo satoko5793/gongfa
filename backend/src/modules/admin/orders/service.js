@@ -10,13 +10,14 @@ async function reviewRechargeOrder(actorUser, rechargeOrderId, body) {
   });
 }
 
-async function updateOrderStatus(actorUser, orderId, body) {
+async function updateOrderStatus(actorUser, orderId, body, requestId = null) {
   const repository = getAdminOrdersRepository();
   return await repository.updateOrderStatus({
     orderId,
     status: body.status,
     remark: body.remark || null,
     actorUserId: actorUser.id,
+    requestId,
     returnedCardsText: body.returned_cards_text || null,
     bestGoldCard: body.best_gold_card || null,
   });

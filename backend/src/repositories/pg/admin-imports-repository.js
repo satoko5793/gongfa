@@ -1,6 +1,7 @@
 const { pool } = require("../../db/pool");
 const { writeAuditLog } = require("../../services/audit");
 const { recalculateDatabasePricing } = require("../../services/pricing");
+const { AUDIT_ACTIONS } = require("../../domain/audit-actions");
 
 async function importCards({ sourceType, sourceFileName, rawJson, importedBy, parsedProducts }) {
   const client = await pool.connect();
@@ -70,7 +71,7 @@ async function importCards({ sourceType, sourceFileName, rawJson, importedBy, pa
         actorUserId: importedBy,
         targetType: "import",
         targetId: importRow.id,
-        action: "cards_import",
+        action: AUDIT_ACTIONS.CARDS_IMPORT,
         detail: {
           source_type: importRow.source_type,
           source_file_name: importRow.source_file_name,

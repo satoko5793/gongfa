@@ -3,6 +3,8 @@ const { applyQuotaChange } = require("../../services/quota");
 const { listOrders } = require("../../services/order-query");
 const { writeAuditLog } = require("../../services/audit");
 const { recalculateDatabasePricing } = require("../../services/pricing");
+const { QUOTA_LOG_TYPES } = require("../../domain/quota-log-types");
+const { AUDIT_ACTIONS } = require("../../domain/audit-actions");
 
 async function reviewRechargeOrder() {
   const err = new Error("recharge_order_not_supported_in_db_mode");
@@ -15,6 +17,7 @@ async function updateOrderStatus({
   status,
   remark,
   actorUserId,
+  requestId = null,
 }) {
   const client = await pool.connect();
   try {
@@ -38,12 +41,26 @@ async function updateOrderStatus({
 
     if (status === "cancelled" && order.status !== "cancelled") {
       const itemsResult = await client.query(
-        "SELECT item_kind, product_id, bundle_sku_id FROM order_items WHERE order_id=$1",
+        "SELECT item_kind, product_id, bundle_sku_id, product_snapshot FROM order_items WHERE order_id=$1",
         [order.id]
       );
 
       for (const item of itemsResult.rows) {
         if (item.item_kind === "bundle") {
+          if (item.product_snapshot?.dynamic_bundle) {
+            for (const component of item.product_snapshot.bundle_components || []) {
+              await client.query(
+                `UPDATE products
+                 SET
+                  stock=stock+1,
+                  status=CASE WHEN status='sold' THEN 'on_sale' ELSE status END,
+                  updated_at=NOW()
+                 WHERE id=$1`,
+                [component.product_id]
+              );
+            }
+            continue;
+          }
           await client.query(
             `UPDATE bundle_skus
              SET
@@ -70,7 +87,7 @@ async function updateOrderStatus({
       await applyQuotaChange(client, {
         userId: order.user_id,
         changeAmount: Number(order.total_quota),
-        type: "order_refund",
+        type: QUOTA_LOG_TYPES.ORDER_REFUND,
         orderId: order.id,
         remark: remark || "admin cancel order",
       });
@@ -90,8 +107,8 @@ async function updateOrderStatus({
         actorUserId,
         targetType: "order",
         targetId: order.id,
-        action: "order_status_update",
-        detail: { from: order.status, to: status, remark },
+        action: AUDIT_ACTIONS.ORDER_STATUS_UPDATE,
+        detail: { from: order.status, to: status, remark, request_id: requestId },
       },
       client
     );
@@ -136,7 +153,7 @@ async function updateOrderRemark({ orderId, remark, actorUserId }) {
         actorUserId,
         targetType: "order",
         targetId: Number(orderId),
-        action: "order_remark_update",
+        action: AUDIT_ACTIONS.ORDER_REMARK_UPDATE,
         detail: { remark },
       },
       client

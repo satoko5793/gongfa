@@ -1,6 +1,7 @@
 const { pool } = require("../../db/pool");
 const { writeAuditLog } = require("../../services/audit");
 const { recalculateDatabasePricing } = require("../../services/pricing");
+const { AUDIT_ACTIONS } = require("../../domain/audit-actions");
 
 function notFoundError(message) {
   const err = new Error(message);
@@ -8,7 +9,7 @@ function notFoundError(message) {
   return err;
 }
 
-async function bulkUpdateProductStatus({ productIds, status, actorUserId }) {
+async function bulkUpdateProductStatus({ productIds, status, actorUserId, requestId = null }) {
   const result = await pool.query(
     `UPDATE products
      SET status=$2, updated_at=NOW()
@@ -21,17 +22,24 @@ async function bulkUpdateProductStatus({ productIds, status, actorUserId }) {
     actorUserId,
     targetType: "product",
     targetId: productIds[0],
-    action: "product_bulk_status_update",
-    detail: { product_ids: productIds, status, updated_count: result.rowCount },
+    action: AUDIT_ACTIONS.PRODUCT_BULK_STATUS_UPDATE,
+    detail: { product_ids: productIds, status, updated_count: result.rowCount, request_id: requestId },
   });
 
   return { updated_count: result.rowCount, status };
 }
 
-async function bulkUpdateProducts({ productIds, patch, actorUserId }) {
+async function bulkUpdateProducts({ productIds, patch, actorUserId, requestId = null }) {
   const nextPatch = { ...patch };
   const manualPrice =
-    Object.prototype.hasOwnProperty.call(nextPatch, "price_quota") ? nextPatch.price_quota : undefined;
+    Object.prototype.hasOwnProperty.call(nextPatch, "manual_price_quota")
+      ? nextPatch.manual_price_quota
+      : Object.prototype.hasOwnProperty.call(nextPatch, "price_quota")
+      ? nextPatch.price_quota
+      : undefined;
+  if (Object.prototype.hasOwnProperty.call(nextPatch, "manual_price_quota")) {
+    delete nextPatch.manual_price_quota;
+  }
   if (Object.prototype.hasOwnProperty.call(nextPatch, "price_quota")) {
     delete nextPatch.price_quota;
   }
@@ -65,7 +73,7 @@ async function bulkUpdateProducts({ productIds, patch, actorUserId }) {
     actorUserId,
     targetType: "product",
     targetId: productIds[0],
-    action: "product_bulk_update",
+    action: AUDIT_ACTIONS.PRODUCT_BULK_UPDATE,
     detail: {
       product_ids: productIds,
       patch: {
@@ -73,6 +81,7 @@ async function bulkUpdateProducts({ productIds, patch, actorUserId }) {
         ...(manualPrice !== undefined ? { manual_price_quota: manualPrice } : {}),
       },
       updated_count: result.rowCount,
+      request_id: requestId,
     },
   });
 
@@ -89,7 +98,11 @@ async function bulkUpdateProducts({ productIds, patch, actorUserId }) {
 
 async function updateProduct({ productId, patch, actorUserId }) {
   const manualPrice =
-    Object.prototype.hasOwnProperty.call(patch, "price_quota") ? patch.price_quota : undefined;
+    Object.prototype.hasOwnProperty.call(patch, "manual_price_quota")
+      ? patch.manual_price_quota
+      : Object.prototype.hasOwnProperty.call(patch, "price_quota")
+      ? patch.price_quota
+      : undefined;
 
   const result = await pool.query(
     `UPDATE products
@@ -128,7 +141,7 @@ async function updateProduct({ productId, patch, actorUserId }) {
     actorUserId,
     targetType: "product",
     targetId: Number(productId),
-    action: "product_update",
+    action: AUDIT_ACTIONS.PRODUCT_UPDATE,
     detail: {
       ...patch,
       ...(manualPrice !== undefined ? { manual_price_quota: manualPrice } : {}),
@@ -157,7 +170,7 @@ async function clearProductManualPrice({ productId, actorUserId }) {
     actorUserId,
     targetType: "product",
     targetId: Number(productId),
-    action: "product_manual_price_clear",
+    action: AUDIT_ACTIONS.PRODUCT_MANUAL_PRICE_CLEAR,
     detail: null,
   });
 
@@ -179,7 +192,7 @@ async function updateProductStatus({ productId, status, actorUserId }) {
     actorUserId,
     targetType: "product",
     targetId: Number(productId),
-    action: "product_status_update",
+    action: AUDIT_ACTIONS.PRODUCT_STATUS_UPDATE,
     detail: { status },
   });
 

@@ -1,0 +1,72 @@
+.order-item-list,
+.order-toolbar,
+.admin-card,
+.admin-card-head,
+.panel,
+.muted-panel,
+.panel-title,
+.quota-log-item,
+.audit-log-item {
+  box-sizing: border-box;
+}
+
+.order-toolbar {
+  margin-bottom: 16px;
+}
+
+.admin-card {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.actions.tight {
+  gap: 8px;
+}
+
+.actions.tight button {
+  padding: 9px 14px;
+}
+
+.helper-capability-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.helper-capability-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.helper-capability-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.helper-capability-toggle input {
+  margin: 0;
+}
+
+.quota-log-item,
+.audit-log-item {
+  display: grid;
+  gap: 6px;
+}
+
+.order-item-line {
+  color: var(--muted);
+  font-size: 13px;
+}

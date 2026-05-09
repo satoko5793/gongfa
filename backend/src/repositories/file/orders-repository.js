@@ -1,7 +1,8 @@
-const devStore = require("../../services/dev-store");
+const ordersStore = require("../../domain/store/repositories/orders-file-store");
 
-async function createGuestTransferOrder({ itemId, itemKind, body }) {
-  return devStore.createGuestTransferOrder(itemId, itemKind, {
+async function createGuestTransferOrder({ userId, itemId, itemKind, body }) {
+  return ordersStore.createGuestTransferOrder(itemId, itemKind, {
+    userId,
     gameRoleId: body.game_role_id,
     gameRoleName: body.game_role_name,
     nickname: body.nickname || null,
@@ -10,32 +11,33 @@ async function createGuestTransferOrder({ itemId, itemKind, body }) {
     paymentChannel: body.payment_channel || "alipay_qr",
     paymentReference: body.payment_reference,
     payerNote: body.payer_note || null,
+    bundleSelection: body.bundle_selection || null,
   });
 }
 
-async function createOrder({ userId, itemId, itemKind }) {
-  return devStore.createOrder(userId, itemId, itemKind);
+async function createOrder({ userId, itemId, itemKind, remark, bundleSelection = null }) {
+  return ordersStore.createOrder(userId, itemId, itemKind, { remark, bundleSelection });
 }
 
 async function createDrawServiceOrder({ userId, amountQuota }) {
-  return devStore.createDrawServiceOrder(userId, { amountQuota });
+  return ordersStore.createDrawServiceOrder(userId, { amountQuota });
 }
 
 async function listAuctionBidSummariesForUser({ userId }) {
-  return devStore.listAuctionBidSummariesForUser(userId);
+  return ordersStore.listAuctionBidSummariesForUser(userId);
 }
 
 async function placeAuctionBid({ auctionId, userId, amountQuota }) {
-  return devStore.placeAuctionBid(auctionId, userId, amountQuota);
+  return ordersStore.placeAuctionBid(auctionId, userId, amountQuota);
 }
 
 async function requestCancellation({ orderId, userId, remark }) {
-  return devStore.requestOrderCancellation(orderId, userId, remark);
+  return ordersStore.requestOrderCancellation(orderId, userId, remark);
 }
 
 async function getOrderById({ orderId, userId, role }) {
   return (
-    devStore.listOrders({
+    ordersStore.listOrders({
       orderId,
       userId: role === "admin" ? null : userId,
       limit: 1,

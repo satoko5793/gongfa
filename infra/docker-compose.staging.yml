@@ -10,10 +10,19 @@ services:
     restart: unless-stopped
     env_file:
       - ../.env.staging
+    environment:
+      DEV_STORE_DATA_PATH: /app/runtime-data/dev-data.json
+      HELPER_BRIDGE_ENABLED: "1"
+      HELPER_SCAN_BIND_ENABLED: "1"
+      HELPER_LEGACY_INVENTORY_ENABLED: "1"
+      HELPER_TEAM_SNAPSHOT_ENABLED: "1"
+      HELPER_TEAM_SWITCH_ENABLED: "0"
+      HELPER_TEAM_RESTORE_ENABLED: "0"
+      HELPER_GAME_FEATURES_ENABLED: "1"
     ports:
       - "8081:8090"
     volumes:
-      - ../backend/dev-data.staging.json:/app/backend/dev-data.json
+      - /opt/gongfa-staging-data:/app/runtime-data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
       interval: 30s
