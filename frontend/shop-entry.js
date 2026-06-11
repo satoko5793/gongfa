@@ -1,17 +1,19 @@
-import { loadSession } from "./shared.js?v=release-20260509-160631";
-import { startShopLiteShell } from "./page-entry-shop-lite.js?v=release-20260509-160631";
+import { loadSession } from "./shared.js?v=release-20260611-151806";
+import { startShopLiteShell } from "./page-entry-shop-lite.js?v=release-20260611-151806";
+import { renderShopHonorPanel } from "./season-honor-runtime.js?v=release-20260611-151806";
 import {
   applyEntryNavSessionState,
   getEntrySessionProfile,
   renderEntrySessionSummary,
-} from "./page-entry-session.js?v=release-20260509-160631";
+} from "./page-entry-session.js?v=release-20260611-151806";
 
 window.__GONGFA_PAGE_MODE__ = "shop";
 
-const APP_MODULE_SRC = "./app.js?v=release-20260509-160631";
+const APP_MODULE_SRC = "./app.js?v=release-20260611-151806";
 
 const heroStageTrigger = document.getElementById("hero-stage-trigger");
 const heroStageImage = document.getElementById("hero-stage-image");
+const shopHonorRoot = document.getElementById("shop-honor-panel-root");
 const beginnerGuideSummary = document.getElementById("beginner-guide-summary");
 const beginnerGuideReward = document.getElementById("beginner-guide-reward");
 const beginnerGuideSteps = document.getElementById("beginner-guide-steps");
@@ -65,6 +67,11 @@ function renderSessionSummary(profile) {
 
 function hydrateSessionSummary() {
   renderSessionSummary(sessionProfile);
+}
+
+function renderSeasonHonor() {
+  if (!shopHonorRoot) return;
+  shopHonorRoot.innerHTML = renderShopHonorPanel();
 }
 
 function applyHeroStageFrame(index, sources, scales, shifts) {
@@ -185,6 +192,7 @@ function bindViewportBootstrap() {
 }
 
 activateShopNav();
+renderSeasonHonor();
 hydrateSessionSummary();
 bindHeroStageRotation();
 bindEarlyWakeEvents();

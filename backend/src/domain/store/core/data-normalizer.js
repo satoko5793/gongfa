@@ -110,6 +110,10 @@ function normalizeStoreData(data, deps = {}) {
       ...user,
       auth_provider: user?.auth_provider || "bind",
       password_hash: user?.password_hash || null,
+      contact_info:
+        user?.contact_info === undefined || user?.contact_info === null
+          ? ""
+          : String(user.contact_info).trim(),
       helper_capabilities: normalizeHelperCapabilities
         ? normalizeHelperCapabilities(user?.helper_capabilities)
         : Array.isArray(user?.helper_capabilities)
@@ -123,6 +127,7 @@ function normalizeStoreData(data, deps = {}) {
     if (
       !user?.auth_provider ||
       user?.password_hash === undefined ||
+      user?.contact_info === undefined ||
       user?.helper_capabilities === undefined ||
       String((user?.helper_capabilities || []).join("|")) !== String((normalized.helper_capabilities || []).join("|")) ||
       user?.beginner_guide_reward === undefined
@@ -262,6 +267,102 @@ function normalizeStoreData(data, deps = {}) {
     result_payload:
       log?.result_payload && typeof log.result_payload === "object" ? log.result_payload : {},
     created_at: log?.created_at || now(),
+  }));
+  next.consignmentListings = (next.consignmentListings || []).map((listing) => ({
+    id: Number(listing?.id || 0),
+    seller_user_id: Number(listing?.seller_user_id || 0),
+    seller_binding_id:
+      listing?.seller_binding_id === undefined || listing?.seller_binding_id === null
+        ? null
+        : Number(listing.seller_binding_id),
+    seller_display_name:
+      listing?.seller_display_name === undefined || listing?.seller_display_name === null
+        ? ""
+        : String(listing.seller_display_name).trim(),
+    seller_contact_info:
+      listing?.seller_contact_info === undefined || listing?.seller_contact_info === null
+        ? ""
+        : String(listing.seller_contact_info).trim(),
+    inventory_id: Number(listing?.inventory_id || 0),
+    inventory_item_key: String(listing?.inventory_item_key || "").trim(),
+    item_snapshot:
+      listing?.item_snapshot && typeof listing.item_snapshot === "object" && !Array.isArray(listing.item_snapshot)
+        ? listing.item_snapshot
+        : {},
+    price_yuan: Math.max(Number(listing?.price_yuan ?? listing?.price_quota ?? 0) || 0, 0),
+    price_quota: Math.max(Number(listing?.price_quota ?? listing?.price_yuan ?? 0) || 0, 0),
+    residual_price:
+      listing?.residual_price === undefined || listing?.residual_price === null
+        ? null
+        : Math.max(Number(listing.residual_price) || 0, 0),
+    payment_options: Array.isArray(listing?.payment_options) ? listing.payment_options : [],
+    pricing_snapshot:
+      listing?.pricing_snapshot && typeof listing.pricing_snapshot === "object" && !Array.isArray(listing.pricing_snapshot)
+        ? listing.pricing_snapshot
+        : {},
+    reserved_trade_id:
+      listing?.reserved_trade_id === undefined || listing?.reserved_trade_id === null
+        ? null
+        : Number(listing.reserved_trade_id),
+    seller_remark:
+      listing?.seller_remark === undefined || listing?.seller_remark === null
+        ? ""
+        : String(listing.seller_remark).trim(),
+    status: String(listing?.status || "submitted").trim() || "submitted",
+    reviewed_by:
+      listing?.reviewed_by === undefined || listing?.reviewed_by === null ? null : Number(listing.reviewed_by),
+    reviewed_at: listing?.reviewed_at || null,
+    review_note:
+      listing?.review_note === undefined || listing?.review_note === null ? "" : String(listing.review_note).trim(),
+    created_at: listing?.created_at || now(),
+    updated_at: listing?.updated_at || now(),
+  }));
+  next.escrowTrades = (next.escrowTrades || []).map((trade) => ({
+    ...trade,
+    id: Number(trade?.id || 0),
+    consignment_listing_id: Number(trade?.consignment_listing_id || 0),
+    buyer_user_id: Number(trade?.buyer_user_id || 0),
+    seller_user_id: Number(trade?.seller_user_id || 0),
+    payment_method: String(trade?.payment_method || "cash").trim() || "cash",
+    amount: Number(trade?.amount || 0),
+    payment_review_status:
+      String(trade?.payment_review_status || "").trim() ||
+      (String(trade?.payment_method || "").trim() === "quota" ? "auto_confirmed" : "manual_pending"),
+    payment_review_source:
+      String(trade?.payment_review_source || "").trim() ||
+      (String(trade?.payment_method || "").trim() === "quota" ? "internal_quota" : "manual_admin"),
+    payment_reviewed_by:
+      trade?.payment_reviewed_by === undefined || trade?.payment_reviewed_by === null
+        ? null
+        : Number(trade.payment_reviewed_by),
+    payment_reviewed_at: trade?.payment_reviewed_at || null,
+    admin_note:
+      trade?.admin_note === undefined || trade?.admin_note === null ? "" : String(trade.admin_note).trim(),
+    status: String(trade?.status || "awaiting_payment_review").trim() || "awaiting_payment_review",
+    settlement_status: String(trade?.settlement_status || "").trim(),
+    created_at: trade?.created_at || now(),
+    updated_at: trade?.updated_at || now(),
+  }));
+  next.escrowEvidence = (next.escrowEvidence || []).map((item) => ({
+    ...item,
+    id: Number(item?.id || 0),
+    trade_id: Number(item?.trade_id || 0),
+    user_id: Number(item?.user_id || 0),
+    evidence_type: String(item?.evidence_type || "image").trim() || "image",
+    url: String(item?.url || "").trim(),
+    created_at: item?.created_at || now(),
+  }));
+  next.escrowLedger = (next.escrowLedger || []).map((entry) => ({
+    ...entry,
+    id: Number(entry?.id || 0),
+    trade_id: Number(entry?.trade_id || 0),
+    actor_user_id:
+      entry?.actor_user_id === undefined || entry?.actor_user_id === null
+        ? null
+        : Number(entry.actor_user_id),
+    action: String(entry?.action || "").trim(),
+    detail: entry?.detail && typeof entry.detail === "object" ? entry.detail : {},
+    created_at: entry?.created_at || now(),
   }));
   next.auctions = (next.auctions || []).map((auction) => {
     const normalizedStatus = normalizeAuctionStatus(auction?.status);

@@ -17,12 +17,13 @@ export async function loadAccountData(ctx) {
 
   try {
     const profile = await ctx.apiFetch("/auth/me");
-    const [quotaResult, ordersResult, rechargeConfigResult, rechargeOrdersResult] =
+    const [quotaResult, ordersResult, rechargeConfigResult, rechargeOrdersResult, escrowTradesResult] =
       await Promise.allSettled([
         ctx.apiFetch("/me/quota"),
         ctx.apiFetch("/me/orders"),
         ctx.apiFetch("/me/recharge-config"),
         ctx.apiFetch("/me/recharge-orders"),
+        ctx.apiFetch("/orders/consignments/mine"),
       ]);
     const quota =
       quotaResult.status === "fulfilled"
@@ -38,6 +39,10 @@ export async function loadAccountData(ctx) {
       rechargeOrdersResult.status === "fulfilled" && Array.isArray(rechargeOrdersResult.value)
         ? rechargeOrdersResult.value
         : [];
+    const normalizedEscrowTrades =
+      escrowTradesResult.status === "fulfilled" && Array.isArray(escrowTradesResult.value)
+        ? escrowTradesResult.value
+        : [];
 
     ctx.saveSession({ ...session, profile });
     ctx.applyLoadedAccountState({
@@ -46,6 +51,7 @@ export async function loadAccountData(ctx) {
       orders: normalizedOrders,
       rechargeConfig,
       rechargeOrders: normalizedRechargeOrders,
+      escrowTrades: normalizedEscrowTrades,
     });
 
     ctx.setDebugLine("account.profile", `${profile?.game_role_id || "-"} / ${profile?.game_role_name || "-"}`);
@@ -78,6 +84,7 @@ export async function loadAccountData(ctx) {
       ordersResult.status === "rejected" ? "订单" : "",
       rechargeConfigResult.status === "rejected" ? "充值配置" : "",
       rechargeOrdersResult.status === "rejected" ? "充值记录" : "",
+      escrowTradesResult.status === "rejected" ? "担保交易" : "",
     ].filter(Boolean);
     ctx.setNotice(
       secondaryErrors.length

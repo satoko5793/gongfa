@@ -1,9 +1,10 @@
-import { bindCatalogPageEvents, loadCatalogPage, renderCatalogPage } from "./catalog.js?v=release-20260509-160631";
-import { bindImportsPageEvents, loadImportsPage, renderImportsPage } from "./imports.js?v=release-20260509-160631";
-import { bindLogsPageEvents, loadLogsPage, renderLogsPage } from "./logs.js?v=release-20260509-160631";
-import { bindOrdersPageEvents, loadOrdersPage, renderOrdersPage } from "./orders.js?v=release-20260509-160631";
-import { bindRechargePageEvents, loadRechargePage, renderRechargePage } from "./recharge.js?v=release-20260509-160631";
-import { bindUsersPageEvents, loadUsersPage, renderUsersPage } from "./users.js?v=release-20260509-160631";
+import { bindCatalogPageEvents, loadCatalogPage, renderCatalogPage } from "./catalog.js?v=release-20260611-151806";
+import { bindImportsPageEvents, loadImportsPage, renderImportsPage } from "./imports.js?v=release-20260611-151806";
+import { bindConsignmentsPageEvents, loadConsignmentsPage, renderConsignmentsPage } from "./consignments.js?v=release-20260611-151806";
+import { bindLogsPageEvents, loadLogsPage, renderLogsPage } from "./logs.js?v=release-20260611-151806";
+import { bindOrdersPageEvents, loadOrdersPage, renderOrdersPage } from "./orders.js?v=release-20260611-151806";
+import { bindRechargePageEvents, loadRechargePage, renderRechargePage } from "./recharge.js?v=release-20260611-151806";
+import { bindUsersPageEvents, loadUsersPage, renderUsersPage } from "./users.js?v=release-20260611-151806";
 
 const PAGE_DEFINITIONS = {
   imports: { load: loadImportsPage, bind: bindImportsPageEvents, render: renderImportsPage },
@@ -11,6 +12,7 @@ const PAGE_DEFINITIONS = {
   users: { load: loadUsersPage, bind: bindUsersPageEvents, render: renderUsersPage },
   orders: { load: loadOrdersPage, bind: bindOrdersPageEvents, render: renderOrdersPage },
   recharge: { load: loadRechargePage, bind: bindRechargePageEvents, render: renderRechargePage },
+  consignments: { load: loadConsignmentsPage, bind: bindConsignmentsPageEvents, render: renderConsignmentsPage },
   logs: { load: loadLogsPage, bind: bindLogsPageEvents, render: renderLogsPage },
 };
 

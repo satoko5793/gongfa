@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>功法卡片商城 - 后台</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260411-helper1" />
-    <link rel="stylesheet" href="styles.css?v=20260331g" />
-    <link rel="stylesheet" href="styles/base.css?v=release-20260421-170500" />
-    <link rel="stylesheet" href="styles/admin.css?v=release-20260421-170500" />
-    <link rel="stylesheet" href="styles/admin-products.css?v=release-20260421-170500" />
-    <link rel="stylesheet" href="styles/admin-recharge.css?v=release-20260421-170500" />
-    <link rel="stylesheet" href="styles/admin-logs.css?v=release-20260421-170500" />
-    <link rel="stylesheet" href="styles/helper.css?v=release-20260421-170500" />
+    <link rel="stylesheet" href="styles.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/base.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/admin.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/admin-products.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/admin-recharge.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/admin-logs.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/helper.css?v=release-20260611-151806" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -82,7 +82,8 @@
           <button class="admin-page-tab" type="button" data-admin-page-tab="users">第 3 页 用户</button>
           <button class="admin-page-tab" type="button" data-admin-page-tab="orders">第 4 页 订单</button>
           <button class="admin-page-tab" type="button" data-admin-page-tab="recharge">第 5 页 充值</button>
-          <button class="admin-page-tab" type="button" data-admin-page-tab="logs">第 6 页 流水日志</button>
+          <button class="admin-page-tab" type="button" data-admin-page-tab="consignments">第 6 页 寄售管理</button>
+          <button class="admin-page-tab" type="button" data-admin-page-tab="logs">第 7 页 流水日志</button>
         </div>
       </section>
 
@@ -281,185 +282,242 @@
         </section>
       </div>
 
+      <div class="admin-page-panel hidden" data-admin-page-panel="consignments">
+        <section id="admin-consignments-section" class="card">
+          <div class="card-title">寄售与支付审核</div>
+          <div class="card-sub">寄售会自动上架；人民币转账和残卷转赠先进入支付审核中心，管理员确认后才进入平台托管。</div>
+          <div class="toolbar">
+            <div class="filters">
+              <select id="admin-consignment-status-filter">
+                <option value="all">全部申请</option>
+                <option value="submitted">历史待上架</option>
+                <option value="approved">已上架</option>
+                <option value="rejected">已拒绝</option>
+                <option value="suspended">已冻结</option>
+                <option value="withdrawn">已撤回</option>
+              </select>
+              <button id="reload-consignments-btn" class="ghost" type="button">刷新寄售</button>
+            </div>
+          </div>
+          <div id="admin-consignments" class="admin-list"></div>
+        </section>
+      </div>
+
       <div class="admin-page-panel hidden" data-admin-page-panel="recharge">
         <section id="recharge-config" class="card">
           <div class="card-title">充值配置</div>
-          <div class="card-sub">调整兑换比例、最低充值和收款说明，保存后前台会立刻显示新的比例。</div>
-          <form id="admin-recharge-config-form" class="form-grid">
-          <label>
-            开启充值
-            <select id="admin-recharge-enabled">
-              <option value="true">开启</option>
-              <option value="false">关闭</option>
-            </select>
-          </label>
-          <label>
-            兑换比例：元
-            <input id="admin-recharge-exchange-yuan" type="number" min="0.01" step="0.01" />
-          </label>
-          <label>
-            兑换比例：额度
-            <input id="admin-recharge-exchange-quota" type="number" min="1" step="1" />
-          </label>
-          <label>
-            最低充值（元）
-            <input id="admin-recharge-min-yuan" type="number" min="0.01" step="0.01" />
-          </label>
-          <label>
-            开启残卷转赠
-            <select id="admin-residual-transfer-enabled">
-              <option value="true">开启</option>
-              <option value="false">关闭</option>
-            </select>
-          </label>
-          <label>
-            转赠管理员游戏 ID
-            <input id="admin-residual-admin-role-id" type="text" placeholder="例如 584967604" />
-          </label>
-          <label>
-            转赠管理员名称
-            <input id="admin-residual-admin-role-name" type="text" placeholder="例如 admin残卷" />
-          </label>
-          <label>
-            转赠管理员游戏名
-            <input id="admin-residual-admin-game-name" type="text" placeholder="例如 繁星✨秋" />
-          </label>
-          <label>
-            转赠单位名称
-            <input id="admin-residual-unit-label" type="text" placeholder="例如 残卷" />
-          </label>
-          <label>
-            每单位到账额度
-            <input id="admin-residual-quota-per-unit" type="number" min="1" step="1" />
-          </label>
-          <label>
-            开启赛季会员
-            <select id="admin-season-member-enabled">
-              <option value="true">开启</option>
-              <option value="false">关闭</option>
-            </select>
-          </label>
-          <label>
-            赛季名称
-            <input id="admin-season-member-label" type="text" placeholder="例如 S5 朱明赛季" />
-          </label>
-          <label>
-            会员截止时间
-            <input id="admin-season-member-expires-at" type="text" placeholder="例如 2026-06-04T23:59:59+08:00" />
-          </label>
-          <label>
-            会员价格（元）
-            <input id="admin-season-member-price" type="number" min="0.01" step="0.01" />
-          </label>
-          <label>
-            会员开通额度
-            <input id="admin-season-member-quota" type="number" min="1" step="1" />
-          </label>
-          <label>
-            会员加成比例
-            <input id="admin-season-member-bonus-rate" type="number" min="0" max="1" step="0.01" />
-          </label>
-          <label>
-            阵容基础槽位
-            <input id="admin-lineup-base-slots" type="number" min="1" step="1" />
-          </label>
-          <label>
-            永久槽价格（额度）
-            <input id="admin-lineup-permanent-slot-quota" type="number" min="1" step="1" />
-          </label>
-          <label>
-            永久槽最多购买
-            <input id="admin-lineup-permanent-slot-max" type="number" min="0" step="1" />
-          </label>
-          <label>
-            赛季槽价格（额度）
-            <input id="admin-lineup-seasonal-slot-quota" type="number" min="1" step="1" />
-          </label>
-          <label>
-            会员赠送临时槽位
-            <input id="admin-lineup-member-bonus-slots" type="number" min="0" step="1" />
-          </label>
-          <label>
-            快捷金额（英文逗号分隔）
-            <input id="admin-recharge-presets" type="text" placeholder="例如 12,24,60,120,240" />
-          </label>
-          <label>
-            收款名称
-            <input id="admin-recharge-payee-name" type="text" />
-          </label>
-          <label>
-            收款提示
-            <input id="admin-recharge-payee-hint" type="text" />
-          </label>
-          <label>
-            收款码地址
-            <input id="admin-recharge-qr-image-url" type="text" />
-          </label>
-          <label>
-            当前收款码预览
-            <img
-              id="admin-recharge-qr-preview"
-              class="recharge-qr-image"
-              src="/payment/alipay-qr.jpg"
-              alt="支付宝收款码预览"
-            />
-          </label>
-          <label>
-            微信收款名称
-            <input id="admin-wechat-payee-name" type="text" />
-          </label>
-          <label>
-            微信收款提示
-            <input id="admin-wechat-payee-hint" type="text" />
-          </label>
-          <label>
-            微信收款码地址
-            <input id="admin-wechat-qr-image-url" type="text" />
-          </label>
-          <label>
-            微信收款码预览
-            <img
-              id="admin-wechat-qr-preview"
-              class="recharge-qr-image"
-              src="/payment/wechat-qr.png"
-              alt="微信收款码预览"
-            />
-          </label>
-          <label>
-            前台提示（每行一条）
-            <textarea id="admin-recharge-instructions" rows="4" placeholder="每行一条说明"></textarea>
-          </label>
-          <label>
-            残卷转赠提示（每行一条）
-            <textarea
-              id="admin-residual-instructions"
-              rows="4"
-              placeholder="每行一条说明"
-            ></textarea>
-          </label>
-          <div class="panel muted-panel" style="grid-column: 1 / -1;">
-            <div class="panel-title">定价调控</div>
-            <div class="muted">
-              这里控制各档位的参考价区间。属性价按“满属性到最低属性”拉开，词条价按“最高词条到最低词条”拉开；单卡手动覆盖价仍然优先于整套规则。
-            </div>
-            <div class="actions" style="margin-top: 12px;">
-              <label style="min-width: 220px;">
-                定价编辑模式
-                <select id="admin-pricing-display-mode">
-                  <option value="quota">按额度编辑</option>
-                  <option value="cash">按现金编辑</option>
-                </select>
-              </label>
-            </div>
-            <div id="admin-pricing-controls" class="pricing-control-table" style="margin-top: 14px;"></div>
+          <div class="card-sub">优先维护残卷现金汇率；额度固定按 8 元 = 10000 额度。</div>
+          <div class="recharge-subnav" aria-label="充值配置分页">
+            <button class="recharge-subpage-btn active" type="button" data-recharge-subpage="rates">汇率与收款</button>
+            <button class="recharge-subpage-btn" type="button" data-recharge-subpage="member">会员与槽位</button>
+            <button class="recharge-subpage-btn" type="button" data-recharge-subpage="draw">代抽档位</button>
+            <button class="recharge-subpage-btn" type="button" data-recharge-subpage="pricing">定价调控</button>
+            <button class="recharge-subpage-btn" type="button" data-recharge-subpage="orders">充值订单</button>
           </div>
-          <div class="actions">
-            <button id="save-recharge-config-btn" class="primary" type="submit">保存充值配置</button>
-          </div>
+          <form id="admin-recharge-config-form" class="recharge-config-form">
+            <div class="recharge-subpanel active" data-recharge-subpanel="rates">
+              <div class="form-grid">
+                <label>
+                  充值残卷比例（元 / 10000 残卷）
+                  <input id="admin-residual-quota-per-unit" type="number" min="0.01" step="0.01" />
+                </label>
+                <label>
+                  购卡残卷比例（元 / 10000 残卷）
+                  <input id="admin-residual-purchase-anchor-cash-yuan" type="number" min="0.01" step="0.01" />
+                </label>
+                <label>
+                  开启充值
+                  <select id="admin-recharge-enabled">
+                    <option value="true">开启</option>
+                    <option value="false">关闭</option>
+                  </select>
+                </label>
+                <label>
+                  固定锚点：元
+                  <input id="admin-recharge-exchange-yuan" type="number" min="0.01" step="0.01" readonly />
+                </label>
+                <label>
+                  固定锚点：额度
+                  <input id="admin-recharge-exchange-quota" type="number" min="1" step="1" readonly />
+                </label>
+                <label>
+                  最低充值（元）
+                  <input id="admin-recharge-min-yuan" type="number" min="0.01" step="0.01" />
+                </label>
+                <label>
+                  本赛季金卡最低展示价（元）
+                  <input id="admin-current-season-gold-min-display-cash-yuan" type="number" min="0" step="0.01" />
+                </label>
+                <label>
+                  快捷金额（英文逗号分隔）
+                  <input id="admin-recharge-presets" type="text" placeholder="例如 12,24,60,120,240" />
+                </label>
+                <label>
+                  开启残卷转赠
+                  <select id="admin-residual-transfer-enabled">
+                    <option value="true">开启</option>
+                    <option value="false">关闭</option>
+                  </select>
+                </label>
+                <label>
+                  转赠单位名称
+                  <input id="admin-residual-unit-label" type="text" placeholder="例如 残卷" />
+                </label>
+                <label>
+                  转赠管理员游戏 ID
+                  <input id="admin-residual-admin-role-id" type="text" placeholder="例如 584967604" />
+                </label>
+                <label>
+                  转赠管理员名称
+                  <input id="admin-residual-admin-role-name" type="text" placeholder="例如 admin残卷" />
+                </label>
+                <label>
+                  转赠管理员游戏名
+                  <input id="admin-residual-admin-game-name" type="text" placeholder="例如 繁星✨秋" />
+                </label>
+                <label>
+                  收款名称
+                  <input id="admin-recharge-payee-name" type="text" />
+                </label>
+                <label>
+                  收款提示
+                  <input id="admin-recharge-payee-hint" type="text" />
+                </label>
+                <label>
+                  收款码地址
+                  <input id="admin-recharge-qr-image-url" type="text" />
+                </label>
+                <label>
+                  当前收款码预览
+                  <img
+                    id="admin-recharge-qr-preview"
+                    class="recharge-qr-image"
+                    src="/payment/alipay-qr.jpg"
+                    alt="支付宝收款码预览"
+                  />
+                </label>
+                <label>
+                  微信收款名称
+                  <input id="admin-wechat-payee-name" type="text" />
+                </label>
+                <label>
+                  微信收款提示
+                  <input id="admin-wechat-payee-hint" type="text" />
+                </label>
+                <label>
+                  微信收款码地址
+                  <input id="admin-wechat-qr-image-url" type="text" />
+                </label>
+                <label>
+                  微信收款码预览
+                  <img
+                    id="admin-wechat-qr-preview"
+                    class="recharge-qr-image"
+                    src="/payment/wechat-qr.png"
+                    alt="微信收款码预览"
+                  />
+                </label>
+                <label>
+                  前台提示（每行一条）
+                  <textarea id="admin-recharge-instructions" rows="4" placeholder="每行一条说明"></textarea>
+                </label>
+                <label>
+                  残卷转赠提示（每行一条）
+                  <textarea
+                    id="admin-residual-instructions"
+                    rows="4"
+                    placeholder="每行一条说明"
+                  ></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="recharge-subpanel hidden" data-recharge-subpanel="member">
+              <div class="form-grid">
+                <label>
+                  开启赛季会员
+                  <select id="admin-season-member-enabled">
+                    <option value="true">开启</option>
+                    <option value="false">关闭</option>
+                  </select>
+                </label>
+                <label>
+                  赛季名称
+                  <input id="admin-season-member-label" type="text" placeholder="例如 S6 第六赛季" />
+                </label>
+                <label>
+                  会员截止时间
+                  <input id="admin-season-member-expires-at" type="text" placeholder="例如 2026-06-04T23:59:59+08:00" />
+                </label>
+                <label>
+                  会员价格（元）
+                  <input id="admin-season-member-price" type="number" min="0.01" step="0.01" />
+                </label>
+                <label>
+                  会员开通额度（按会员价格自动折算）
+                  <input id="admin-season-member-quota" type="number" min="1" step="1" readonly />
+                </label>
+                <label>
+                  会员加成比例
+                  <input id="admin-season-member-bonus-rate" type="number" min="0" max="1" step="0.01" />
+                </label>
+                <label>
+                  阵容基础槽位
+                  <input id="admin-lineup-base-slots" type="number" min="1" step="1" />
+                </label>
+                <label>
+                  永久槽价格（额度）
+                  <input id="admin-lineup-permanent-slot-quota" type="number" min="1" step="1" />
+                </label>
+                <label>
+                  永久槽最多购买
+                  <input id="admin-lineup-permanent-slot-max" type="number" min="0" step="1" />
+                </label>
+                <label>
+                  赛季槽价格（额度）
+                  <input id="admin-lineup-seasonal-slot-quota" type="number" min="1" step="1" />
+                </label>
+                <label>
+                  会员赠送临时槽位
+                  <input id="admin-lineup-member-bonus-slots" type="number" min="0" step="1" />
+                </label>
+              </div>
+            </div>
+
+            <div class="recharge-subpanel hidden" data-recharge-subpanel="draw">
+              <div class="panel muted-panel">
+                <div class="panel-title">代抽档位</div>
+                <div class="muted">配置前台可选代抽档位。价格按“元 / 1w”录入，用户提交时会按 8 元 = 10000 额度折算扣除。</div>
+                <div id="admin-draw-service-config" class="draw-service-admin-grid" style="margin-top: 14px;"></div>
+              </div>
+            </div>
+
+            <div class="recharge-subpanel hidden" data-recharge-subpanel="pricing">
+              <div class="panel muted-panel">
+                <div class="panel-title">定价调控</div>
+                <div class="muted">
+                  这里控制各档位的参考价区间。属性价按“满属性到最低属性”拉开，词条价按“最高词条到最低词条”拉开；单卡手动覆盖价仍然优先于整套规则。
+                </div>
+                <div class="actions" style="margin-top: 12px;">
+                  <label style="min-width: 220px;">
+                    定价编辑模式
+                    <select id="admin-pricing-display-mode">
+                      <option value="quota">按额度编辑</option>
+                      <option value="cash">按现金编辑</option>
+                    </select>
+                  </label>
+                </div>
+                <div id="admin-pricing-controls" class="pricing-control-table" style="margin-top: 14px;"></div>
+              </div>
+            </div>
+
+            <div class="actions recharge-save-bar">
+              <button id="save-recharge-config-btn" class="primary" type="submit">保存充值配置</button>
+            </div>
           </form>
         </section>
 
-        <section id="recharge-orders" class="card">
+        <section id="recharge-orders" class="card recharge-subpanel hidden" data-recharge-subpanel="orders">
           <div class="card-title">充值订单</div>
           <div class="card-sub">查看用户提交的充值申请，核对付款备注后审核加额度。</div>
           <div class="toolbar">
@@ -562,8 +620,11 @@
 
     <footer class="footer">后台仅供管理员使用，所有操作都通过 API 实时生效。</footer>
     <script>
+      if (window.location.protocol === "file:") {
+        window.location.replace("http://101.34.247.186:8081/admin.html");
+      }
       window.__adminModuleReady = false;
     </script>
-    <script type="module" src="./admin.js?v=release-20260509-160631"></script>
+    <script type="module" src="./admin.js?v=release-20260611-151806"></script>
   </body>
 </html>

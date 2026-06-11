@@ -1,4 +1,4 @@
-import { QUOTA_LOG_TYPES } from "../app-constants.js?v=release-20260509-160631";
+import { QUOTA_LOG_TYPES } from "../app-constants.js?v=release-20260611-151806";
 
 function formatQuotaLogType(type) {
   switch (type) {

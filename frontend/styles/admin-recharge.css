@@ -1,6 +1,11 @@
 .pricing-overview-card,
 .pricing-overview-head,
 .pricing-overview-meta,
+.recharge-config-form,
+.recharge-save-bar,
+.recharge-subnav,
+.recharge-subpage-btn,
+.recharge-subpanel,
 .pricing-global-grid,
 .pricing-global-panel,
 .pricing-global-row,
@@ -11,6 +16,38 @@
 .pricing-tier-field,
 .pricing-scroll-hint {
   box-sizing: border-box;
+}
+
+.recharge-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0 16px;
+}
+
+.recharge-subpage-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.recharge-subpage-btn.active {
+  border-color: rgba(196, 85, 45, 0.28);
+  background: rgba(196, 85, 45, 0.12);
+  color: var(--accent);
+}
+
+.recharge-config-form,
+.recharge-subpanel {
+  display: grid;
+  gap: 16px;
+}
+
+.recharge-save-bar {
+  margin-top: 4px;
 }
 
 #recharge-order-list {
@@ -182,6 +219,10 @@
   border-radius: 14px;
   border: 1px solid rgba(73, 44, 17, 0.08);
   background: rgba(255, 255, 255, 0.85);
+}
+
+.pricing-tier-field.full {
+  grid-column: 1 / -1;
 }
 
 .pricing-tier-field > span {

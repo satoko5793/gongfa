@@ -1,7 +1,37 @@
-import { renderRechargeSection } from "../admin-renderers/recharge.js?v=release-20260509-160631";
+import { renderRechargeSection } from "../admin-renderers/recharge.js?v=release-20260611-151806";
+import {
+  QUOTA_ANCHOR_YUAN,
+  RESIDUAL_ANCHOR_AMOUNT,
+  getResidualAnchorCashYuan,
+  residualAnchorCashToUnitPrice,
+} from "../payment-conversion.js?v=release-20260611-151806";
+
+const RECHARGE_SUBPAGES = new Set(["rates", "member", "draw", "pricing", "orders"]);
+let activeRechargeSubpage = "rates";
+
+export function activateRechargeSubpage(subpage = activeRechargeSubpage) {
+  const nextSubpage = RECHARGE_SUBPAGES.has(subpage) ? subpage : "rates";
+  activeRechargeSubpage = nextSubpage;
+  const panel = document.querySelector('[data-admin-page-panel="recharge"]');
+  if (!panel) return;
+
+  panel.querySelectorAll("[data-recharge-subpage]").forEach((button) => {
+    button.classList.toggle("active", button.getAttribute("data-recharge-subpage") === nextSubpage);
+  });
+  panel.querySelectorAll("[data-recharge-subpanel]").forEach((subpanel) => {
+    subpanel.classList.toggle("hidden", subpanel.getAttribute("data-recharge-subpanel") !== nextSubpage);
+    subpanel.classList.toggle("active", subpanel.getAttribute("data-recharge-subpanel") === nextSubpage);
+  });
+  panel.querySelector(".recharge-save-bar")?.classList.toggle("hidden", nextSubpage === "orders");
+}
 
 export async function loadRechargePage(context) {
-  await context.loadRechargeOrders({ page: context.paginationState.rechargeOrders.page });
+  const [config] = await Promise.all([
+    context.apiFetch("/admin/recharge-config"),
+    context.loadRechargeOrders({ page: context.paginationState.rechargeOrders.page }),
+  ]);
+  context.renderRechargeConfig(config);
+  activateRechargeSubpage(activeRechargeSubpage);
   context.markPageLoaded("recharge");
 }
 
@@ -33,6 +63,12 @@ export function bindRechargePageEvents(context) {
     convertCashToQuota,
     setDraftPricingControls,
   } = context;
+
+  document.querySelector('[data-admin-page-panel="recharge"]')?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-recharge-subpage]");
+    if (!button) return;
+    activateRechargeSubpage(button.getAttribute("data-recharge-subpage"));
+  });
 
   const sanitizePricingControlsForSubmit = (pricingControls) => {
     if (!pricingControls || typeof pricingControls !== "object" || Array.isArray(pricingControls)) {
@@ -234,13 +270,19 @@ export function bindRechargePageEvents(context) {
     });
   });
 
-  refs.adminRechargeConfigForm?.addEventListener("submit", async (event) => {
+  let rechargeConfigSaving = false;
+  const saveRechargeConfig = async (event) => {
     event.preventDefault();
     if (!guardAdminWriteAccess()) return;
+    if (rechargeConfigSaving) return;
 
     const currentConfig = getCurrentRechargeConfig() || {};
+    const saveButton = document.getElementById("save-recharge-config-btn");
+    const previousSaveLabel = saveButton?.textContent || "保存充值配置";
     const numberValue = (input, fallback) => {
-      const parsed = Number(input?.value);
+      const raw = String(input?.value ?? "").trim();
+      if (!raw) return fallback;
+      const parsed = Number(raw);
       return Number.isFinite(parsed) ? parsed : fallback;
     };
     const textValue = (input, fallback = "") => {
@@ -271,15 +313,91 @@ export function bindRechargePageEvents(context) {
       .split(/\r?\n/)
       .map((item) => item.trim())
       .filter(Boolean);
+    const residualAnchorCashYuan = numberValue(
+      refs.adminResidualQuotaPerUnitInput,
+      getResidualAnchorCashYuan(currentConfig)
+    );
+    const residualPurchaseAnchorCashYuan = numberValue(
+      refs.adminResidualPurchaseAnchorCashYuanInput,
+      currentConfig.residual_purchase_anchor_cash_yuan || currentConfig.residual_anchor_cash_yuan || 8
+    );
+    const residualPurchaseAmountPerQuotaAnchor = Math.max(
+      Math.ceil((QUOTA_ANCHOR_YUAN / Math.max(residualPurchaseAnchorCashYuan, 0.01)) * RESIDUAL_ANCHOR_AMOUNT),
+      1
+    );
+    const drawServiceRoot = refs.adminDrawServiceConfigRoot;
+    const currentDrawService = currentConfig.draw_service || {};
+    const drawPresetWan = String(
+      drawServiceRoot?.querySelector('[data-draw-service-field="preset_draw_wan"]')?.value || ""
+    )
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isInteger(item) && item > 0);
+    const drawServiceTiers = Array.from(
+      drawServiceRoot?.querySelectorAll("[data-draw-service-tier]") || []
+    ).map((tierNode) => {
+      const key = String(tierNode.getAttribute("data-draw-service-tier") || "").trim();
+      const existingTier = Array.isArray(currentDrawService.tiers)
+        ? currentDrawService.tiers.find((item) => String(item?.key || "").trim() === key)
+        : null;
+      const label = String(
+        tierNode.querySelector('[data-draw-service-tier-field="label"]')?.value || key
+      ).trim();
+      const description = String(
+        tierNode.querySelector('[data-draw-service-tier-field="description"]')?.value || ""
+      ).trim();
+      const priceYuanPerWan = numberValue(
+        tierNode.querySelector('[data-draw-service-tier-field="price_yuan_per_wan"]'),
+        8
+      );
+      return {
+        ...(existingTier || {}),
+        key,
+        label,
+        price_yuan_per_wan: priceYuanPerWan,
+        description,
+      };
+    });
+    const drawService = {
+      ...(currentDrawService || {}),
+      enabled: booleanValue(
+        drawServiceRoot?.querySelector('[data-draw-service-field="enabled"]'),
+        currentDrawService.enabled
+      ),
+      min_draw_wan: numberValue(
+        drawServiceRoot?.querySelector('[data-draw-service-field="min_draw_wan"]'),
+        currentDrawService.min_draw_wan || 1
+      ),
+      preset_draw_wan: drawPresetWan.length ? drawPresetWan : currentDrawService.preset_draw_wan || [1, 3, 5, 10],
+      default_tier_key: textValue(
+        drawServiceRoot?.querySelector('[data-draw-service-field="default_tier_key"]'),
+        currentDrawService.default_tier_key || "tier_8"
+      ),
+      rule_notice: textValue(
+        drawServiceRoot?.querySelector('[data-draw-service-field="rule_notice"]'),
+        currentDrawService.rule_notice || ""
+      ),
+      tiers: drawServiceTiers.length ? drawServiceTiers : currentDrawService.tiers || [],
+    };
 
     try {
+      rechargeConfigSaving = true;
+      if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.textContent = "保存中...";
+      }
+      setMessage("正在保存充值配置并同步重算商品价格...", "success");
       const nextConfig = await apiFetch("/admin/recharge-config", {
         method: "PATCH",
         body: JSON.stringify({
           enabled: booleanValue(refs.adminRechargeEnabled, currentConfig.enabled),
-          exchange_yuan: numberValue(refs.adminRechargeExchangeYuanInput, currentConfig.exchange_yuan),
-          exchange_quota: numberValue(refs.adminRechargeExchangeQuotaInput, currentConfig.exchange_quota),
+          exchange_yuan: 8,
+          exchange_quota: 10000,
           min_amount_yuan: numberValue(refs.adminRechargeMinYuanInput, currentConfig.min_amount_yuan),
+          current_season_gold_min_display_cash_yuan: numberValue(
+            refs.adminCurrentSeasonGoldMinDisplayCashYuanInput,
+            currentConfig.current_season_gold_min_display_cash_yuan || 0
+          ),
           residual_transfer_enabled: booleanValue(
             refs.adminResidualTransferEnabledInput,
             currentConfig.residual_transfer_enabled
@@ -288,7 +406,12 @@ export function bindRechargePageEvents(context) {
           residual_admin_role_name: textValue(refs.adminResidualAdminRoleNameInput, currentConfig.residual_admin_role_name),
           residual_admin_game_name: textValue(refs.adminResidualAdminGameNameInput, currentConfig.residual_admin_game_name),
           residual_unit_label: textValue(refs.adminResidualUnitLabelInput, currentConfig.residual_unit_label),
-          residual_quota_per_unit: numberValue(refs.adminResidualQuotaPerUnitInput, currentConfig.residual_quota_per_unit),
+          residual_recharge_anchor_cash_yuan: residualAnchorCashYuan,
+          residual_recharge_unit_price_yuan: residualAnchorCashToUnitPrice(residualAnchorCashYuan),
+          residual_anchor_cash_yuan: residualAnchorCashYuan,
+          residual_unit_price_yuan: residualAnchorCashToUnitPrice(residualAnchorCashYuan),
+          residual_purchase_anchor_cash_yuan: residualPurchaseAnchorCashYuan,
+          residual_purchase_amount_per_quota_anchor: residualPurchaseAmountPerQuotaAnchor,
           season_member_enabled: booleanValue(
             refs.adminSeasonMemberEnabledInput,
             currentConfig.season_member_enabled
@@ -296,7 +419,7 @@ export function bindRechargePageEvents(context) {
           season_member_season_label: textValue(refs.adminSeasonMemberLabelInput, currentConfig.season_member_season_label),
           season_member_expires_at: textValue(refs.adminSeasonMemberExpiresAtInput, currentConfig.season_member_expires_at),
           season_member_price_yuan: numberValue(refs.adminSeasonMemberPriceInput, currentConfig.season_member_price_yuan),
-          season_member_quota: numberValue(refs.adminSeasonMemberQuotaInput, currentConfig.season_member_quota),
+          season_member_quota: currentConfig.season_member_quota,
           season_member_bonus_rate: numberValue(refs.adminSeasonMemberBonusRateInput, currentConfig.season_member_bonus_rate),
           lineup_base_slots: numberValue(refs.adminLineupBaseSlotsInput, currentConfig.lineup_base_slots),
           lineup_permanent_slot_quota: numberValue(
@@ -318,6 +441,7 @@ export function bindRechargePageEvents(context) {
           wechat_payee_hint: textValue(refs.adminWechatPayeeHintInput, currentConfig.wechat_payee_hint),
           instructions,
           residual_instructions: residualInstructions,
+          draw_service: drawService,
           pricing_controls: sanitizePricingControlsForSubmit(
             getNormalizedPricingControls(getDraftPricingControls())
           ),
@@ -326,7 +450,11 @@ export function bindRechargePageEvents(context) {
       renderRechargeConfig(nextConfig);
       const repriceStatus = nextConfig?.pricing_reprice_status || null;
       setMessage(
-        `充值配置已保存，当前比例 ${Number(nextConfig.exchange_yuan || 1)} 元 = ${Number(nextConfig.exchange_quota || 0)} 额度。${
+        `充值配置已保存，固定比例 8 元 = 10000 额度，充值残卷比例 ${getResidualAnchorCashYuan(nextConfig)} 元 = ${RESIDUAL_ANCHOR_AMOUNT} ${nextConfig.residual_unit_label || "残卷"}。${
+          Number(nextConfig?.residual_purchase_anchor_cash_yuan || 0) > 0
+            ? ` 购卡残卷比例 ${Number(nextConfig.residual_purchase_anchor_cash_yuan)} 元 = ${RESIDUAL_ANCHOR_AMOUNT} ${nextConfig.residual_unit_label || "残卷"}。`
+            : ""
+        }${
           repriceStatus?.status === "success"
             ? ` 已同步重算 ${Number(repriceStatus.product_count || 0)} 张商品。`
             : ""
@@ -335,8 +463,17 @@ export function bindRechargePageEvents(context) {
       );
     } catch (error) {
       setMessage(`充值配置保存失败：${pickErrorMessage(error, "保存失败")}`, "error");
+    } finally {
+      rechargeConfigSaving = false;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = previousSaveLabel;
+      }
     }
-  });
+  };
+
+  refs.adminRechargeConfigForm?.addEventListener("submit", saveRechargeConfig);
+  document.getElementById("save-recharge-config-btn")?.addEventListener("click", saveRechargeConfig);
 
   refs.adminRechargeStatusFilter?.addEventListener("change", () => {
     resetPagedState("rechargeOrders");
@@ -364,4 +501,5 @@ export function bindRechargePageEvents(context) {
 
 export function renderRechargePage(context) {
   renderRechargeSection(context);
+  activateRechargeSubpage(activeRechargeSubpage);
 }

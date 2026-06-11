@@ -15,6 +15,7 @@ const { meRouter } = require("./routes/me");
 const { ordersRouter } = require("./routes/orders");
 const { adminRouter } = require("./routes/admin");
 const { helperRouter } = require("./routes/helper");
+const { getRuntimeDataDir } = require("./modules/orders/escrow-upload");
 
 const NO_STORE_STATIC_EXTENSIONS = new Set([
   ".js",
@@ -98,6 +99,12 @@ app.use("/me", meRouter);
 app.use("/orders", ordersRouter);
 app.use("/admin", adminRouter);
 app.use("/helper", helperCors, helperRouter);
+app.use(
+  "/uploads",
+  express.static(path.resolve(getRuntimeDataDir(), "uploads"), {
+    setHeaders: setStaticCacheHeaders,
+  })
+);
 app.get("/index.html", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Pragma", "no-cache");

@@ -1,7 +1,7 @@
 import {
   renderCatalogSection,
   renderCatalogProductsSection,
-} from "../admin-renderers/products.js?v=release-20260509-160631";
+} from "../admin-renderers/products.js?v=release-20260611-151806";
 
 export async function loadCatalogPage(context) {
   await Promise.all([

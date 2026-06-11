@@ -11,6 +11,7 @@ export async function saveAccountProfileAction(ctx) {
       body: JSON.stringify({
         game_role_name: ctx.gameRoleName,
         nickname: ctx.nickname,
+        contact_info: ctx.contactInfo,
         game_server: ctx.gameServer,
       }),
     });

@@ -1,0 +1,679 @@
+/* Season highlight panels shared by shop and auction entries. */
+
+.draw-honor-panel {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(118, 93, 67, 0.2);
+  border-radius: 20px;
+  background:
+    linear-gradient(90deg, rgba(50, 24, 18, 0.94), rgba(23, 28, 24, 0.96) 48%, rgba(19, 42, 42, 0.92)),
+    #201b16;
+  color: #fff9e9;
+  box-shadow: inset 0 1px 0 rgba(255, 227, 156, 0.18);
+}
+
+.draw-honor-panel .eyebrow {
+  color: #f4c66a;
+}
+
+.draw-honor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.draw-honor-head .panel-title {
+  color: #fff4d4;
+  font-family: var(--font-calligraphy);
+  font-size: clamp(26px, 3vw, 42px);
+  font-weight: 500;
+  line-height: 1;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.36);
+}
+
+.draw-honor-head .teaser-chip {
+  color: #ffe9ad;
+  background: rgba(255, 226, 143, 0.12);
+  border: 1px solid rgba(255, 226, 143, 0.22);
+}
+
+.draw-honor-slider {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(255, 226, 143, 0.14);
+  background:
+    radial-gradient(ellipse at 50% 92%, rgba(244, 198, 106, 0.14), transparent 38%),
+    #111b18;
+}
+
+.draw-honor-slider::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(42, 18, 14, 0.66), rgba(10, 24, 23, 0.72)),
+    linear-gradient(180deg, rgba(10, 10, 8, 0.1), rgba(10, 10, 8, 0.34)),
+    url("../hero-assets/draw-honor-bg.png") center 46% / cover no-repeat;
+  opacity: 0.56;
+  filter: brightness(0.72) saturate(0.82);
+  transform: scale(1.04);
+  pointer-events: none;
+}
+
+.draw-honor-track {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 200%;
+  transition: transform 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+
+.draw-honor-slide {
+  display: grid;
+  flex: 0 0 50%;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+}
+
+.draw-honor-stage {
+  position: relative;
+  min-height: 346px;
+  overflow: hidden;
+  perspective: 900px;
+}
+
+.draw-honor-card {
+  position: absolute;
+  --honor-art-scale: 1.2;
+  display: block;
+  left: 50%;
+  top: 50%;
+  width: 202px;
+  aspect-ratio: 0.86;
+  padding: 16px;
+  border: 1px solid rgba(255, 226, 143, 0.34);
+  background: linear-gradient(145deg, rgba(255, 248, 219, 0.12), rgba(255, 255, 255, 0.03));
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  cursor: pointer;
+  filter: saturate(0.75) brightness(0.72);
+  transform: translate(-50%, -50%) rotateZ(0deg) scale(0.5);
+  transform-style: preserve-3d;
+  transition:
+    opacity 960ms cubic-bezier(0.22, 0.7, 0.18, 1),
+    filter 960ms cubic-bezier(0.22, 0.7, 0.18, 1),
+    transform 960ms cubic-bezier(0.22, 0.7, 0.18, 1),
+    visibility 960ms ease;
+}
+
+.draw-honor-card-main {
+  z-index: 3;
+  width: min(36vw, 222px);
+  opacity: 1;
+  pointer-events: auto;
+  filter: saturate(1.08) brightness(1.05);
+  transform: translate(-50%, -50%) rotateZ(0.6deg) scale(0.99);
+}
+
+.draw-honor-card:focus-visible {
+  outline: 2px solid rgba(255, 226, 143, 0.82);
+  outline-offset: 4px;
+}
+
+.draw-honor-card-main::after {
+  content: "";
+  position: absolute;
+  inset: -12% auto -12% -46%;
+  z-index: 5;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.62), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: skewX(-16deg) translateX(-120%);
+}
+
+.draw-honor-card-main.is-card-flashing::after {
+  animation: drawHonorCardSweep 900ms ease-out;
+}
+
+@keyframes drawHonorCardSweep {
+  0% {
+    opacity: 0;
+    transform: skewX(-16deg) translateX(-120%);
+  }
+
+  18%,
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-16deg) translateX(520%);
+  }
+}
+
+.draw-honor-card-ghost {
+  z-index: 2;
+  opacity: 0.62;
+  pointer-events: auto;
+  filter: saturate(0.9) brightness(0.82);
+}
+
+.draw-honor-card-left {
+  left: 10%;
+  top: 42%;
+  transform: translateY(-50%) rotateZ(-9deg) scale(0.88);
+}
+
+.draw-honor-card-right {
+  right: 8%;
+  left: auto;
+  top: 52%;
+  transform: translateY(-50%) rotateZ(9deg) scale(0.86);
+}
+
+.draw-honor-card-far,
+.draw-honor-card-far-left {
+  left: 2%;
+  top: 68%;
+  opacity: 0.32;
+  transform: translateY(-50%) rotateZ(7deg) scale(0.72);
+}
+
+.draw-honor-card-far-right {
+  right: 0%;
+  left: auto;
+  top: 30%;
+  opacity: 0.28;
+  transform: translateY(-50%) rotateZ(-7deg) scale(0.68);
+}
+
+.draw-honor-card-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.draw-honor-card-top {
+  display: flex;
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  color: #ffe7aa;
+  font-family: var(--font-calligraphy);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.draw-honor-card-top strong {
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 0.8;
+}
+
+.draw-honor-card img {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  width: 106%;
+  height: 52%;
+  object-fit: contain;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: translate(-50%, -50%) scale(var(--honor-art-scale));
+  z-index: 1;
+}
+
+.draw-honor-card img[src*="因果律"] {
+  --honor-art-scale: 1.32;
+}
+
+.draw-honor-card img[src*="乾坤"],
+.draw-honor-card img[src*="qiankun"] {
+  --honor-art-scale: 1.08;
+}
+
+.draw-honor-card img[src*="马后炮"] {
+  --honor-art-scale: 1.16;
+}
+
+.draw-honor-card-name {
+  position: absolute;
+  z-index: 2;
+  left: 16px;
+  right: 16px;
+  bottom: 50px;
+  color: #fff8e8;
+  font-family: var(--font-calligraphy);
+  font-size: clamp(24px, 2.5vw, 34px);
+  font-weight: 500;
+  line-height: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.42);
+  overflow-wrap: anywhere;
+}
+
+.draw-honor-card-owner {
+  position: absolute;
+  z-index: 2;
+  left: 16px;
+  right: 16px;
+  bottom: 20px;
+  color: #ffe6a4;
+  font-size: clamp(15px, 1.8vw, 20px);
+  font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.draw-honor-side {
+  display: grid;
+  gap: 12px;
+  align-content: stretch;
+}
+
+.draw-honor-side-title {
+  color: #f4c66a;
+  font-family: var(--font-calligraphy);
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  padding: 14px 16px 0;
+}
+
+.draw-honor-deal-board {
+  display: grid;
+  align-items: center;
+  min-height: 270px;
+  padding: 0 18px 18px;
+}
+
+.draw-honor-deal {
+  display: grid;
+  position: relative;
+  grid-template-columns: minmax(0, 0.82fr) minmax(240px, 1.18fr);
+  gap: clamp(16px, 3.5vw, 42px);
+  align-items: center;
+  min-height: 100%;
+  padding: 22px clamp(26px, 4.5vw, 52px);
+  border: 1px solid rgba(255, 226, 143, 0.2);
+  background:
+    radial-gradient(circle at 23% 55%, rgba(244, 198, 106, 0.2), transparent 28%),
+    linear-gradient(90deg, rgba(255, 248, 219, 0.1), rgba(255, 248, 219, 0.035));
+  overflow: hidden;
+}
+
+.draw-honor-deal::before {
+  content: "";
+  position: absolute;
+  right: clamp(34px, 8vw, 92px);
+  left: auto;
+  top: 50%;
+  width: clamp(180px, 24vw, 300px);
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: rgba(244, 198, 106, 0.16);
+  filter: blur(22px);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.draw-honor-deal span {
+  position: relative;
+  z-index: 1;
+  grid-column: 1;
+  align-self: end;
+  color: rgba(255, 244, 212, 0.72);
+  font-family: var(--font-calligraphy);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.draw-honor-deal img {
+  position: relative;
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 1 / 4;
+  justify-self: center;
+  width: clamp(210px, 25vw, 320px);
+  aspect-ratio: 1;
+  object-fit: contain;
+  border: 0;
+  background: transparent;
+}
+
+.draw-honor-deal strong,
+.draw-honor-deal b {
+  position: relative;
+  z-index: 1;
+  display: block;
+  color: #fff4d4;
+  overflow-wrap: anywhere;
+}
+
+.draw-honor-deal strong {
+  grid-column: 1;
+  align-self: center;
+  font-family: var(--font-calligraphy);
+  font-size: clamp(34px, 3.9vw, 54px);
+  font-weight: 500;
+  line-height: 0.98;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.42);
+}
+
+.draw-honor-deal b {
+  grid-column: 1;
+  justify-self: start;
+  align-self: start;
+  margin-top: 4px;
+  padding: 10px 18px;
+  border: 1px solid rgba(255, 226, 143, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 226, 143, 0.1);
+  color: #f4c66a;
+  font-family: var(--font-calligraphy);
+  font-size: 28px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.draw-honor-pager {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.draw-honor-pager button {
+  min-height: 34px;
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 226, 143, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 226, 143, 0.08);
+  color: rgba(255, 244, 212, 0.72);
+  font-family: var(--font-calligraphy);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.draw-honor-pager button.active {
+  color: #241b12;
+  background: #f4c66a;
+}
+
+.shop-honor-panel {
+  display: grid;
+  gap: 12px;
+  align-items: center;
+  margin-top: 22px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(35, 78, 82, 0.18);
+  border-radius: 18px;
+  border-color: rgba(35, 78, 82, 0.2);
+  background:
+    linear-gradient(135deg, rgba(255, 250, 240, 0.92), rgba(235, 245, 241, 0.82)),
+    var(--card);
+}
+
+.shop-honor-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.shop-honor-title .card-title {
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1;
+}
+
+.shop-honor-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: min(360px, 42vh);
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(35, 78, 82, 0.28) transparent;
+}
+
+.shop-honor-strip::-webkit-scrollbar {
+  width: 6px;
+}
+
+.shop-honor-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.shop-honor-strip::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(35, 78, 82, 0.24);
+}
+
+.shop-honor-item {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 76px;
+  padding: 10px;
+  border: 1px solid rgba(118, 93, 67, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
+  min-width: 0;
+}
+
+.shop-honor-item img {
+  width: 54px;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 0;
+  background: transparent;
+}
+
+.shop-honor-item span,
+.shop-honor-item strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shop-honor-item span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.shop-honor-item strong {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.24;
+}
+
+.shop-honor-link {
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .draw-honor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .draw-honor-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .draw-honor-deal {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .shop-honor-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .draw-honor-stage {
+    min-height: 318px;
+  }
+
+  .draw-honor-card-main {
+    width: min(58vw, 202px);
+  }
+
+  .draw-honor-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .draw-honor-deal {
+    grid-template-columns: minmax(0, 0.78fr) minmax(138px, 1fr);
+    align-items: center;
+    min-height: 0;
+    padding: 20px 16px 16px;
+  }
+
+  .draw-honor-deal span {
+    font-size: 16px;
+  }
+
+  .draw-honor-deal img {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    width: min(38vw, 160px);
+  }
+
+  .draw-honor-deal strong {
+    grid-column: 1;
+    font-size: clamp(28px, 7vw, 38px);
+  }
+
+  .draw-honor-deal b {
+    grid-column: 1;
+    justify-self: start;
+    margin-top: 10px;
+    font-size: 22px;
+  }
+
+  .shop-honor-strip {
+    grid-template-columns: 1fr;
+    max-height: min(320px, 42vh);
+  }
+
+  .shop-honor-link {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .draw-honor-panel {
+    padding: 14px;
+  }
+
+  .draw-honor-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .draw-honor-stage {
+    min-height: 296px;
+  }
+
+  .draw-honor-card {
+    width: 160px;
+    padding: 12px;
+  }
+
+  .draw-honor-card-main {
+    width: min(56vw, 180px);
+  }
+
+  .draw-honor-card-top {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    font-size: 11px;
+  }
+
+  .draw-honor-card img {
+    top: 38%;
+    width: 106%;
+    height: 52%;
+  }
+
+  .draw-honor-card-name {
+    left: 12px;
+    right: 12px;
+    bottom: 42px;
+    font-size: 26px;
+  }
+
+  .draw-honor-card-owner {
+    left: 12px;
+    right: 12px;
+    bottom: 17px;
+    font-size: 16px;
+  }
+
+  .draw-honor-card-left {
+    left: -4%;
+    opacity: 0.34;
+  }
+
+  .draw-honor-card-right {
+    right: -6%;
+    opacity: 0.34;
+  }
+
+  .draw-honor-card-far,
+  .draw-honor-card-far-left,
+  .draw-honor-card-far-right {
+    display: none;
+  }
+
+  .draw-honor-card-top strong {
+    font-size: 32px;
+  }
+
+  .shop-honor-panel {
+    gap: 12px;
+  }
+
+  .shop-honor-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw-honor-track,
+  .draw-honor-card {
+    transition: none;
+  }
+
+  .draw-honor-card-main.is-card-flashing::after {
+    animation: none;
+  }
+}

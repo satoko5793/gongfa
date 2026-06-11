@@ -1,4 +1,4 @@
-import { renderLogsSection } from "../admin-renderers/logs.js?v=release-20260509-160631";
+import { renderLogsSection } from "../admin-renderers/logs.js?v=release-20260611-151806";
 
 export async function loadLogsPage(context) {
   await Promise.all([

@@ -11,7 +11,9 @@ const {
 const { useFileStore } = require("../services/runtime");
 const {
   validateHelperBindingInput,
+  validateConsignmentCreateInput,
   validateHelperInventoryInput,
+  validateHelperInventoryBatchInput,
   validateHelperSnapshotInput,
   validateHelperSnapshotUpdateInput,
   validateHelperActionLogInput,
@@ -24,14 +26,20 @@ const {
   listHelperActionLogs,
   listHelperBindings,
   listHelperInventories,
+  listHelperInventoryItems,
+  listHelperInventorySummary,
   listHelperSnapshots,
   listMergedHelperInventoryItems,
+  listConsignmentListingsForUser,
   removeHelperBinding,
   removeHelperSnapshot,
   resolveHelperBinding,
   updateHelperSnapshot,
   upsertHelperBinding,
   upsertHelperInventory,
+  upsertHelperInventoriesBatch,
+  createConsignmentListing,
+  withdrawConsignmentListing,
 } = require("../modules/helper/file-service");
 
 function readBooleanEnv(name, defaultValue = false) {
@@ -290,6 +298,30 @@ helperRouter.get("/inventories", authRequired, async (req, res, next) => {
   }
 });
 
+helperRouter.get("/inventories/summary", authRequired, async (req, res, next) => {
+  try {
+    if (!useFileStore()) {
+      return res.status(501).json({ error: "helper_inventories_not_supported_in_db_mode" });
+    }
+    if (!requireHelperInventoryCapability(req, res)) return;
+    return res.json(listHelperInventorySummary(req.user.id));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+helperRouter.get("/inventories/items", authRequired, async (req, res, next) => {
+  try {
+    if (!useFileStore()) {
+      return res.status(501).json({ error: "helper_inventories_not_supported_in_db_mode" });
+    }
+    if (!requireHelperInventoryCapability(req, res)) return;
+    return res.json(listHelperInventoryItems(req.user.id, req.query || {}));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 helperRouter.post("/inventories", authRequired, async (req, res, next) => {
   try {
     if (!useFileStore()) {
@@ -302,6 +334,68 @@ helperRouter.post("/inventories", authRequired, async (req, res, next) => {
       return res.status(400).json({ error: "invalid_input", details: errors });
     }
     return res.json(upsertHelperInventory(req.user.id, body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+helperRouter.post("/inventories/batch", authRequired, async (req, res, next) => {
+  try {
+    if (!useFileStore()) {
+      return res.status(501).json({ error: "helper_inventories_not_supported_in_db_mode" });
+    }
+    if (!requireHelperInventoryCapability(req, res)) return;
+    const body = req.body || {};
+    const errors = validateHelperInventoryBatchInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+    return res.json(upsertHelperInventoriesBatch(req.user.id, body.inventories));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+helperRouter.get("/consignments", authRequired, async (req, res, next) => {
+  try {
+    if (!useFileStore()) {
+      return res.status(501).json({ error: "consignments_not_supported_in_db_mode" });
+    }
+    if (!requireHelperInventoryCapability(req, res)) return;
+    return res.json(listConsignmentListingsForUser(req.user.id));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+helperRouter.post("/consignments", authRequired, async (req, res, next) => {
+  try {
+    if (!useFileStore()) {
+      return res.status(501).json({ error: "consignments_not_supported_in_db_mode" });
+    }
+    if (!requireHelperInventoryCapability(req, res)) return;
+    const body = req.body || {};
+    const errors = validateConsignmentCreateInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+    return res.json(createConsignmentListing(req.user.id, body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+helperRouter.patch("/consignments/:id/withdraw", authRequired, async (req, res, next) => {
+  try {
+    if (!useFileStore()) {
+      return res.status(501).json({ error: "consignments_not_supported_in_db_mode" });
+    }
+    if (!requireHelperInventoryCapability(req, res)) return;
+    const updated = withdrawConsignmentListing(req.user.id, req.params.id);
+    if (!updated) {
+      return res.status(404).json({ error: "consignment_not_found" });
+    }
+    return res.json(updated);
   } catch (error) {
     return next(error);
   }

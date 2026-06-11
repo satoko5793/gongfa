@@ -76,6 +76,30 @@ export function formatDate(value) {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
+export function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function pickErrorMessage(error, fallback = "请求失败") {
+  const details = error?.payload?.details;
+  if (Array.isArray(details) && details.length > 0) {
+    return details.join(", ");
+  }
+  return (
+    error?.payload?.error ||
+    error?.payload?.message ||
+    error?.message ||
+    error?.cause?.message ||
+    error?.code ||
+    fallback
+  );
+}
+
 export function normalizeBindPayload(payload) {
   if (!payload || typeof payload !== "object") return null;
   const source = payload.body && typeof payload.body === "object" ? payload.body : payload;
@@ -105,8 +129,9 @@ export function normalizeBindPayload(payload) {
 
 export async function apiFetch(path, options = {}) {
   const session = loadSession();
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers || {}),
   };
   if (session?.token) {

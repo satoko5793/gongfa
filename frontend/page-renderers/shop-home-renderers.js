@@ -1,4 +1,4 @@
-import { ORDER_STATUS, RECHARGE_ORDER_STATUS } from "../app-constants.js?v=release-20260509-160631";
+import { ORDER_STATUS, RECHARGE_ORDER_STATUS } from "../app-constants.js?v=release-20260611-151806";
 
 function renderGuideGlyph(type) {
   if (type === "account") {

@@ -2,13 +2,14 @@ import {
   apiFetch,
   clearSession,
   getHelperOrigin,
+  pickErrorMessage,
   saveSession,
   setHelperOrigin,
-} from "./shared.js?v=release-20260509-160631";
+} from "./shared.js?v=release-20260611-151806";
 
 window.__GONGFA_PAGE_MODE__ = "login";
 
-const APP_MODULE_SRC = "./app.js?v=release-20260509-160631";
+const APP_MODULE_SRC = "./app.js?v=release-20260611-151806";
 const POST_AUTH_TARGET_KEY = "gongfa_post_auth_target_v1";
 
 const bindMessage = document.getElementById("bind-message");
@@ -73,12 +74,6 @@ function syncRegisterPasswordValidation(report = false) {
     }
   }
   return !mismatch;
-}
-
-function pickErrorMessage(error, fallback) {
-  const explicitMessage =
-    error?.payload?.error || error?.message || error?.cause?.message || fallback;
-  return String(explicitMessage || fallback).trim() || fallback;
 }
 
 function navigateToAccountSurface() {

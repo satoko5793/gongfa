@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260410-fix1" />
-    <link rel="stylesheet" href="styles.css?v=20260409-home-trim1" />
-    <link rel="stylesheet" href="styles/base.css?v=release-20260421-194048" />
+    <link rel="stylesheet" href="styles.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/base.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/honor.css?v=release-20260611-151806" />
   </head>
   <body>
     <div class="bg-gradient"></div>
@@ -30,13 +31,12 @@
 
     <main class="container">
       <section class="site-banner card" role="status" aria-live="polite">
-        <div class="site-banner-title">数据异常说明</div>
+        <div class="site-banner-title">停服与赛季公告</div>
         <div class="site-banner-copy">
-          4月9日正式服发布过程中出现数据异常，部分账号信息、额度、阵容槽及相关记录可能出现回退或显示不一致。
+          服务器将于 2026 年 6 月 16 日到期，到期后预计不再续开。到期前如需下单、查订单或处理额度问题，请尽早操作并联系我们确认。
         </div>
         <div class="site-banner-copy">
-          如果你发现自己的信息和实际情况对不上，请加群或直接联系我们，我们会逐一核实处理；确认异常后会协助恢复额度和阵容槽，并统一补偿
-          3000 额度。
+          当前已进入第六赛季，商城已按 S6 作为本赛季展示；S5 及更早赛季功法均按旧卡处理。
         </div>
       </section>
 
@@ -51,6 +51,7 @@
             <span class="hero-badge">新手完成三步奖励 1000</span>
             <span class="hero-badge">会员与残卷转赠额外 +5%</span>
           </div>
+          <div id="shop-honor-panel-root"></div>
         </div>
         <div class="hero-side">
           <div class="status-panel">
@@ -431,7 +432,7 @@
           <button class="section-tab" type="button" data-account-tab="profile">资料</button>
           <button class="section-tab" type="button" data-account-tab="security">安全</button>
           <button class="section-tab" type="button" data-account-tab="recharge">充值</button>
-          <button class="section-tab" type="button" data-account-tab="orders">订单帮助</button>
+          <button class="section-tab" type="button" data-account-tab="orders">我的购买</button>
         </div>
 
         <div id="account-message" class="notice"></div>
@@ -469,6 +470,10 @@
               <label>
                 昵称
                 <input id="account-nickname" type="text" />
+              </label>
+              <label>
+                微信 / 联系方式
+                <input id="account-contact" type="text" placeholder="寄售卖家必填，买家有问题时用于联系" />
               </label>
               <div class="actions">
                 <button type="submit" class="primary">保存资料</button>
@@ -515,14 +520,14 @@
 
         <div class="section-panel hidden" data-account-panel="orders">
           <div class="panel-grid">
+            <div id="order-panel" class="panel">
+              <div class="panel-title">我的购买</div>
+              <div id="order-list" class="stack-list"></div>
+            </div>
             <div class="panel" id="help-panel">
               <div class="panel-title">有问题加群咨询</div>
               <div class="muted">遇到注册、充值、下单、补货或订单处理问题，可以扫码进群联系管理员。</div>
               <img class="guide-image help-qr-image" src="./guides/wechat-group.png" alt="微信群二维码" />
-            </div>
-            <div id="order-panel" class="panel">
-              <div class="panel-title">最近订单</div>
-              <div id="order-list" class="stack-list"></div>
             </div>
           </div>
         </div>
@@ -556,15 +561,16 @@
           </div>
           <span class="teaser-chip">已开放</span>
         </div>
+        <div id="draw-service-honor-panel-root"></div>
         <div class="draw-service-layout">
           <div class="panel">
             <div class="panel-title">代抽规则</div>
             <div class="draw-rule-list">
-              <div class="stack-item">最低 200 额度，必须是 200 的倍数，可按任意额度提交。</div>
-              <div class="stack-item">返还所有双满紫、双满橙、双满红、双满金卡，大于等于 2.5 的单词条，双词条，珍。</div>
+              <div class="stack-item">用户自行选择档位：6 元 / 1w 仅返珍；7 元 / 1w 返双词条、珍、双满金、单 3.0。</div>
+              <div class="stack-item">8 元 / 1w 返珍、双词条、2.5+ 单词条、双满紫-金卡；10 元 / 1w 返全金红、双满橙紫。</div>
               <div class="stack-item">其余卡默认不返还，由管理员代抽后统一处理。</div>
-              <div class="stack-item">每个账号每个赛季，第一次累计抽满 5w：返还 1w 额度，并送一套带金高攻高血图鉴，金卡从本次代抽抽到的最好一张里选。</div>
-              <div class="stack-item">后续每累计抽满 5w，再返还 5k 额度。</div>
+              <div class="stack-item">自己的卷需先转残卷给 584967604 并提交核对信息，按 8 元 / 1w 档；开通赛季会员可享 6.5 元 / 1w，每赛季一次，最多 5w，抽 5w 按第三档。</div>
+              <div class="stack-item">旧规则“抽 5w 返 1w”已取消，提交时按所选档位比例扣额度。</div>
               <div class="stack-item">如需代抽视频确认真实性，请在“我的信息”里的“订单帮助”中，通过微信群联系管理员索取。</div>
             </div>
           </div>
@@ -647,7 +653,7 @@
       <button class="page-dock-item" type="button" data-dock-target="draw-service-zone">代抽专区</button>
       <button id="mobile-admin-link" class="page-dock-item mobile-admin-shortcut hidden" type="button">后台</button>
     </nav>
-    <script type="module" src="./app.js?v=release-20260509-160631"></script>
+    <script type="module" src="./app.js?v=release-20260611-151806"></script>
     <script>
       (() => {
         const SESSION_KEY = "gongfa_session_v1";
@@ -840,5 +846,6 @@
         schedule();
       })();
     </script>
+
   </body>
 </html>

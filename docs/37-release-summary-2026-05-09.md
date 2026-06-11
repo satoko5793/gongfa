@@ -52,6 +52,21 @@
 - `frontend/page-renderers/product-list-renderers.js`
 - `frontend/page-renderers/product-detail-renderers.js`
 
+### 额度、现金和现转残卷
+
+- 额度固定锚定人民币：`10000 额度 = 8 元`，即 `1 元 = 1250 额度`。
+- 旧用户额度余额不迁移，继续作为额度余额使用。
+- 商品仍以 `price_quota` 作为主价格，现金锁卡按固定锚点折算。
+- 现转残卷不再直接等于额度，后台按现金比例配置残卷（例如 `X 元 = 10000 残卷`），系统再按固定锚点折算额度。
+- 赛季会员现金价自动折算会员开通额度，例如 `30 元 = 37500 额度`。
+- 现金充值和现转残卷充值都继续享受赛季会员加成。
+
+实现入口：
+
+- `backend/src/domain/payment-conversion.js`
+- `backend/src/config/recharge-config.js`
+- `frontend/payment-conversion.js`
+
 ### 图鉴动态套餐
 
 商城新增动态图鉴套：
@@ -86,6 +101,7 @@ node --check frontend/page-runtime/product-modal-runtime.js
 python3 scripts/validate_frontend.py
 node scripts/validate_backend_contracts.js
 node scripts/validate_entry_performance.js
+node scripts/validate_payment_conversion.js
 ```
 
 正式服发版后：

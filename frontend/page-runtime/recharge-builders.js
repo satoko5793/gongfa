@@ -1,4 +1,10 @@
-import { RECHARGE_ORDER_STATUS } from "../app-constants.js?v=release-20260509-160631";
+import { RECHARGE_ORDER_STATUS } from "../app-constants.js?v=release-20260611-151806";
+import {
+  RESIDUAL_ANCHOR_AMOUNT,
+  cashToQuota,
+  getResidualAnchorCashYuan,
+  residualToCash,
+} from "../payment-conversion.js?v=release-20260611-151806";
 
 export function isPositiveMoneyAmount(value) {
   const numeric = Number(value);
@@ -44,7 +50,11 @@ export function formatRechargeOrderAmountLine(ctx, order) {
       : `到账：${Number(order?.quota_amount || 0)} 额度`;
 
   if (isResidualTransferOrder(order)) {
-    return `转赠：${Number(order?.transfer_amount || order?.amount_yuan || 0)} ${ctx.escapeHtml(order?.transfer_unit || "残卷")} / ${quotaLine}`;
+    const transferCashText =
+      Number(order?.transfer_cash_amount_yuan || 0) > 0
+        ? ` / 折合：${ctx.formatCashAmount(order.transfer_cash_amount_yuan)}`
+        : "";
+    return `转赠：${Number(order?.transfer_amount || order?.amount_yuan || 0)} ${ctx.escapeHtml(order?.transfer_unit || "残卷")}${transferCashText} / ${quotaLine}`;
   }
 
   return `金额：${ctx.formatCashAmount(order?.amount_yuan || 0)} / ${quotaLine} / 支付方式：${ctx.escapeHtml(ctx.formatRechargeChannelLabel(order?.channel))}`;
@@ -69,8 +79,8 @@ export function getRechargeQuoteSummary(ctx, profile, rechargeConfig, amountYuan
   const bonusPercent = Number(rechargeConfig?.season_member_bonus_percent || 0);
 
   if (normalizedType === "season_member") {
-    const memberQuota = Number(rechargeConfig?.season_member_quota || 0);
     const memberAmount = Number(rechargeConfig?.season_member_price_yuan || 0);
+    const memberQuota = cashToQuota(memberAmount) || 0;
     return {
       orderType: normalizedType,
       amountYuan: memberAmount,
@@ -92,10 +102,11 @@ export function getRechargeQuoteSummary(ctx, profile, rechargeConfig, amountYuan
 
   if (normalizedType === "residual_transfer") {
     const normalizedAmount = Math.max(Number(amountYuan) || 0, 0);
-    const quotaPerUnit = Math.max(Number(rechargeConfig?.residual_quota_per_unit || 1), 1);
     const unitLabel = rechargeConfig?.residual_unit_label || "残卷";
     const targetRoleId = rechargeConfig?.residual_admin_role_id || "584967604";
-    const baseQuota = normalizedAmount * quotaPerUnit;
+    const residualCashAmount = residualToCash(normalizedAmount, rechargeConfig) || 0;
+    const residualAnchorCashYuan = getResidualAnchorCashYuan(rechargeConfig);
+    const baseQuota = cashToQuota(residualCashAmount) || 0;
     const bonusQuota = profile?.season_member_active
       ? Math.floor(baseQuota * Number(rechargeConfig?.season_member_bonus_rate || 0))
       : 0;
@@ -105,10 +116,10 @@ export function getRechargeQuoteSummary(ctx, profile, rechargeConfig, amountYuan
       baseQuota,
       bonusQuota,
       totalQuota: baseQuota + bonusQuota,
-      amountLabel: `1 ${unitLabel} = ${quotaPerUnit} 额度`,
+      amountLabel: `充值残卷比例：${residualAnchorCashYuan} 元 = ${RESIDUAL_ANCHOR_AMOUNT} ${unitLabel}`,
       detailLabel: profile?.season_member_active
-        ? `游戏内直接转给管理员 ${targetRoleId}，会员加成已生效，本次额外赠送 ${bonusQuota} 额度。`
-        : `游戏内直接转给管理员 ${targetRoleId}，管理员审核后到账。`,
+        ? `游戏内直接转给管理员 ${targetRoleId}，本次折合 ${residualCashAmount.toFixed(2)} 元，会员额外赠送 ${bonusQuota} 额度。`
+        : `游戏内直接转给管理员 ${targetRoleId}，本次折合 ${residualCashAmount.toFixed(2)} 元，管理员审核后到账。`,
       submitLabel: "已转赠，提交审核",
       lockedAmount: false,
       amountInputLabel: `${unitLabel}数量`,
@@ -121,17 +132,14 @@ export function getRechargeQuoteSummary(ctx, profile, rechargeConfig, amountYuan
   }
 
   const normalizedAmount = Math.max(Number(amountYuan) || 0, 0);
-  const baseQuota = Math.round(
-    (normalizedAmount * Number(rechargeConfig?.exchange_quota || 0)) /
-      Math.max(Number(rechargeConfig?.exchange_yuan || 1), 0.01)
-  );
+  const baseQuota = cashToQuota(normalizedAmount) || 0;
   const bonusQuota = profile?.season_member_active
     ? Math.floor(baseQuota * Number(rechargeConfig?.season_member_bonus_rate || 0))
     : 0;
   const totalQuota = baseQuota + bonusQuota;
   const detailLabel = profile?.season_member_active
     ? `会员加成已生效，本次额外赠送 ${bonusQuota} 额度。`
-    : "支持任意金额转账，系统会按当前比例实时折算到账。";
+    : "支持任意金额转账，额度固定按 8 元 = 10000 额度折算到账。";
 
   return {
     orderType: normalizedType,
@@ -139,7 +147,7 @@ export function getRechargeQuoteSummary(ctx, profile, rechargeConfig, amountYuan
     baseQuota,
     bonusQuota,
     totalQuota,
-    amountLabel: `当前兑换比例：${Number(rechargeConfig?.exchange_yuan || 1)} 元 = ${Number(rechargeConfig?.exchange_quota || 0)} 额度`,
+    amountLabel: "固定兑换比例：8 元 = 10000 额度",
     detailLabel,
     submitLabel: "已付款，提交审核",
     lockedAmount: false,

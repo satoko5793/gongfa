@@ -4,7 +4,7 @@ export {
   formatDate,
   loadSession,
   saveSession,
-} from "../shared.js?v=release-20260509-160631";
+} from "../shared.js?v=release-20260611-151806";
 
 import {
   apiFetch,
@@ -12,7 +12,7 @@ import {
   formatDate,
   loadSession,
   saveSession,
-} from "../shared.js?v=release-20260509-160631";
+} from "../shared.js?v=release-20260611-151806";
 
 export function createAdminApi() {
   return {

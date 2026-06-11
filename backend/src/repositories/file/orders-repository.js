@@ -1,4 +1,5 @@
 const ordersStore = require("../../domain/store/repositories/orders-file-store");
+const helperStore = require("../../domain/store/repositories/helper-file-store");
 
 async function createGuestTransferOrder({ userId, itemId, itemKind, body }) {
   return ordersStore.createGuestTransferOrder(itemId, itemKind, {
@@ -19,8 +20,29 @@ async function createOrder({ userId, itemId, itemKind, remark, bundleSelection =
   return ordersStore.createOrder(userId, itemId, itemKind, { remark, bundleSelection });
 }
 
-async function createDrawServiceOrder({ userId, amountQuota }) {
-  return ordersStore.createDrawServiceOrder(userId, { amountQuota });
+async function createDrawServiceOrder({
+  userId,
+  amountQuota,
+  tierKey = null,
+  drawAmountWan = null,
+  transferAmount = null,
+  paymentReference = null,
+  payerNote = null,
+  gameRoleId = null,
+  gameRoleName = null,
+  nickname = null,
+}) {
+  return ordersStore.createDrawServiceOrder(userId, {
+    amountQuota,
+    tierKey,
+    drawAmountWan,
+    transferAmount,
+    paymentReference,
+    payerNote,
+    gameRoleId,
+    gameRoleName,
+    nickname,
+  });
 }
 
 async function listAuctionBidSummariesForUser({ userId }) {
@@ -45,6 +67,30 @@ async function getOrderById({ orderId, userId, role }) {
   );
 }
 
+async function createConsignmentEscrowTrade({ userId, body }) {
+  return helperStore.createEscrowTrade(userId, body);
+}
+
+async function listConsignmentEscrowTradesForUser({ userId }) {
+  return helperStore.listEscrowTradesForUser(userId);
+}
+
+async function submitConsignmentEscrowDelivery({ userId, tradeId, body }) {
+  return helperStore.submitEscrowDelivery(userId, tradeId, body);
+}
+
+async function addConsignmentEscrowEvidence({ userId, tradeId, file }) {
+  return helperStore.addEscrowEvidence(userId, tradeId, file);
+}
+
+async function confirmConsignmentEscrowReceipt({ userId, tradeId }) {
+  return helperStore.confirmEscrowReceipt(userId, tradeId);
+}
+
+async function disputeConsignmentEscrowTrade({ userId, tradeId, body }) {
+  return helperStore.disputeEscrowTrade(userId, tradeId, body);
+}
+
 module.exports = {
   mode: "file",
   createGuestTransferOrder,
@@ -54,4 +100,10 @@ module.exports = {
   placeAuctionBid,
   requestCancellation,
   getOrderById,
+  createConsignmentEscrowTrade,
+  listConsignmentEscrowTradesForUser,
+  submitConsignmentEscrowDelivery,
+  addConsignmentEscrowEvidence,
+  confirmConsignmentEscrowReceipt,
+  disputeConsignmentEscrowTrade,
 };

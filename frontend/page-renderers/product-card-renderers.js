@@ -68,6 +68,29 @@ export function renderProductTermRow(ctx, termBadges, limit = 2) {
   `;
 }
 
+function formatConsignmentPriceYuan(product) {
+  const price = Number(product?.price_yuan ?? product?.price_quota ?? 0);
+  if (!Number.isFinite(price) || price <= 0) return "价格待确认";
+  return `${Number.isInteger(price) ? String(price) : price.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} 元`;
+}
+
+function renderConsignmentPriceChips(ctx, product) {
+  const options = Array.isArray(product?.payment_options) ? product.payment_options : [];
+  if (!options.length) {
+    return `<span class="chip strong">人民币 ${ctx.escapeHtml(formatConsignmentPriceYuan(product))}</span>`;
+  }
+  return options
+    .map((option) => {
+      const method = String(option?.method || "").trim();
+      if (method === "cash") return `<span class="chip strong">人民币 ${Number(option.price_yuan || 0)} 元</span>`;
+      if (method === "quota") return `<span class="chip accent soft">额度 ${Number(option.price_quota || 0)}</span>`;
+      if (method === "residual") return `<span class="chip subtle">残卷 ${Number(option.transfer_amount || 0)} ${ctx.escapeHtml(option.transfer_unit || "残卷")}</span>`;
+      return "";
+    })
+    .filter(Boolean)
+    .join("");
+}
+
 export function renderProductVisual(ctx, product, variant = "grid") {
   if (ctx.isBundle(product) && !product?.image_url) {
     return ctx.renderBundleCollage(product, variant);
@@ -94,11 +117,17 @@ export function renderProductVisual(ctx, product, variant = "grid") {
 }
 
 export function renderProductCard(ctx, product) {
+  const isConsignment = String(product?.item_kind || "") === "consignment" || Boolean(product?.is_consignment);
   const termBadges = parseTermBadges(ctx, product.ext_attrs, product);
-  const cashPriceText = ctx.getProductCashPriceText(product);
+  const cashPriceText = isConsignment ? "" : ctx.getProductCashPriceText(product);
+  const residualPriceText = !isConsignment && ctx.getProductResidualPriceText
+    ? ctx.getProductResidualPriceText(product)
+    : "";
   const subtitle = ctx.isBundle(product)
     ? `${ctx.getTierLabel(product)} / 套餐`
-    : `${ctx.getTierLabel(product)} / ${ctx.escapeHtml(ctx.getSeasonCompactLabel(product))}`;
+    : isConsignment
+      ? `玩家寄售 / ${ctx.escapeHtml(ctx.getSeasonCompactLabel(product))}`
+      : `${ctx.getTierLabel(product)} / ${ctx.escapeHtml(ctx.getSeasonCompactLabel(product))}`;
   const bodyHtml = ctx.isBundle(product)
     ? `<div class="product-meta">${ctx.escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>`
     : `
@@ -114,12 +143,13 @@ export function renderProductCard(ctx, product) {
   const quotaDisabledReason = quotaPolicy?.quota_purchase_disabled_reason || "";
 
   return `
-    <article class="product-card ${discounted ? "discounted" : ""}">
+    <article class="product-card ${discounted ? "discounted" : ""} ${isConsignment ? "consignment" : ""}">
       <div class="product-cover">${renderProductVisual(ctx, product, "grid")}</div>
       <div class="product-summary">
       <div class="product-headline">
         <div class="discount-title-line">
           <div class="product-name">${ctx.escapeHtml(product.name)}</div>
+          ${isConsignment ? `<span class="chip accent soft">玩家寄售</span>` : ""}
           ${discounted ? `<span class="chip discount">${ctx.escapeHtml(product.discount_label || "限时折扣")}</span>` : ""}
         </div>
         <div class="product-type-chip">${subtitle}</div>
@@ -128,10 +158,17 @@ export function renderProductCard(ctx, product) {
       ${renderProductTermRow(ctx, termBadges)}
       </div>
       <div class="chip-row">
-        ${discounted ? `<span class="chip original-price">原 ${ctx.formatCompactNumber(originalPriceQuota)}</span>` : ""}
-        <span class="chip ${discounted ? "accent" : "strong"}">残卷 ${ctx.formatCompactNumber(product.price_quota || 0)}</span>
-        ${cashPriceText ? `<span class="chip accent soft">${ctx.escapeHtml(cashPriceText)}</span>` : ""}
-        ${discounted && Number(product.discount_saved_quota || 0) > 0 ? `<span class="chip discount">立省 ${ctx.formatCompactNumber(product.discount_saved_quota)}</span>` : ""}
+        ${
+          isConsignment
+            ? renderConsignmentPriceChips(ctx, product)
+            : `
+              ${discounted ? `<span class="chip original-price">原 ${ctx.formatCompactNumber(originalPriceQuota)}</span>` : ""}
+              <span class="chip ${discounted ? "accent" : "strong"}">额度 ${ctx.formatCompactNumber(product.price_quota || 0)}</span>
+              ${cashPriceText ? `<span class="chip accent soft">${ctx.escapeHtml(cashPriceText)}</span>` : ""}
+              ${residualPriceText ? `<span class="chip subtle">${ctx.escapeHtml(residualPriceText)}</span>` : ""}
+              ${discounted && Number(product.discount_saved_quota || 0) > 0 ? `<span class="chip discount">立省 ${ctx.formatCompactNumber(product.discount_saved_quota)}</span>` : ""}
+            `
+        }
         ${
           product.stock !== null && product.stock !== undefined && Number(product.stock) <= 1
             ? `<span class="chip subtle">余量 ${Number(product.stock || 0)}</span>`
@@ -139,14 +176,20 @@ export function renderProductCard(ctx, product) {
         }
       </div>
       <div class="actions">
-        <button class="ghost detail-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">详情</button>
-        <button class="ghost direct-buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">转账锁卡</button>
-        <button
-          class="primary buy-btn"
-          data-item-id="${product.item_id}"
-          data-item-kind="${product.item_kind}"
-          ${quotaPurchaseDisabled ? `disabled title="${ctx.escapeHtml(quotaDisabledReason)}"` : ""}
-        >${quotaPurchaseDisabled ? "首周禁额度" : "购买"}</button>
+        ${
+          isConsignment
+            ? `<button class="primary consignment-buy-btn" type="button" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">担保购买</button>`
+            : `
+              <button class="ghost detail-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">详情</button>
+              <button class="ghost direct-buy-btn" data-item-id="${product.item_id}" data-item-kind="${product.item_kind}">转账锁卡</button>
+              <button
+                class="primary buy-btn"
+                data-item-id="${product.item_id}"
+                data-item-kind="${product.item_kind}"
+                ${quotaPurchaseDisabled ? `disabled title="${ctx.escapeHtml(quotaDisabledReason)}"` : ""}
+              >${quotaPurchaseDisabled ? "首周禁额度" : "购买"}</button>
+            `
+        }
       </div>
     </article>
   `;

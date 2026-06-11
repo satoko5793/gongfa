@@ -46,12 +46,36 @@ function listHelperInventories(userId) {
   return helperStore.listHelperInventories(userId);
 }
 
+function listHelperInventorySummary(userId) {
+  return helperStore.listHelperInventorySummary(userId);
+}
+
+function listHelperInventoryItems(userId, options) {
+  return helperStore.listHelperInventoryItems(userId, options);
+}
+
 function listMergedHelperInventoryItems(userId) {
   return helperStore.listMergedHelperInventoryItems(userId);
 }
 
 function upsertHelperInventory(userId, payload) {
   return helperStore.upsertHelperInventory(userId, payload);
+}
+
+function upsertHelperInventoriesBatch(userId, payloads) {
+  return helperStore.upsertHelperInventoriesBatch(userId, payloads);
+}
+
+function createConsignmentListing(userId, payload) {
+  return helperStore.createConsignmentListing(userId, payload);
+}
+
+function listConsignmentListingsForUser(userId) {
+  return helperStore.listConsignmentListingsForUser(userId);
+}
+
+function withdrawConsignmentListing(userId, listingId) {
+  return helperStore.withdrawConsignmentListing(userId, listingId);
 }
 
 function listHelperActionLogs(userId, options) {
@@ -74,8 +98,14 @@ module.exports = {
   updateHelperSnapshot,
   removeHelperSnapshot,
   listHelperInventories,
+  listHelperInventorySummary,
+  listHelperInventoryItems,
   listMergedHelperInventoryItems,
   upsertHelperInventory,
+  upsertHelperInventoriesBatch,
+  createConsignmentListing,
+  listConsignmentListingsForUser,
+  withdrawConsignmentListing,
   listHelperActionLogs,
   createHelperActionLog,
 };

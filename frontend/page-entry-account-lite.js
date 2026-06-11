@@ -1,4 +1,10 @@
-import { ADMIN_ROLES, RECHARGE_ORDER_STATUS } from "./app-constants.js?v=release-20260509-160631";
+import { ADMIN_ROLES, RECHARGE_ORDER_STATUS } from "./app-constants.js?v=release-20260611-151806";
+import {
+  RESIDUAL_ANCHOR_AMOUNT,
+  cashToQuota,
+  getResidualAnchorCashYuan,
+  residualToCash,
+} from "./payment-conversion.js?v=release-20260611-151806";
 
 export function setAccountLiteNotice(accountMessage, text, type = "") {
   if (!accountMessage) return;
@@ -20,6 +26,12 @@ function formatLiteDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatLiteCashAmount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "¥0.00";
+  return `¥${numeric.toFixed(2)}`;
 }
 
 function isLitePositiveMoneyAmount(value) {
@@ -74,8 +86,8 @@ function buildLiteRechargeQuote(profile, rechargeConfig, amountValue, orderType 
   const bonusPercent = Number(rechargeConfig?.season_member_bonus_percent || 0);
 
   if (normalizedType === "season_member") {
-    const memberQuota = Number(rechargeConfig?.season_member_quota || 0);
     const memberAmount = Number(rechargeConfig?.season_member_price_yuan || 0);
+    const memberQuota = cashToQuota(memberAmount) || 0;
     return {
       orderType: normalizedType,
       amountValue: memberAmount,
@@ -97,20 +109,21 @@ function buildLiteRechargeQuote(profile, rechargeConfig, amountValue, orderType 
 
   if (normalizedType === "residual_transfer") {
     const normalizedAmount = Math.max(Math.floor(Number(amountValue) || 0), 0);
-    const quotaPerUnit = Math.max(Number(rechargeConfig?.residual_quota_per_unit || 1), 1);
     const unitLabel = rechargeConfig?.residual_unit_label || "残卷";
     const targetRoleId = rechargeConfig?.residual_admin_role_id || "584967604";
-    const baseQuota = normalizedAmount * quotaPerUnit;
+    const residualCashAmount = residualToCash(normalizedAmount, rechargeConfig) || 0;
+    const residualAnchorCashYuan = getResidualAnchorCashYuan(rechargeConfig);
+    const baseQuota = cashToQuota(residualCashAmount) || 0;
     const bonusQuota = profile?.season_member_active
       ? Math.floor(baseQuota * Number(rechargeConfig?.season_member_bonus_rate || 0))
       : 0;
     return {
       orderType: normalizedType,
       amountValue: normalizedAmount,
-      amountLabel: `1 ${unitLabel} = ${quotaPerUnit} 额度`,
+      amountLabel: `充值残卷比例：${residualAnchorCashYuan} 元 = ${RESIDUAL_ANCHOR_AMOUNT} ${unitLabel}`,
       detailLabel: profile?.season_member_active
-        ? `游戏内直接转给管理员 ${targetRoleId}，会员加成已生效，本次额外赠送 ${bonusQuota} 额度。`
-        : `游戏内直接转给管理员 ${targetRoleId}，管理员审核后到账。`,
+        ? `游戏内直接转给管理员 ${targetRoleId}，本次折合 ${residualCashAmount.toFixed(2)} 元，会员额外赠送 ${bonusQuota} 额度。`
+        : `游戏内直接转给管理员 ${targetRoleId}，本次折合 ${residualCashAmount.toFixed(2)} 元，管理员审核后到账。`,
       submitLabel: "已转赠，提交审核",
       amountInputLabel: `${unitLabel}数量`,
       amountInputMin: 1,
@@ -126,19 +139,17 @@ function buildLiteRechargeQuote(profile, rechargeConfig, amountValue, orderType 
   }
 
   const normalizedAmount = Math.max(Number(amountValue) || 0, 0);
-  const exchangeQuota = Number(rechargeConfig?.exchange_quota || 0);
-  const exchangeYuan = Math.max(Number(rechargeConfig?.exchange_yuan || 1), 0.01);
-  const baseQuota = Math.round((normalizedAmount * exchangeQuota) / exchangeYuan);
+  const baseQuota = cashToQuota(normalizedAmount) || 0;
   const bonusQuota = profile?.season_member_active
     ? Math.floor(baseQuota * Number(rechargeConfig?.season_member_bonus_rate || 0))
     : 0;
   return {
     orderType: normalizedType,
     amountValue: normalizedAmount,
-    amountLabel: `当前兑换比例：${Number(rechargeConfig?.exchange_yuan || 1)} 元 = ${exchangeQuota} 额度`,
+    amountLabel: "固定兑换比例：8 元 = 10000 额度",
     detailLabel: profile?.season_member_active
       ? `会员加成已生效，本次额外赠送 ${bonusQuota} 额度。`
-      : "支持任意金额转账，系统会按当前比例实时折算到账。",
+      : "支持任意金额转账，额度固定按 8 元 = 10000 额度折算到账。",
     submitLabel: "已付款，提交审核",
     amountInputLabel: "充值金额（元）",
     amountInputMin: 0.01,
@@ -218,6 +229,7 @@ export function renderLiteRechargeSection({
     : pendingSeasonOrder
       ? `你的 ${escapeLiteHtml(rechargeConfig.season_member_season_label || "当前赛季")} 会员申请正在审核中。`
       : `${escapeLiteHtml(rechargeConfig.season_member_season_label || "当前赛季")} 会员：${Number(rechargeConfig.season_member_price_yuan || 0)} 元得 ${Number(rechargeConfig.season_member_quota || 0)} 额度，后续获得额度额外 +${Number(rechargeConfig.season_member_bonus_percent || 0)}%。`;
+  const memberDrawBenefitText = "会员可使用 6.5 元 / 1w 代抽福利档，每赛季一次，最多 5w，系统会校验本赛季会员状态。";
   const seasonMemberDisabled = Boolean(profile.season_member_active || pendingSeasonOrder);
   const isResidualTransfer = nextState.orderType === "residual_transfer";
 
@@ -226,6 +238,7 @@ export function renderLiteRechargeSection({
       <div class="recharge-rate-banner">
         <strong>赛季会员</strong>
         <span>${memberStatusText}</span>
+        <span class="muted">${escapeLiteHtml(memberDrawBenefitText)}</span>
         <span class="muted">本赛季截止 ${escapeLiteHtml(formatLiteDate(rechargeConfig.season_member_expires_at || ""))}</span>
       </div>
       <div class="recharge-layout-split">
@@ -236,7 +249,7 @@ export function renderLiteRechargeSection({
                 <div><strong>${escapeLiteHtml(rechargeConfig?.residual_admin_role_name || "admin残卷")}</strong></div>
                 <div class="muted">游戏名称：${escapeLiteHtml(rechargeConfig?.residual_admin_game_name || "繁星✨秋")}</div>
                 <div class="muted">游戏 ID：${escapeLiteHtml(rechargeConfig?.residual_admin_role_id || "584967604")}</div>
-                <div class="muted">兑换比例：1 ${escapeLiteHtml(rechargeConfig?.residual_unit_label || "残卷")} = ${Number(rechargeConfig?.residual_quota_per_unit || 1)} 额度</div>
+                <div class="muted">充值残卷比例：${getResidualAnchorCashYuan(rechargeConfig)} 元 = ${RESIDUAL_ANCHOR_AMOUNT} ${escapeLiteHtml(rechargeConfig?.residual_unit_label || "残卷")}</div>
                 <div class="stack-list">
                   ${(rechargeConfig.residual_instructions || []).map((line) => `<div class="stack-item">${escapeLiteHtml(line)}</div>`).join("")}
                 </div>
@@ -332,7 +345,11 @@ function formatLiteRechargeOrderTitle(order) {
 
 function formatLiteRechargeOrderAmountLine(order) {
   if (String(order?.order_type || "").trim() === "residual_transfer") {
-    return `转赠：${Number(order?.transfer_amount || order?.amount_yuan || 0)} ${order?.transfer_unit || "残卷"} / 到账：${Number(order?.quota_amount || 0)} 额度`;
+    const transferCashText =
+      Number(order?.transfer_cash_amount_yuan || 0) > 0
+        ? ` / 折合：${formatLiteCashAmount(order.transfer_cash_amount_yuan)}`
+        : "";
+    return `转赠：${Number(order?.transfer_amount || order?.amount_yuan || 0)} ${order?.transfer_unit || "残卷"}${transferCashText} / 到账：${Number(order?.quota_amount || 0)} 额度`;
   }
   return `金额：${Number(order?.amount_yuan || 0)} 元 / 到账：${Number(order?.quota_amount || 0)} 额度 / 支付方式：${formatLiteRechargeChannelLabel(order?.channel)}`;
 }
@@ -395,6 +412,7 @@ export function renderLiteAccountProfile({
     `角色名称：${profile.game_role_name || "-"}`,
     `游戏 ID：${profile.game_role_id || "-"}`,
     `区服：${profile.game_server || "-"}`,
+    `联系方式：${profile.contact_info || "未填写"}`,
     `账号角色：${roleLabel}`,
     `登录方式：${authLabel}`,
     `当前额度：${Number(effectiveQuota || 0)}`,
@@ -410,14 +428,23 @@ export function renderLiteAccountProfile({
     orderList.innerHTML = orders.length
       ? orders
           .slice(0, 5)
-          .map(
-            (order) => `
+          .map((order) => {
+            const drawMeta =
+              order?.draw_service && typeof order.draw_service === "object" ? order.draw_service : null;
+            const isResidualDraw =
+              String(order?.order_source || "").trim() === "draw_service" &&
+              String(drawMeta?.payment_method || "").trim() === "residual_transfer";
+            return `
               <div class="stack-item">
                 <div>订单 #${order.id} / ${order.status || "-"}</div>
-                <div class="muted">消耗：${Number(order.total_quota || 0)} / 下单时间：${order.created_at || "-"}</div>
+                <div class="muted">${
+                  isResidualDraw
+                    ? `转赠：${Number(drawMeta?.transfer_amount || order.transfer_amount || 0)} ${escapeLiteHtml(drawMeta?.transfer_unit || order.transfer_unit || "残卷")}`
+                    : `消耗：${Number(order.total_quota || 0)}`
+                } / 下单时间：${order.created_at || "-"}</div>
               </div>
-            `
-          )
+            `;
+          })
           .join("")
       : '<div class="stack-item">最近还没有订单。</div>';
     if (Array.isArray(rechargeOrders)) {
@@ -439,10 +466,11 @@ export function renderLiteAccountProfile({
 
 export function fillLiteAccountForms(profile, fields = {}) {
   if (!profile) return;
-  const { accountRoleNameInput, accountServerInput, accountNicknameInput } = fields;
+  const { accountRoleNameInput, accountServerInput, accountNicknameInput, accountContactInput } = fields;
   if (accountRoleNameInput) accountRoleNameInput.value = profile.game_role_name || "";
   if (accountServerInput) accountServerInput.value = profile.game_server || "";
   if (accountNicknameInput) accountNicknameInput.value = profile.nickname || "";
+  if (accountContactInput) accountContactInput.value = profile.contact_info || "";
 }
 
 export async function hydrateLiteAccountOverview({

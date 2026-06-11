@@ -1,7 +1,7 @@
 import {
   ADMIN_READ_ROLE_VALUES,
   ADMIN_WRITE_ROLE_VALUES,
-} from "./roles.js?v=release-20260509-160631";
+} from "./roles.js?v=release-20260611-151806";
 
 export const POSTER_EXPORT_LIMIT = 60;
 export const POSTER_WEBSITE = "gongfazhushou.cn";
@@ -69,6 +69,7 @@ export function createAdminStore() {
     currentOrderList: [],
     currentRechargeOrderList: [],
     currentAuctionList: [],
+    currentPaymentReviewList: [],
     overviewData: {
       products: { total: 0, on_sale: 0, discounted: 0 },
       bundles: { total: 0 },

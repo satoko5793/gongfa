@@ -4,17 +4,30 @@ const { useFileStore } = require("../services/runtime");
 const { ensureBundleSeeds } = require("../services/bundle-catalog");
 const { getRechargeConfig } = require("../config/recharge-config");
 const { applyCardSeasonMeta, getConfiguredCurrentSeasonScheduleId } = require("../config/season-meta");
-const { attachQuotaPurchasePolicy } = require("../domain/purchase-policy");
+const {
+  attachQuotaPurchasePolicy,
+  shouldDisplayPublicProduct,
+} = require("../domain/purchase-policy");
 const { buildDynamicBundles, findDynamicBundleById } = require("../domain/dynamic-bundles");
 const {
   getProductsRechargeConfig,
   getPublicProductById,
   listPublicAuctions,
+  listPublicConsignmentProducts,
   listPublicProducts,
   listPublicRecentOrders,
 } = require("../modules/products/file-service");
 
 const productsRouter = express.Router();
+
+productsRouter.use((req, res, next) => {
+  if (req.method === "GET") {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
+  next();
+});
 
 function normalizeRecentSalesLimit(value) {
   const limit = Number(value);
@@ -22,11 +35,37 @@ function normalizeRecentSalesLimit(value) {
   return Math.min(Math.max(Math.floor(limit), 1), 20);
 }
 
-function getActiveSeasonScheduleId() {
-  const rechargeConfig = useFileStore()
-    ? getProductsRechargeConfig()
-    : getRechargeConfig();
-  return getConfiguredCurrentSeasonScheduleId(rechargeConfig);
+function parsePublicProductPagination(query = {}) {
+  if (
+    query.page === undefined &&
+    query.page_size === undefined &&
+    query.limit === undefined
+  ) {
+    return null;
+  }
+
+  const page = Math.max(Math.floor(Number(query.page) || 1), 1);
+  const requestedPageSize = query.page_size !== undefined ? query.page_size : query.limit;
+  const pageSize = Math.min(Math.max(Math.floor(Number(requestedPageSize) || 12), 1), 100);
+  return {
+    page,
+    pageSize,
+    offset: (page - 1) * pageSize,
+  };
+}
+
+function buildPublicProductPage(items, pagination) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const total = safeItems.length;
+  const totalPages = total > 0 ? Math.ceil(total / pagination.pageSize) : 0;
+  return {
+    items: safeItems.slice(pagination.offset, pagination.offset + pagination.pageSize),
+    total,
+    page: pagination.page,
+    page_size: pagination.pageSize,
+    total_pages: totalPages,
+    has_more: pagination.page < totalPages,
+  };
 }
 
 function normalizePublicProductRow(row, currentSeasonScheduleId) {
@@ -43,6 +82,48 @@ function stripPublicPricingMeta(row) {
   const next = { ...row };
   delete next.pricing_meta;
   return next;
+}
+
+function buildPublicProductRow(row, rechargeConfig, currentSeasonScheduleId) {
+  return stripPublicPricingMeta(
+    withPublicPurchasePolicy(normalizePublicProductRow(row, currentSeasonScheduleId), rechargeConfig)
+  );
+}
+
+function filterPublicDisplayProducts(items, rechargeConfig) {
+  return (items || []).filter((item) => shouldDisplayPublicProduct(item, rechargeConfig));
+}
+
+function toSortNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function toSortTime(value) {
+  const time = Date.parse(value || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getSortQuotaValue(item) {
+  return toSortNumber(item?.price_quota || item?.effective_price_quota || item?.original_price_quota);
+}
+
+function sortPublicProducts(items, sort = "created_desc") {
+  const safeItems = Array.isArray(items) ? items.slice() : [];
+  const sorters = {
+    created_desc: (left, right) =>
+      toSortTime(right.updated_at || right.created_at) - toSortTime(left.updated_at || left.created_at),
+    price_asc: (left, right) =>
+      getSortQuotaValue(left) - getSortQuotaValue(right) || toSortTime(right.created_at) - toSortTime(left.created_at),
+    price_desc: (left, right) =>
+      getSortQuotaValue(right) - getSortQuotaValue(left) || toSortTime(right.created_at) - toSortTime(left.created_at),
+    attack_desc: (left, right) =>
+      toSortNumber(right.attack_value) - toSortNumber(left.attack_value) || toSortTime(right.created_at) - toSortTime(left.created_at),
+    hp_desc: (left, right) =>
+      toSortNumber(right.hp_value) - toSortNumber(left.hp_value) || toSortTime(right.created_at) - toSortTime(left.created_at),
+  };
+  safeItems.sort(sorters[sort] || sorters.created_desc);
+  return safeItems;
 }
 
 function maskPublicBuyerLabel(order) {
@@ -177,6 +258,8 @@ productsRouter.get("/meta", async (req, res, next) => {
         exchange_yuan: Number(rechargeConfig.exchange_yuan || 0),
         exchange_quota: Number(rechargeConfig.exchange_quota || 0),
         quota_per_yuan: Number(rechargeConfig.quota_per_yuan || 0),
+        quota_anchor_yuan: Number(rechargeConfig.exchange_yuan || 0),
+        quota_anchor_quota: Number(rechargeConfig.exchange_quota || 0),
         min_amount_yuan: Number(rechargeConfig.min_amount_yuan || 0),
         qr_image_url: rechargeConfig.qr_image_url || null,
         payee_name: rechargeConfig.payee_name || null,
@@ -190,10 +273,25 @@ productsRouter.get("/meta", async (req, res, next) => {
         residual_admin_role_name: rechargeConfig.residual_admin_role_name || null,
         residual_admin_game_name: rechargeConfig.residual_admin_game_name || null,
         residual_unit_label: rechargeConfig.residual_unit_label || null,
+        residual_recharge_unit_price_yuan: Number(rechargeConfig.residual_recharge_unit_price_yuan || 0),
+        residual_unit_price_yuan: Number(rechargeConfig.residual_unit_price_yuan || 0),
+        residual_anchor_amount: Number(rechargeConfig.residual_anchor_amount || 10000),
+        residual_recharge_anchor_cash_yuan: Number(rechargeConfig.residual_recharge_anchor_cash_yuan || 0),
+        residual_anchor_cash_yuan: Number(rechargeConfig.residual_anchor_cash_yuan || 0),
+        residual_purchase_anchor_quota: Number(rechargeConfig.residual_purchase_anchor_quota || 10000),
+        residual_purchase_anchor_cash_yuan: Number(rechargeConfig.residual_purchase_anchor_cash_yuan || 0),
+        residual_purchase_amount_per_quota_anchor: Number(
+          rechargeConfig.residual_purchase_amount_per_quota_anchor || 0
+        ),
+        residual_purchase_unit_price_yuan: Number(rechargeConfig.residual_purchase_unit_price_yuan || 0),
         residual_quota_per_unit: Number(rechargeConfig.residual_quota_per_unit || 0),
+        current_season_gold_min_display_cash_yuan: Number(
+          rechargeConfig.current_season_gold_min_display_cash_yuan || 0
+        ),
         residual_instructions: Array.isArray(rechargeConfig.residual_instructions)
           ? rechargeConfig.residual_instructions
           : [],
+        draw_service: rechargeConfig.draw_service || null,
       },
     });
   } catch (error) {
@@ -203,14 +301,27 @@ productsRouter.get("/meta", async (req, res, next) => {
 
 productsRouter.get("/", async (req, res, next) => {
   try {
+    const pagination = parsePublicProductPagination(req.query || {});
+
     if (useFileStore()) {
       const rechargeConfig = getProductsRechargeConfig();
+      const currentSeasonScheduleId = getConfiguredCurrentSeasonScheduleId(rechargeConfig);
+      const publicRows = listPublicProducts({
+        keyword: req.query.keyword,
+        sort: req.query.sort,
+        publicOnly: true,
+      }).map((item) => buildPublicProductRow(item, rechargeConfig, currentSeasonScheduleId));
+      const consignmentRows = listPublicConsignmentProducts({
+        keyword: req.query.keyword,
+        sort: req.query.sort,
+      }).map((item) => buildPublicProductRow(item, rechargeConfig, currentSeasonScheduleId));
+      const items = sortPublicProducts(
+        filterPublicDisplayProducts([...publicRows, ...consignmentRows], rechargeConfig),
+        req.query.sort
+      );
+
       return res.json(
-        listPublicProducts({
-          keyword: req.query.keyword,
-          sort: req.query.sort,
-          publicOnly: true,
-        }).map((item) => stripPublicPricingMeta(withPublicPurchasePolicy(item, rechargeConfig)))
+        pagination ? buildPublicProductPage(items, pagination) : items
       );
     }
 
@@ -309,12 +420,12 @@ productsRouter.get("/", async (req, res, next) => {
 
     const rechargeConfig = getRechargeConfig();
     const currentSeasonScheduleId = getConfiguredCurrentSeasonScheduleId(rechargeConfig);
-    const publicRows = result.rows.map((row) =>
-      stripPublicPricingMeta(
-        withPublicPurchasePolicy(normalizePublicProductRow(row, currentSeasonScheduleId), rechargeConfig)
-      )
+    const publicRows = filterPublicDisplayProducts(
+      result.rows.map((row) => buildPublicProductRow(row, rechargeConfig, currentSeasonScheduleId)),
+      rechargeConfig
     );
-    return res.json([...publicRows, ...buildDynamicBundles(publicRows)]);
+    const items = [...publicRows, ...buildDynamicBundles(publicRows)];
+    return res.json(pagination ? buildPublicProductPage(items, pagination) : items);
   } catch (error) {
     return next(error);
   }
@@ -396,9 +507,16 @@ productsRouter.get("/:id", async (req, res, next) => {
       if (!product) {
         return res.status(404).json({ error: "product_not_found" });
       }
-      return res.json(
-        stripPublicPricingMeta(withPublicPurchasePolicy(product, getProductsRechargeConfig()))
+      const rechargeConfig = getProductsRechargeConfig();
+      const publicProduct = buildPublicProductRow(
+        product,
+        rechargeConfig,
+        getConfiguredCurrentSeasonScheduleId(rechargeConfig)
       );
+      if (!shouldDisplayPublicProduct(publicProduct, rechargeConfig)) {
+        return res.status(404).json({ error: "product_not_found" });
+      }
+      return res.json(publicProduct);
     }
     await ensureBundleSeeds(pool);
     if (itemKind === "bundle") {
@@ -433,10 +551,9 @@ productsRouter.get("/:id", async (req, res, next) => {
         const rechargeConfig = getRechargeConfig();
         const currentSeasonScheduleId = getConfiguredCurrentSeasonScheduleId(rechargeConfig);
         const bundle = findDynamicBundleById(
-          productsResult.rows.map((row) =>
-            stripPublicPricingMeta(
-              withPublicPurchasePolicy(normalizePublicProductRow(row, currentSeasonScheduleId), rechargeConfig)
-            )
+          filterPublicDisplayProducts(
+            productsResult.rows.map((row) => buildPublicProductRow(row, rechargeConfig, currentSeasonScheduleId)),
+            rechargeConfig
           ),
           req.params.id
         );
@@ -521,14 +638,16 @@ productsRouter.get("/:id", async (req, res, next) => {
       return res.status(404).json({ error: "product_not_found" });
     }
 
-    return res.json(
-      stripPublicPricingMeta(
-        withPublicPurchasePolicy(
-          normalizePublicProductRow(result.rows[0], getActiveSeasonScheduleId()),
-          getRechargeConfig()
-        )
-      )
+    const rechargeConfig = getRechargeConfig();
+    const publicProduct = buildPublicProductRow(
+      result.rows[0],
+      rechargeConfig,
+      getConfiguredCurrentSeasonScheduleId(rechargeConfig)
     );
+    if (!shouldDisplayPublicProduct(publicProduct, rechargeConfig)) {
+      return res.status(404).json({ error: "product_not_found" });
+    }
+    return res.json(publicProduct);
   } catch (error) {
     return next(error);
   }

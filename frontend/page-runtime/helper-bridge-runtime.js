@@ -43,13 +43,14 @@ export function buildHelperBridgeSnapshotUrl(ctx, binding) {
   });
 }
 
-export function buildHelperBridgeLegacyInventoryUrl(ctx, binding) {
+export function buildHelperBridgeLegacyInventoryUrl(ctx, binding, requestId = "") {
   return buildHelperBridgeUrl(ctx, "legacyInventory", {
     bindingId: binding?.id || "",
     bindTokenId: binding?.bind_token_id || "",
     gameRoleId: binding?.game_role_id || "",
     gameServer: binding?.game_server || "",
     gameRoleName: binding?.game_role_name || "",
+    bridgeRequestId: requestId,
   });
 }
 

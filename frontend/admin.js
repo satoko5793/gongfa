@@ -1,26 +1,30 @@
-﻿import { createAdminApi } from "./admin-services/api.js?v=release-20260509-160631";
-import { loadAdminPageData, bindAdminPageEvents, renderAdminPage } from "./admin-pages/index.js?v=release-20260509-160631";
-import { renderPendingImportEntriesView, renderPendingHelperInventoryEntriesView } from "./admin-renderers/imports.js?v=release-20260509-160631";
-import { renderSessionView, renderOverviewSection, renderAdminAlertsSection, clearAdminAlertsSection } from "./admin-renderers/overview.js?v=release-20260509-160631";
-import { renderPricingSummaryView } from "./admin-renderers/pricing.js?v=release-20260509-160631";
+﻿import { createAdminApi } from "./admin-services/api.js?v=release-20260611-151806";
+import {
+  escapeHtml as sharedEscapeHtml,
+  pickErrorMessage as sharedPickErrorMessage,
+} from "./shared.js?v=release-20260611-151806";
+import { loadAdminPageData, bindAdminPageEvents, renderAdminPage } from "./admin-pages/index.js?v=release-20260611-151806";
+import { renderPendingImportEntriesView, renderPendingHelperInventoryEntriesView } from "./admin-renderers/imports.js?v=release-20260611-151806";
+import { renderSessionView, renderOverviewSection, renderAdminAlertsSection, clearAdminAlertsSection } from "./admin-renderers/overview.js?v=release-20260611-151806";
+import { renderPricingSummaryView } from "./admin-renderers/pricing.js?v=release-20260611-151806";
 import {
   renderCatalogProductsSection,
   renderBundlesSection,
   openProductModalView,
   closeProductModalView,
-} from "./admin-renderers/products.js?v=release-20260509-160631";
-import { renderOrdersListSection, renderLinkedOrderUserState as renderLinkedOrderUserStateSection } from "./admin-renderers/orders.js?v=release-20260509-160631";
+} from "./admin-renderers/products.js?v=release-20260611-151806";
+import { renderOrdersListSection, renderLinkedOrderUserState as renderLinkedOrderUserStateSection } from "./admin-renderers/orders.js?v=release-20260611-151806";
 import {
   renderRechargeOrdersSection,
   renderRechargeConfigSection,
   renderPricingControlsSection,
   formatRechargeChannelLabel,
-} from "./admin-renderers/recharge.js?v=release-20260509-160631";
-import { renderUsersSection } from "./admin-renderers/users.js?v=release-20260509-160631";
-import { renderAuditsSection, renderQuotaLogsSection } from "./admin-renderers/logs.js?v=release-20260509-160631";
-import { renderAuctionsSection } from "./admin-renderers/auctions.js?v=release-20260509-160631";
-import { getAdminDomRefs } from "./admin-runtime/dom.js?v=release-20260509-160631";
-import { activateAdminPageShell, renderPagination, setDebugLine } from "./admin-runtime/page-shell.js?v=release-20260509-160631";
+} from "./admin-renderers/recharge.js?v=release-20260611-151806";
+import { renderUsersSection } from "./admin-renderers/users.js?v=release-20260611-151806";
+import { renderAuditsSection, renderQuotaLogsSection } from "./admin-renderers/logs.js?v=release-20260611-151806";
+import { renderAuctionsSection } from "./admin-renderers/auctions.js?v=release-20260611-151806";
+import { getAdminDomRefs } from "./admin-runtime/dom.js?v=release-20260611-151806";
+import { activateAdminPageShell, renderPagination, setDebugLine } from "./admin-runtime/page-shell.js?v=release-20260611-151806";
 import {
   createAdminStore,
   POSTER_EXPORT_LIMIT,
@@ -30,13 +34,17 @@ import {
   ADMIN_READ_ROLES,
   ADMIN_WRITE_ROLES,
   READ_ONLY_WRITE_CONTROL_IDS,
-} from "./admin-state/store.js?v=release-20260509-160631";
+} from "./admin-state/store.js?v=release-20260611-151806";
 import {
   ADMIN_ROLES,
   ORDER_STATUS,
   RECHARGE_ORDER_STATUS,
   isAdminRole,
-} from "./app-constants.js?v=release-20260509-160631";
+} from "./app-constants.js?v=release-20260611-151806";
+import {
+  cashToQuota,
+  quotaToCash,
+} from "./payment-conversion.js?v=release-20260611-151806";
 
 const { apiFetch, clearSession, formatDate, loadSession, saveSession } = createAdminApi();
 const refs = getAdminDomRefs(document);
@@ -77,6 +85,9 @@ const {
   ordersRoot,
   quotaLogsRoot,
   auditsRoot,
+  consignmentsRoot,
+  adminConsignmentStatusFilter,
+  reloadConsignmentsBtn,
   selectedProductsChip,
   filteredProductsChip,
   discountedProductsChip,
@@ -96,12 +107,14 @@ const {
   adminRechargeExchangeYuanInput,
   adminRechargeExchangeQuotaInput,
   adminRechargeMinYuanInput,
+  adminCurrentSeasonGoldMinDisplayCashYuanInput,
   adminResidualTransferEnabledInput,
   adminResidualAdminRoleIdInput,
   adminResidualAdminRoleNameInput,
   adminResidualAdminGameNameInput,
   adminResidualUnitLabelInput,
   adminResidualQuotaPerUnitInput,
+  adminResidualPurchaseAnchorCashYuanInput,
   adminSeasonMemberEnabledInput,
   adminSeasonMemberLabelInput,
   adminSeasonMemberExpiresAtInput,
@@ -124,6 +137,7 @@ const {
   adminResidualInstructionsInput,
   adminRechargeQrPreview,
   adminWechatQrPreview,
+  adminDrawServiceConfigRoot,
   adminPricingDisplayModeSelect,
   adminPricingControlsRoot,
   adminOrderKeywordInput,
@@ -187,8 +201,11 @@ let activeAdminProductFullness = adminStore.activeAdminProductFullness;
 let currentOrderList = adminStore.currentOrderList;
 let currentRechargeOrderList = adminStore.currentRechargeOrderList;
 let currentAuctionList = adminStore.currentAuctionList;
+let currentPaymentReviewList = adminStore.currentPaymentReviewList;
 let currentQuotaLogList = [];
 let currentAuditList = [];
+let currentConsignmentList = [];
+let currentEscrowTradeList = [];
 let overviewData = adminStore.overviewData;
 let currentProductFacets = adminStore.currentProductFacets;
 let currentProductSummary = adminStore.currentProductSummary;
@@ -305,16 +322,11 @@ function renderPendingHelperInventoryEntries() {
 }
 
 function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+  return sharedEscapeHtml(value);
 }
 
 function pickErrorMessage(error, fallback = "请求失败") {
-  return error?.payload?.error || error?.message || fallback;
+  return sharedPickErrorMessage(error, fallback);
 }
 
 function parsePositiveMoneyValue(value) {
@@ -394,36 +406,24 @@ function cloneValue(value) {
 }
 
 function getQuotaPerYuan(config = currentRechargeConfig) {
-  const exchangeQuota = Number(config?.exchange_quota || 0);
-  const exchangeYuan = Number(config?.exchange_yuan || 0);
-  if (!Number.isFinite(exchangeQuota) || !Number.isFinite(exchangeYuan) || exchangeQuota <= 0 || exchangeYuan <= 0) {
-    return null;
-  }
-  return exchangeQuota / exchangeYuan;
+  return 1250;
 }
 
 function getRechargeConfigDraftForPricing() {
-  const exchangeYuan = parsePositiveMoneyValue(adminRechargeExchangeYuanInput?.value);
-  const exchangeQuota = parseNonNegativeIntegerValue(adminRechargeExchangeQuotaInput?.value);
   return {
     ...(currentRechargeConfig || {}),
-    ...(exchangeYuan !== null ? { exchange_yuan: exchangeYuan } : {}),
-    ...(exchangeQuota !== null && exchangeQuota > 0 ? { exchange_quota: exchangeQuota } : {}),
+    exchange_yuan: 8,
+    exchange_quota: 10000,
+    quota_per_yuan: 1250,
   };
 }
 
 function convertQuotaToCash(quotaAmount, config = currentRechargeConfig) {
-  const quota = Number(quotaAmount);
-  const quotaPerYuan = getQuotaPerYuan(config);
-  if (!Number.isFinite(quota) || quota < 0 || !quotaPerYuan) return null;
-  return Number((quota / quotaPerYuan).toFixed(2));
+  return quotaToCash(quotaAmount);
 }
 
 function convertCashToQuota(yuanAmount, config = currentRechargeConfig) {
-  const yuan = Number(yuanAmount);
-  const quotaPerYuan = getQuotaPerYuan(config);
-  if (!Number.isFinite(yuan) || yuan < 0 || !quotaPerYuan) return null;
-  return Math.max(0, Math.round(yuan * quotaPerYuan));
+  return cashToQuota(yuanAmount);
 }
 
 function getEmptyPricingControls() {
@@ -741,6 +741,9 @@ function formatOrderItemSnapshot(item) {
   if (String(snapshot.service_kind || "") === "draw_service") {
     if (snapshot.amount_quota) {
       lines.push(`代抽额度：${Number(snapshot.amount_quota)}`);
+    }
+    if (snapshot.payment_method === "residual_transfer") {
+      lines.push(`残卷转赠：${Number(snapshot.transfer_amount || 0)} ${snapshot.transfer_unit || "残卷"}`);
     }
     if (snapshot.season_label) {
       lines.push(`赛季：${snapshot.season_label}`);
@@ -1391,13 +1394,7 @@ function formatPosterCompactNumber(value) {
 }
 
 function getPosterCashAmount(quotaAmount, rechargeConfig = currentRechargeConfig) {
-  const quota = Number(quotaAmount || 0);
-  const exchangeQuota = Number(rechargeConfig?.exchange_quota || 0);
-  const exchangeYuan = Number(rechargeConfig?.exchange_yuan || 0);
-  if (!Number.isFinite(quota) || quota <= 0 || exchangeQuota <= 0 || exchangeYuan <= 0) {
-    return null;
-  }
-  return (quota * exchangeYuan) / exchangeQuota;
+  return quotaToCash(quotaAmount);
 }
 
 function formatPosterCashAmount(value) {
@@ -2028,12 +2025,12 @@ async function exportSelectedProductsPoster() {
 
       ctx.fillStyle = "rgba(255, 255, 255, 0.74)";
       setPosterFont(ctx, 700, 16);
-      ctx.fillText("残卷价", cardX + 28, priceBoxY + 26);
+      ctx.fillText("额度价", cardX + 28, priceBoxY + 26);
       ctx.fillText("RMB", cardX + 28, priceBoxY + 80);
       ctx.fillStyle = "#fff8ef";
       drawFittedText(
         ctx,
-        `${formatPosterCompactNumber(priceQuota)} 残卷`,
+        `${formatPosterCompactNumber(priceQuota)} 额度`,
         cardX + 102,
         priceBoxY + 34,
         cardWidth - 144,
@@ -2215,6 +2212,7 @@ async function loadRechargeOrders(options = {}) {
 
 async function loadRechargeConfig() {
   const config = await apiFetch("/admin/recharge-config");
+  currentRechargeConfig = config;
   renderRechargeConfigSection(buildAdminPageContext(), config);
 }
 
@@ -2414,6 +2412,9 @@ function buildAdminPageContext() {
       ordersRoot,
       quotaLogsRoot,
       auditsRoot,
+      consignmentsRoot,
+      adminConsignmentStatusFilter,
+      reloadConsignmentsBtn,
       adminRechargeOrdersRoot,
       linkedOrderUserState,
       adminPricingControlsRoot,
@@ -2437,8 +2438,37 @@ function buildAdminPageContext() {
       adminWechatQrImageUrlInput,
       adminWechatQrPreview,
       adminPricingDisplayModeSelect,
+      adminRechargeEnabled,
+      adminDrawServiceConfigRoot,
       adminRechargeExchangeYuanInput,
       adminRechargeExchangeQuotaInput,
+      adminRechargeMinYuanInput,
+      adminCurrentSeasonGoldMinDisplayCashYuanInput,
+      adminResidualTransferEnabledInput,
+      adminResidualAdminRoleIdInput,
+      adminResidualAdminRoleNameInput,
+      adminResidualAdminGameNameInput,
+      adminResidualUnitLabelInput,
+      adminResidualQuotaPerUnitInput,
+      adminResidualPurchaseAnchorCashYuanInput,
+      adminSeasonMemberEnabledInput,
+      adminSeasonMemberLabelInput,
+      adminSeasonMemberExpiresAtInput,
+      adminSeasonMemberPriceInput,
+      adminSeasonMemberQuotaInput,
+      adminSeasonMemberBonusRateInput,
+      adminLineupBaseSlotsInput,
+      adminLineupPermanentSlotQuotaInput,
+      adminLineupPermanentSlotMaxInput,
+      adminLineupSeasonalSlotQuotaInput,
+      adminLineupMemberBonusSlotsInput,
+      adminRechargePresetsInput,
+      adminRechargePayeeNameInput,
+      adminRechargePayeeHintInput,
+      adminWechatPayeeNameInput,
+      adminWechatPayeeHintInput,
+      adminRechargeInstructionsInput,
+      adminResidualInstructionsInput,
       closeAdminProductModalBtn,
       adminProductModal,
       recalculatePricingBtn,
@@ -2520,6 +2550,18 @@ function buildAdminPageContext() {
     getCurrentAuctionList: () => currentAuctionList,
     getCurrentQuotaLogList: () => currentQuotaLogList,
     getCurrentAuditList: () => currentAuditList,
+    getCurrentConsignmentList: () => currentConsignmentList,
+    setCurrentConsignmentList(items) {
+      currentConsignmentList = Array.isArray(items) ? items : [];
+    },
+    getCurrentEscrowTradeList: () => currentEscrowTradeList,
+    setCurrentEscrowTradeList(items) {
+      currentEscrowTradeList = Array.isArray(items) ? items : [];
+    },
+    getCurrentPaymentReviewList: () => currentPaymentReviewList,
+    setCurrentPaymentReviewList(items) {
+      currentPaymentReviewList = Array.isArray(items) ? items : [];
+    },
     getCurrentRechargeConfig: () => currentRechargeConfig,
     setCurrentRechargeConfig(nextConfig) {
       currentRechargeConfig = nextConfig || null;
@@ -3072,6 +3114,7 @@ document.addEventListener("click", (event) => {
       resetPagedState("rechargeOrders");
       activateAdminPage("recharge", { force: true })
         .then(() => {
+          document.querySelector('[data-recharge-subpage="orders"]')?.click();
           document.querySelector('[data-admin-page-panel="recharge"]')?.scrollIntoView({
             behavior: "smooth",
             block: "start",

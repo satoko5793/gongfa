@@ -1,7 +1,7 @@
-import { apiFetch, clearSession, loadSession, saveSession } from "./shared.js?v=release-20260509-160631";
-import { bootDeferredPageEntry } from "./page-entry-bootstrap.js?v=release-20260509-160631";
-import { applyEntryNavSessionState, getEntrySessionProfile } from "./page-entry-session.js?v=release-20260509-160631";
-import { RECHARGE_ORDER_STATUS } from "./app-constants.js?v=release-20260509-160631";
+import { apiFetch, clearSession, loadSession, saveSession } from "./shared.js?v=release-20260611-151806";
+import { bootDeferredPageEntry } from "./page-entry-bootstrap.js?v=release-20260611-151806";
+import { applyEntryNavSessionState, getEntrySessionProfile } from "./page-entry-session.js?v=release-20260611-151806";
+import { RECHARGE_ORDER_STATUS } from "./app-constants.js?v=release-20260611-151806";
 import {
   activateLiteAccountTab,
   fillLiteAccountForms,
@@ -9,7 +9,7 @@ import {
   renderLiteAccountProfile,
   renderLiteRechargeSection,
   setAccountLiteNotice,
-} from "./page-entry-account-lite.js?v=release-20260509-160631";
+} from "./page-entry-account-lite.js?v=release-20260611-151806";
 
 const session = loadSession();
 const sessionProfile = getEntrySessionProfile(session);
@@ -24,6 +24,7 @@ const orderList = document.getElementById("order-list");
 const accountRoleNameInput = document.getElementById("account-role-name");
 const accountServerInput = document.getElementById("account-server");
 const accountNicknameInput = document.getElementById("account-nickname");
+const accountContactInput = document.getElementById("account-contact");
 const accountProfileForm = document.getElementById("account-profile-form");
 const accountPasswordForm = document.getElementById("account-password-form");
 const accountLogoutBtn = document.getElementById("account-logout-btn");
@@ -100,6 +101,7 @@ async function refreshLiteAccountOverview() {
         accountRoleNameInput,
         accountServerInput,
         accountNicknameInput,
+        accountContactInput,
       }),
     onSessionExpired: () => {
       clearSession();
@@ -297,7 +299,7 @@ async function handleLiteRechargeSubmit(event) {
   return true;
 }
 
-const entry = bootDeferredPageEntry("me", "./app.js?v=release-20260509-160631", {
+const entry = bootDeferredPageEntry("me", "./app.js?v=release-20260611-151806", {
   idleTimeout: hasSession ? 400 : 1800,
   fallbackDelay: hasSession ? 80 : 600,
   autoBoot: false,
@@ -318,6 +320,7 @@ const entry = bootDeferredPageEntry("me", "./app.js?v=release-20260509-160631", 
       accountRoleNameInput,
       accountServerInput,
       accountNicknameInput,
+      accountContactInput,
     });
     if (hasSession) {
       void refreshLiteAccountOverview();

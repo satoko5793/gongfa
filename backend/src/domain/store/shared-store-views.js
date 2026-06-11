@@ -12,8 +12,11 @@ function hydrateOrders(data, orders) {
   const clone = getDep("clone");
   return orders.map((order) => {
     const user = data.users.find((item) => item.id === order.user_id);
+    const source = String(order?.order_source || "").trim();
     const preferGuestIdentity =
-      String(order?.order_source || "").trim() === "guest_transfer" &&
+      (source === "guest_transfer" ||
+        (source === "draw_service" &&
+          String(order?.draw_service?.payment_method || "").trim() === "residual_transfer")) &&
       (order?.guest_game_role_id || order?.guest_game_role_name || order?.guest_nickname);
     return {
       ...clone(order),

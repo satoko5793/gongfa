@@ -164,6 +164,21 @@ ENTRY_SCRIPT_MARKERS = {
     "me.html": [HERO_ROTATE_SCRIPT_MARKER],
 }
 
+ELEMENT_TRIM_MARKERS = {
+    "hero": ('<section class="hero card">', "section"),
+    "bind": ('<section id="bind" class="card">', "section"),
+    "beginner-flow": ('<section class="card beginner-flow">', "section"),
+    "products": ('<section id="products" class="card dock-target-section">', "section"),
+    "discount-products": ('<section id="discount-products-section" class="card dock-target-section hidden">', "section"),
+    "helper-lab": ('<section id="helper-lab" class="card dock-target-section hidden">', "section"),
+    "account": ('<section id="account" class="card dock-target-section">', "section"),
+    "auction-zone": ('<section id="auction-zone" class="card dock-target-section">', "section"),
+    "draw-service-zone": ('<section id="draw-service-zone" class="card dock-target-section">', "section"),
+    "debug-panel": ('<aside id="debug-panel" class="debug-panel hidden">', "aside"),
+    "page-dock": ('<nav class="page-dock" aria-label="页面快捷切换">', "nav"),
+    "footer": ('<footer class="footer">', "footer"),
+}
+
 PRODUCT_MODAL_FREE_PAGES = {"login.html", "script.html", "auction.html", "me.html"}
 HELPER_SPLIT_PANEL_MARKUP = """          <div class="panel" style="margin-top: 16px;">
             <div class="panel-title">功法检测已拆分</div>
@@ -180,6 +195,23 @@ def remove_block(text: str, pattern: str, label: str) -> str:
     if count != 1:
         raise RuntimeError(f"failed to remove block {label}")
     return output
+
+
+def remove_element_by_start_marker(text: str, start_marker: str, tag: str, label: str) -> str:
+    start_index = text.find(start_marker)
+    if start_index < 0:
+        raise RuntimeError(f"failed to find block {label}")
+    tag_re = re.compile(rf"</?{re.escape(tag)}\b[^>]*>", re.I)
+    depth = 0
+    for match in tag_re.finditer(text, start_index):
+        is_closing = match.group(0).startswith("</")
+        depth += -1 if is_closing else 1
+        if depth == 0:
+            remove_start = text.rfind("\n", 0, start_index)
+            if remove_start < 0:
+                remove_start = start_index
+            return text[:remove_start].rstrip() + "\n\n" + text[match.end():].lstrip()
+    raise RuntimeError(f"failed to remove balanced block {label}")
 
 
 def remove_inline_script(text: str, marker: str) -> str:
@@ -208,7 +240,11 @@ def trim_entry_html(output: str, *, filename: str) -> str:
         output = remove_inline_script(output, marker)
 
     for pattern, label in TRIM_PATTERNS.get(filename, []):
-        output = remove_block(output, pattern, label)
+        if label in ELEMENT_TRIM_MARKERS:
+            start_marker, tag = ELEMENT_TRIM_MARKERS[label]
+            output = remove_element_by_start_marker(output, start_marker, tag, label)
+        else:
+            output = remove_block(output, pattern, label)
 
     if filename in PRODUCT_MODAL_FREE_PAGES:
         output = remove_between_markers(

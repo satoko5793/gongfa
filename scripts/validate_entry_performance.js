@@ -92,7 +92,7 @@ function validateLiteModules() {
   const helperLite = read(path.join(FRONTEND, "page-entry-helper-lite.js"));
   const auctionLite = read(path.join(FRONTEND, "page-entry-auction-lite.js"));
 
-  includesAll(shopLite, ["loadLiteStorefront", 'apiFetch("/products")'], "page-entry-shop-lite.js");
+  includesAll(shopLite, ["loadLiteStorefront", 'apiFetch("/products?page=1&page_size=12")'], "page-entry-shop-lite.js");
   includesAll(accountLite, ["hydrateLiteAccountOverview", 'apiFetch("/auth/me")'], "page-entry-account-lite.js");
   includesAll(helperLite, ["prepareHelperLiteShell", "bindWakeOnHelperIntent"], "page-entry-helper-lite.js");
   includesAll(

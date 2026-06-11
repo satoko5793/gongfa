@@ -111,9 +111,55 @@ export function bindHelperShellEvents(ctx) {
       ctx.toggleHelperInventoryExpanded?.(toggleButton.getAttribute("data-helper-inventory-expanded") === "1");
       return;
     }
+    const pageButton = findClosest(event, ".helper-inventory-page-btn");
+    if (pageButton) {
+      ctx.changeHelperInventoryPage?.(Number(pageButton.getAttribute("data-helper-page") || 1));
+      return;
+    }
+    const searchButton = findClosest(event, ".helper-inventory-search-btn");
+    if (searchButton) {
+      const keyword = ctx.helperInventoryMerged.querySelector(".helper-inventory-keyword-input")?.value || "";
+      const bindingId = ctx.helperInventoryMerged.querySelector(".helper-inventory-binding-filter")?.value || "";
+      ctx.applyHelperInventoryFilter?.({ keyword, bindingId });
+      return;
+    }
+    const consignButton = findClosest(event, ".helper-consign-item-btn");
+    if (consignButton) {
+      const itemKey = String(consignButton.getAttribute("data-helper-item-key") || "");
+      const inventoryId = Number(consignButton.getAttribute("data-helper-inventory-id") || 0);
+      const targetItem = (ctx.getCurrentHelperInventoryItems?.() || []).find(
+        (item) => Number(item?.inventory_id || 0) === inventoryId && String(item?.item_key || "") === itemKey
+      );
+      ctx.submitConsignmentListing?.(targetItem);
+      return;
+    }
+    const withdrawButton = findClosest(event, ".helper-withdraw-consignment-btn");
+    if (withdrawButton) {
+      ctx.withdrawConsignmentListing?.(withdrawButton.getAttribute("data-helper-consignment-id"));
+      return;
+    }
+    const deliveryButton = findClosest(event, ".escrow-delivery-btn");
+    if (deliveryButton) {
+      ctx.submitEscrowDelivery?.(deliveryButton.getAttribute("data-escrow-id"));
+      return;
+    }
     const button = findClosest(event, ".helper-import-inventory-products-btn");
     if (!button) return;
     ctx.importHelperInventoryProducts();
+  });
+
+  ctx.helperInventoryMerged?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || !findClosest(event, ".helper-inventory-keyword-input")) return;
+    const keyword = ctx.helperInventoryMerged.querySelector(".helper-inventory-keyword-input")?.value || "";
+    const bindingId = ctx.helperInventoryMerged.querySelector(".helper-inventory-binding-filter")?.value || "";
+    ctx.applyHelperInventoryFilter?.({ keyword, bindingId });
+  });
+
+  ctx.helperInventoryMerged?.addEventListener("change", (event) => {
+    if (!findClosest(event, ".helper-inventory-binding-filter")) return;
+    const keyword = ctx.helperInventoryMerged.querySelector(".helper-inventory-keyword-input")?.value || "";
+    const bindingId = ctx.helperInventoryMerged.querySelector(".helper-inventory-binding-filter")?.value || "";
+    ctx.applyHelperInventoryFilter?.({ keyword, bindingId });
   });
 
   ctx.helperGameFeatureList?.addEventListener("click", (event) => {

@@ -3,6 +3,9 @@ const { authRequired, authOptional } = require("../middlewares/auth");
 const {
   validateOrderCreate,
   validateGuestTransferOrderCreate,
+  validateConsignmentEscrowCreate,
+  validateEscrowDeliveryInput,
+  validateEscrowDisputeInput,
   validateOrderCancelRequestInput,
   validateDrawOrderCreate,
   validateAuctionBidCreate,
@@ -11,11 +14,21 @@ const {
   createGuestTransferOrder,
   createOrder,
   createDrawServiceOrder,
+  createConsignmentEscrowTrade,
+  listConsignmentEscrowTradesForUser,
+  submitConsignmentEscrowDelivery,
+  addConsignmentEscrowEvidence,
+  confirmConsignmentEscrowReceipt,
+  disputeConsignmentEscrowTrade,
   listAuctionBidSummariesForUser,
   placeAuctionBid,
   requestCancellation,
   getOrderById,
 } = require("../modules/orders/service");
+const {
+  uploadEscrowEvidenceImage,
+  toPublicEvidenceFile,
+} = require("../modules/orders/escrow-upload");
 
 const ordersRouter = express.Router();
 
@@ -62,6 +75,69 @@ ordersRouter.post("/draw-service", async (req, res, next) => {
       return sendValidationError(res, errors);
     }
     return res.json(await createDrawServiceOrder(req.user, body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ordersRouter.post("/consignments", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateConsignmentEscrowCreate(body);
+    if (errors.length) return sendValidationError(res, errors);
+    return res.json(await createConsignmentEscrowTrade(req.user, body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ordersRouter.get("/consignments/mine", async (req, res, next) => {
+  try {
+    return res.json(await listConsignmentEscrowTradesForUser(req.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ordersRouter.post("/consignments/:id/delivery", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateEscrowDeliveryInput(body);
+    if (errors.length) return sendValidationError(res, errors);
+    return res.json(await submitConsignmentEscrowDelivery(req.user, req.params.id, body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ordersRouter.post("/consignments/:id/evidence-images", async (req, res, next) => {
+  uploadEscrowEvidenceImage(req, res, async (error) => {
+    if (error) return next(error);
+    try {
+      if (!req.file) return res.status(400).json({ error: "evidence_image_required" });
+      return res.json(
+        await addConsignmentEscrowEvidence(req.user, req.params.id, toPublicEvidenceFile(req.file))
+      );
+    } catch (innerError) {
+      return next(innerError);
+    }
+  });
+});
+
+ordersRouter.post("/consignments/:id/confirm-receipt", async (req, res, next) => {
+  try {
+    return res.json(await confirmConsignmentEscrowReceipt(req.user, req.params.id));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ordersRouter.post("/consignments/:id/dispute", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateEscrowDisputeInput(body);
+    if (errors.length) return sendValidationError(res, errors);
+    return res.json(await disputeConsignmentEscrowTrade(req.user, req.params.id, body));
   } catch (error) {
     return next(error);
   }

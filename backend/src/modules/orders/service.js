@@ -35,6 +35,14 @@ async function createDrawServiceOrder(user, body) {
     await repository.createDrawServiceOrder({
       userId: user.id,
       amountQuota: Number(body.amount_quota),
+      tierKey: body.tier_key || null,
+      drawAmountWan: body.draw_amount_wan === undefined ? null : Number(body.draw_amount_wan),
+      transferAmount: body.transfer_amount === undefined ? null : Number(body.transfer_amount),
+      paymentReference: body.payment_reference || null,
+      payerNote: body.payer_note || null,
+      gameRoleId: body.game_role_id || null,
+      gameRoleName: body.game_role_name || null,
+      nickname: body.nickname || null,
     })
   );
 }
@@ -97,6 +105,66 @@ async function getOrderById(user, orderId) {
   return toOrderDetail(order);
 }
 
+async function createConsignmentEscrowTrade(user, body) {
+  const repository = getOrdersRepository();
+  if (repository.mode !== "file") {
+    const err = new Error("escrow_trades_not_supported_in_db_mode");
+    err.statusCode = 501;
+    throw err;
+  }
+  return repository.createConsignmentEscrowTrade({ userId: user.id, body });
+}
+
+async function listConsignmentEscrowTradesForUser(user) {
+  const repository = getOrdersRepository();
+  if (repository.mode !== "file") return [];
+  return repository.listConsignmentEscrowTradesForUser({ userId: user.id });
+}
+
+async function submitConsignmentEscrowDelivery(user, tradeId, body) {
+  const repository = getOrdersRepository();
+  const trade = await repository.submitConsignmentEscrowDelivery({ userId: user.id, tradeId, body });
+  if (!trade) {
+    const err = new Error("escrow_trade_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  return trade;
+}
+
+async function addConsignmentEscrowEvidence(user, tradeId, file) {
+  const repository = getOrdersRepository();
+  const evidence = await repository.addConsignmentEscrowEvidence({ userId: user.id, tradeId, file });
+  if (!evidence) {
+    const err = new Error("escrow_trade_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  return evidence;
+}
+
+async function confirmConsignmentEscrowReceipt(user, tradeId) {
+  const repository = getOrdersRepository();
+  const trade = await repository.confirmConsignmentEscrowReceipt({ userId: user.id, tradeId });
+  if (!trade) {
+    const err = new Error("escrow_trade_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  return trade;
+}
+
+async function disputeConsignmentEscrowTrade(user, tradeId, body) {
+  const repository = getOrdersRepository();
+  const trade = await repository.disputeConsignmentEscrowTrade({ userId: user.id, tradeId, body });
+  if (!trade) {
+    const err = new Error("escrow_trade_not_found");
+    err.statusCode = 404;
+    throw err;
+  }
+  return trade;
+}
+
 module.exports = {
   createGuestTransferOrder,
   createOrder,
@@ -105,4 +173,10 @@ module.exports = {
   placeAuctionBid,
   requestCancellation,
   getOrderById,
+  createConsignmentEscrowTrade,
+  listConsignmentEscrowTradesForUser,
+  submitConsignmentEscrowDelivery,
+  addConsignmentEscrowEvidence,
+  confirmConsignmentEscrowReceipt,
+  disputeConsignmentEscrowTrade,
 };

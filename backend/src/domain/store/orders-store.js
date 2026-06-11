@@ -1,6 +1,9 @@
 const { AUDIT_ACTIONS } = require("../audit-actions");
 const { findDynamicBundleById, isDynamicBundleItem } = require("../dynamic-bundles");
-const { assertQuotaPurchaseAllowed } = require("../purchase-policy");
+const {
+  assertPublicProductDisplayAllowed,
+  assertQuotaPurchaseAllowed,
+} = require("../purchase-policy");
 const { QUOTA_LOG_TYPES } = require("../quota-log-types");
 const { RECHARGE_ORDER_STATUS } = require("../recharge-order-status");
 const { getStoreRuntime } = require("./core/runtime-context");
@@ -189,8 +192,13 @@ function createRechargeOrder(
     quotaAmount,
     transferAmount = null,
     transferUnit = null,
+    transferCashAmountYuan = null,
     transferTargetRoleId = null,
     transferTargetRoleName = null,
+    quotaAnchorYuan = null,
+    quotaAnchorQuota = null,
+    quotaPerYuan = null,
+    residualUnitPriceYuan = null,
     paymentChannel = null,
     paymentReference,
     payerNote,
@@ -271,6 +279,10 @@ function createRechargeOrder(
     amount_yuan: Number(amountYuan),
     transfer_amount:
       normalizedOrderType === "residual_transfer" ? Number(transferAmount || amountYuan || 0) : null,
+    transfer_cash_amount_yuan:
+      normalizedOrderType === "residual_transfer" && transferCashAmountYuan !== null
+        ? Number(transferCashAmountYuan)
+        : null,
     transfer_unit:
       normalizedOrderType === "residual_transfer"
         ? String(transferUnit || config.residual_unit_label || "残卷")
@@ -286,6 +298,13 @@ function createRechargeOrder(
     base_quota_amount: baseQuotaAmount,
     bonus_quota_amount: bonusQuotaAmount,
     quota_amount: baseQuotaAmount + bonusQuotaAmount,
+    quota_anchor_yuan: Number(quotaAnchorYuan || config.exchange_yuan || 8),
+    quota_anchor_quota: Number(quotaAnchorQuota || config.exchange_quota || 10000),
+    quota_per_yuan: Number(quotaPerYuan || config.quota_per_yuan || 1250),
+    residual_unit_price_yuan:
+      normalizedOrderType === "residual_transfer"
+        ? Number(residualUnitPriceYuan || config.residual_unit_price_yuan || 0)
+        : null,
     season_label:
       normalizedOrderType === "season_member" ? String(config.season_member_season_label || "") : null,
     payment_reference: String(paymentReference || "").trim(),
@@ -307,7 +326,12 @@ function createRechargeOrder(
     detail: {
       amount_yuan: rechargeOrder.amount_yuan,
       transfer_amount: rechargeOrder.transfer_amount,
+      transfer_cash_amount_yuan: rechargeOrder.transfer_cash_amount_yuan,
       transfer_unit: rechargeOrder.transfer_unit,
+      quota_anchor_yuan: rechargeOrder.quota_anchor_yuan,
+      quota_anchor_quota: rechargeOrder.quota_anchor_quota,
+      quota_per_yuan: rechargeOrder.quota_per_yuan,
+      residual_unit_price_yuan: rechargeOrder.residual_unit_price_yuan,
       quota_amount: rechargeOrder.quota_amount,
       order_type: rechargeOrder.order_type,
       channel: rechargeOrder.channel,
@@ -317,12 +341,28 @@ function createRechargeOrder(
   return hydrateSingleRechargeOrder(data, rechargeOrder);
 }
 
-function createDrawServiceOrder(userId, { amountQuota }) {
+function createDrawServiceOrder(
+  userId,
+  {
+    amountQuota,
+    tierKey = null,
+    drawAmountWan = null,
+    transferAmount = null,
+    paymentReference = null,
+    payerNote = null,
+    gameRoleId = null,
+    gameRoleName = null,
+    nickname = null,
+  } = {}
+) {
   const readData = getDep("readData");
   const writeData = getDep("writeData");
   const nextId = getDep("nextId");
   const now = getDep("now");
   const normalizeDrawAmountQuota = getDep("normalizeDrawAmountQuota");
+  const normalizeRechargeConfig = getDep("normalizeRechargeConfig");
+  const quoteDrawServiceOrder = getDep("quoteDrawServiceOrder");
+  const getSeasonMemberState = getDep("getSeasonMemberState");
   const applyQuotaChange = getDep("applyQuotaChange");
   const getCurrentDrawSeasonLabel = getDep("getCurrentDrawSeasonLabel");
   const getDrawServiceSnapshot = getDep("getDrawServiceSnapshot");
@@ -341,23 +381,129 @@ function createDrawServiceOrder(userId, { amountQuota }) {
     throw err;
   }
 
-  const normalizedAmount = normalizeDrawAmountQuota(amountQuota);
+  const rechargeConfig = normalizeRechargeConfig(data.rechargeConfig || {});
+  const quote =
+    tierKey || drawAmountWan !== null
+      ? quoteDrawServiceOrder(rechargeConfig, { tierKey, drawAmountWan })
+      : null;
+  const quotedAmount = Number(quote?.amount_quota || 0);
+  const normalizedAmount = quote && Number.isInteger(quotedAmount) && quotedAmount > 0
+    ? quotedAmount
+    : normalizeDrawAmountQuota(amountQuota);
   if (!normalizedAmount) {
     const err = new Error("draw_amount_quota_invalid");
     err.statusCode = 400;
     throw err;
   }
+  if (quote?.requires_season_member && !getSeasonMemberState(user, rechargeConfig).active) {
+    const err = new Error("season_member_required");
+    err.statusCode = 403;
+    throw err;
+  }
+  const isResidualTransferDraw =
+    String(quote?.payment_method || "").trim() === "residual_transfer";
+  const normalizedTransferAmount = isResidualTransferDraw ? Number(transferAmount || 0) : null;
+  const expectedTransferAmount = isResidualTransferDraw ? Number(quote?.transfer_amount || 0) : null;
+  const normalizedPaymentReference = String(paymentReference || "").trim();
+  const normalizedGameRoleId = String(gameRoleId || user.game_role_id || "").trim();
+  const normalizedGameRoleName = String(gameRoleName || user.game_role_name || "").trim();
+  const normalizedNickname = String(nickname || user.nickname || "").trim();
 
-  applyQuotaChange(data, {
-    userId,
-    changeAmount: -normalizedAmount,
-    type: QUOTA_LOG_TYPES.ORDER_DEDUCT,
-    remark: `draw_service_order_create:${normalizedAmount}`,
-  });
+  if (isResidualTransferDraw) {
+    if (!rechargeConfig.residual_transfer_enabled) {
+      const err = new Error("residual_transfer_disabled");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!Number.isInteger(normalizedTransferAmount) || normalizedTransferAmount <= 0) {
+      const err = new Error("transfer_amount_invalid");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (normalizedTransferAmount !== expectedTransferAmount) {
+      const err = new Error("transfer_amount_mismatch");
+      err.statusCode = 400;
+      err.payload = {
+        expected_transfer_amount: expectedTransferAmount,
+        transfer_unit: quote?.transfer_unit || rechargeConfig.residual_unit_label || "残卷",
+      };
+      throw err;
+    }
+    if (!normalizedGameRoleId) {
+      const err = new Error("game_role_id_required");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!normalizedGameRoleName) {
+      const err = new Error("game_role_name_required");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!normalizedPaymentReference) {
+      const err = new Error("payment_reference_required");
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+  const seasonLabel = getCurrentDrawSeasonLabel(data);
+  if (
+    quote?.max_draw_wan_per_order &&
+    Number(quote.draw_amount_wan || 0) > Number(quote.max_draw_wan_per_order || 0)
+  ) {
+    const err = new Error("season_member_draw_benefit_max_exceeded");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (quote?.once_per_season) {
+    const alreadyUsedBenefit = (data.orders || []).some(
+      (item) =>
+        Number(item?.user_id) === Number(userId) &&
+        String(item?.order_source || "") === "draw_service" &&
+        String(item?.status || "") !== "cancelled" &&
+        String(item?.draw_service?.tier_key || "") === String(quote.tier_key || "") &&
+        String(item?.draw_service?.season_label || "") === String(seasonLabel || "")
+    );
+    if (alreadyUsedBenefit) {
+      const err = new Error("season_member_draw_benefit_used");
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  if (!isResidualTransferDraw) {
+    applyQuotaChange(data, {
+      userId,
+      changeAmount: -normalizedAmount,
+      type: QUOTA_LOG_TYPES.ORDER_DEDUCT,
+      remark: `draw_service_order_create:${normalizedAmount}`,
+    });
+  }
 
   const drawService = {
     amount_quota: normalizedAmount,
-    season_label: getCurrentDrawSeasonLabel(data),
+    draw_amount_wan: quote?.draw_amount_wan ?? null,
+    tier_key: quote?.tier_key ?? null,
+    tier_label: quote?.tier_label ?? (quote?.legacy ? "旧版代抽" : null),
+    tier_description: quote?.description ?? null,
+    requires_season_member: Boolean(quote?.requires_season_member),
+    max_draw_wan_per_order: quote?.max_draw_wan_per_order ?? null,
+    once_per_season: Boolean(quote?.once_per_season),
+    price_yuan_per_wan: quote?.price_yuan_per_wan ?? null,
+    cash_amount_yuan: quote?.cash_amount_yuan ?? null,
+    payment_method: isResidualTransferDraw ? "residual_transfer" : "quota",
+    transfer_amount: isResidualTransferDraw ? normalizedTransferAmount : null,
+    transfer_amount_per_wan: isResidualTransferDraw ? quote?.transfer_amount_per_wan ?? null : null,
+    transfer_unit: isResidualTransferDraw
+      ? quote?.transfer_unit || rechargeConfig.residual_unit_label || "残卷"
+      : null,
+    transfer_target_role_id: isResidualTransferDraw
+      ? quote?.transfer_target_role_id || rechargeConfig.residual_admin_role_id || "584967604"
+      : null,
+    transfer_target_role_name: isResidualTransferDraw
+      ? quote?.transfer_target_role_name || rechargeConfig.residual_admin_role_name || "admin残卷"
+      : null,
+    transfer_reference: isResidualTransferDraw ? normalizedPaymentReference : null,
+    season_label: seasonLabel,
     returned_cards_text: null,
     best_gold_card: null,
     rebate_quota: 0,
@@ -365,19 +511,40 @@ function createDrawServiceOrder(userId, { amountQuota }) {
     reward_milestones: 0,
     atlas_bonus_granted: false,
     atlas_bonus_label: null,
-    video_notice: getDep("drawServiceVideoNotice"),
-    rule_summary: getDep("drawServiceRuleSummary"),
+    video_notice: quote?.video_notice || getDep("drawServiceVideoNotice"),
+    rule_summary: quote?.rule_notice || getDep("drawServiceRuleSummary"),
     settled_at: null,
   };
+  const productName =
+    drawService.tier_label && drawService.draw_amount_wan
+      ? `代抽 ${drawService.tier_label} x ${drawService.draw_amount_wan}w`
+      : `代抽 ${normalizedAmount} 额度`;
 
   const order = {
     id: nextId(data.orders),
     user_id: Number(userId),
     total_quota: normalizedAmount,
     status: "pending",
-    remark: null,
+    remark: isResidualTransferDraw && payerNote ? String(payerNote).trim() : null,
     order_source: "draw_service",
     draw_service: drawService,
+    buyer_label: isResidualTransferDraw ? normalizedGameRoleName : null,
+    guest_game_role_id: isResidualTransferDraw ? normalizedGameRoleId : null,
+    guest_game_role_name: isResidualTransferDraw ? normalizedGameRoleName : null,
+    guest_game_server: null,
+    guest_nickname: isResidualTransferDraw ? normalizedNickname || null : null,
+    payment_channel: isResidualTransferDraw ? "game_residual_transfer" : null,
+    payment_reference: isResidualTransferDraw ? normalizedPaymentReference : null,
+    payment_amount_yuan: null,
+    transfer_amount: isResidualTransferDraw ? normalizedTransferAmount : null,
+    transfer_cash_amount_yuan: isResidualTransferDraw ? Number(quote?.cash_amount_yuan || 0) : null,
+    residual_unit_price_yuan:
+      isResidualTransferDraw && normalizedTransferAmount > 0
+        ? Number((Number(quote?.cash_amount_yuan || 0) / normalizedTransferAmount).toFixed(8))
+        : null,
+    transfer_unit: isResidualTransferDraw ? drawService.transfer_unit : null,
+    transfer_target_role_id: isResidualTransferDraw ? drawService.transfer_target_role_id : null,
+    transfer_target_role_name: isResidualTransferDraw ? drawService.transfer_target_role_name : null,
     created_at: now(),
     updated_at: now(),
   };
@@ -389,15 +556,17 @@ function createDrawServiceOrder(userId, { amountQuota }) {
     item_kind: "service",
     product_id: null,
     bundle_sku_id: null,
-    product_name: `代抽 ${normalizedAmount} 额度`,
+    product_name: productName,
     product_snapshot: getDrawServiceSnapshot(drawService),
     price_quota: normalizedAmount,
     created_at: now(),
   });
 
-  const quotaLog = data.quotaLogs[data.quotaLogs.length - 1];
-  if (quotaLog && quotaLog.type === QUOTA_LOG_TYPES.ORDER_DEDUCT && !quotaLog.order_id) {
-    quotaLog.order_id = order.id;
+  if (!isResidualTransferDraw) {
+    const quotaLog = data.quotaLogs[data.quotaLogs.length - 1];
+    if (quotaLog && quotaLog.type === QUOTA_LOG_TYPES.ORDER_DEDUCT && !quotaLog.order_id) {
+      quotaLog.order_id = order.id;
+    }
   }
 
   addAuditLog(data, {
@@ -407,6 +576,13 @@ function createDrawServiceOrder(userId, { amountQuota }) {
     action: AUDIT_ACTIONS.DRAW_SERVICE_ORDER_CREATE,
     detail: {
       amount_quota: normalizedAmount,
+      draw_amount_wan: drawService.draw_amount_wan,
+      tier_key: drawService.tier_key,
+      tier_label: drawService.tier_label,
+      price_yuan_per_wan: drawService.price_yuan_per_wan,
+      payment_method: drawService.payment_method,
+      transfer_amount: drawService.transfer_amount,
+      transfer_unit: drawService.transfer_unit,
       season_label: drawService.season_label,
     },
   });
@@ -485,7 +661,12 @@ function reviewRechargeOrder(rechargeOrderId, { status, adminRemark = null }, ac
       bonus_quota_amount: rechargeOrder.bonus_quota_amount,
       amount_yuan: rechargeOrder.amount_yuan,
       transfer_amount: rechargeOrder.transfer_amount,
+      transfer_cash_amount_yuan: rechargeOrder.transfer_cash_amount_yuan,
       transfer_unit: rechargeOrder.transfer_unit,
+      quota_anchor_yuan: rechargeOrder.quota_anchor_yuan,
+      quota_anchor_quota: rechargeOrder.quota_anchor_quota,
+      quota_per_yuan: rechargeOrder.quota_per_yuan,
+      residual_unit_price_yuan: rechargeOrder.residual_unit_price_yuan,
       order_type: rechargeOrder.order_type,
       admin_remark: rechargeOrder.admin_remark,
     },
@@ -562,8 +743,13 @@ function createOrder(userId, itemId, itemKind = "card", { remark = null, bundleS
   }
 
   const effectivePriceQuota = getEffectiveQuotaPrice(item.price_quota, item.discount_rate);
+  const purchasePolicyConfig = data.rechargeConfig || {};
   if (!isBundle) {
-    assertQuotaPurchaseAllowed(item, data.rechargeConfig || {});
+    assertPublicProductDisplayAllowed(
+      { ...item, effective_price_quota: effectivePriceQuota },
+      purchasePolicyConfig
+    );
+    assertQuotaPurchaseAllowed(item, purchasePolicyConfig);
   }
   const quotaAccount = ensureQuotaAccount(data, userId);
   if (Number(quotaAccount.balance || 0) < effectivePriceQuota) {
@@ -732,6 +918,10 @@ function createGuestTransferOrder(
   }
 
   const effectivePriceQuota = getEffectiveQuotaPrice(item.price_quota, item.discount_rate);
+  assertPublicProductDisplayAllowed(
+    { ...item, effective_price_quota: effectivePriceQuota },
+    data.rechargeConfig || {}
+  );
   const normalizedPaymentChannel =
     String(paymentChannel || "").trim() === "wechat_qr"
       ? "wechat_qr"
@@ -750,7 +940,10 @@ function createGuestTransferOrder(
       : null;
   const expectedTransferAmount =
     normalizedPaymentChannel === "game_residual_transfer"
-      ? Math.ceil(effectivePriceQuota / Math.max(Number(config.residual_quota_per_unit || 1), 1))
+      ? Math.ceil(
+          (effectivePriceQuota / Number(config.exchange_quota || 10000)) *
+            Number(config.residual_purchase_amount_per_quota_anchor || 10000)
+        )
       : null;
 
   if (normalizedPaymentChannel === "game_residual_transfer") {
@@ -799,7 +992,26 @@ function createGuestTransferOrder(
     payment_channel: normalizedPaymentChannel,
     payment_reference: String(paymentReference || "").trim(),
     payment_amount_yuan: normalizedAmountYuan,
+    payment_quota_anchor_yuan: Number(config.exchange_yuan || 8),
+    payment_quota_anchor_quota: Number(config.exchange_quota || 10000),
+    payment_quota_per_yuan: Number(config.quota_per_yuan || 1250),
     transfer_amount: normalizedTransferAmount,
+    transfer_cash_amount_yuan:
+      normalizedPaymentChannel === "game_residual_transfer"
+        ? Number(expectedAmountYuan.toFixed(4))
+        : null,
+    residual_unit_price_yuan:
+      normalizedPaymentChannel === "game_residual_transfer"
+        ? Number((expectedAmountYuan / Math.max(normalizedTransferAmount || 1, 1)).toFixed(8))
+        : null,
+    residual_purchase_amount_per_quota_anchor:
+      normalizedPaymentChannel === "game_residual_transfer"
+        ? Number(config.residual_purchase_amount_per_quota_anchor || 10000)
+        : null,
+    residual_purchase_anchor_cash_yuan:
+      normalizedPaymentChannel === "game_residual_transfer"
+        ? Number(config.residual_purchase_anchor_cash_yuan || 0)
+        : null,
     transfer_unit:
       normalizedPaymentChannel === "game_residual_transfer"
         ? String(config.residual_unit_label || "残卷")

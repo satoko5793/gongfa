@@ -1,26 +1,9 @@
-import { apiFetch, formatDate } from "./shared.js?v=release-20260509-160631";
-import { renderDrawServiceZoneContent } from "./page-renderers/draw-service-renderers.js?v=release-20260509-160631";
+import { apiFetch, formatDate } from "./shared.js?v=release-20260611-151806";
+import { formatAuctionStatusLabel } from "./auction-formatters.js?v=release-20260611-151806";
+import { renderDrawServiceZoneContent } from "./page-renderers/draw-service-renderers.js?v=release-20260611-151806";
 
 const DRAW_SERVICE_MIN_QUOTA = 200;
 const DRAW_SERVICE_STEP_QUOTA = 200;
-const DRAW_SERVICE_PRESET_AMOUNTS = [200, 1000, 2000, 5000, 10000, 50000];
-
-function formatAuctionStatusLabel(status) {
-  switch (String(status || "").trim()) {
-    case "live":
-      return "进行中";
-    case "scheduled":
-      return "即将开始";
-    case "ended":
-      return "等待结算";
-    case "settled":
-      return "已成交";
-    case "cancelled":
-      return "已流拍";
-    default:
-      return status || "-";
-  }
-}
 
 function formatAuctionTimeLine(auction) {
   const status = String(auction?.status || "").trim();
@@ -47,6 +30,7 @@ export function startAuctionLiteShell({
   let activeAuctionStatus = "live";
   let liteAuctions = [];
   let liteQuota = null;
+  let liteRechargeConfig = null;
 
   function renderLiteAuctionZone() {
     if (!auctionBody) return;
@@ -126,22 +110,30 @@ export function startAuctionLiteShell({
       {
         minQuota: DRAW_SERVICE_MIN_QUOTA,
         stepQuota: DRAW_SERVICE_STEP_QUOTA,
-        presetAmounts: DRAW_SERVICE_PRESET_AMOUNTS,
+        rechargeConfig: liteRechargeConfig,
+        drawServiceConfig: liteRechargeConfig?.draw_service || null,
+        selectedTierKey: liteRechargeConfig?.draw_service?.default_tier_key || "tier_8",
+        selectedDrawWan: liteRechargeConfig?.draw_service?.min_draw_wan || 1,
       },
       profile || null,
       liteQuota,
-      DRAW_SERVICE_MIN_QUOTA
+      {
+        tierKey: liteRechargeConfig?.draw_service?.default_tier_key || "tier_8",
+        drawAmountWan: liteRechargeConfig?.draw_service?.min_draw_wan || 1,
+      }
     );
   }
 
   async function loadLiteAuctionsAndQuota() {
     try {
-      const [auctionResult, quotaResult] = await Promise.all([
+      const [auctionResult, quotaResult, metaResult] = await Promise.all([
         apiFetch("/products/auctions"),
         profile ? apiFetch("/me/quota").catch(() => null) : Promise.resolve(null),
+        apiFetch("/products/meta").catch(() => null),
       ]);
       liteAuctions = Array.isArray(auctionResult?.items) ? auctionResult.items : [];
       liteQuota = quotaResult && typeof quotaResult === "object" ? quotaResult : null;
+      liteRechargeConfig = metaResult?.recharge_config || null;
       renderLiteAuctionZone();
       renderLiteDrawService();
     } catch (error) {
@@ -183,8 +175,9 @@ export function startAuctionLiteShell({
           if (!(target instanceof Element)) return;
           if (
             target.closest("#draw-service-form") ||
-            target.closest("[data-draw-service-amount]") ||
-            target.closest("#draw-service-amount-input")
+            target.closest("[data-draw-service-tier-key]") ||
+            target.closest("[data-draw-service-wan]") ||
+            target.closest("#draw-service-wan-input")
           ) {
             wakeHeavyModule();
           }

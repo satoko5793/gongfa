@@ -1,4 +1,4 @@
-import { ADMIN_ROLES, isAdminRole } from "./app-constants.js?v=release-20260509-160631";
+import { ADMIN_ROLES, isAdminRole } from "./app-constants.js?v=release-20260611-151806";
 
 export function getEntrySessionProfile(session) {
   if (!session || typeof session !== "object") return null;

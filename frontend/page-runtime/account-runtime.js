@@ -1,4 +1,5 @@
 function getAccountTabHash(targetTab) {
+  if (targetTab === "profile") return "profile-panel";
   if (targetTab === "recharge") return "recharge-panel";
   if (targetTab === "orders") return "help-panel";
   return "account";
@@ -35,6 +36,7 @@ export function syncAccountTabWithHashRuntime(ctx) {
   const hash = String(window.location.hash || "").replace(/^#/, "");
   const hashMap = {
     account: "overview",
+    "profile-panel": "profile",
     "recharge-panel": "recharge",
     "help-panel": "orders",
     "order-panel": "orders",
@@ -63,10 +65,40 @@ export function navigateToAccountTabLinkRuntime(ctx, link, targetTab, options = 
 }
 
 export function handleOrderListClickRuntime(ctx, event) {
-  const button = event.target.closest(".request-cancel-btn");
-  if (!button) return false;
-  ctx.requestCancelOrder(button.getAttribute("data-order-id"));
-  return true;
+  const viewButton = event.target.closest(".purchase-view-tab");
+  if (viewButton) {
+    ctx.setActivePurchaseView?.(viewButton.getAttribute("data-purchase-view"));
+    return true;
+  }
+  const pageButton = event.target.closest(".purchase-page-btn");
+  if (pageButton) {
+    ctx.changePurchasePage?.(
+      pageButton.getAttribute("data-purchase-view"),
+      Number(pageButton.getAttribute("data-purchase-page") || 1)
+    );
+    return true;
+  }
+  const cancelButton = event.target.closest(".request-cancel-btn");
+  if (cancelButton) {
+    ctx.requestCancelOrder(cancelButton.getAttribute("data-order-id"));
+    return true;
+  }
+  const deliveryButton = event.target.closest(".escrow-delivery-btn");
+  if (deliveryButton) {
+    ctx.submitEscrowDelivery(deliveryButton.getAttribute("data-escrow-id"));
+    return true;
+  }
+  const confirmButton = event.target.closest(".escrow-confirm-btn");
+  if (confirmButton) {
+    ctx.confirmEscrowReceipt(confirmButton.getAttribute("data-escrow-id"));
+    return true;
+  }
+  const disputeButton = event.target.closest(".escrow-dispute-btn");
+  if (disputeButton) {
+    ctx.disputeEscrowTrade(disputeButton.getAttribute("data-escrow-id"));
+    return true;
+  }
+  return false;
 }
 
 export function handleAccountLogoutClickRuntime(ctx) {

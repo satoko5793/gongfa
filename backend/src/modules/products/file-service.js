@@ -1,6 +1,7 @@
 const productsStore = require("../../domain/store/repositories/products-file-store");
 const ordersStore = require("../../domain/store/repositories/orders-file-store");
 const usersStore = require("../../domain/store/repositories/users-file-store");
+const helperStore = require("../../domain/store/repositories/helper-file-store");
 const { getRechargeConfig } = require("../../config/recharge-config");
 
 function getProductsRechargeConfig() {
@@ -9,6 +10,10 @@ function getProductsRechargeConfig() {
 
 function listPublicProducts(filters = {}) {
   return productsStore.listPublicProducts(filters);
+}
+
+function listPublicConsignmentProducts(filters = {}) {
+  return helperStore.listPublicConsignmentProducts(filters);
 }
 
 function getPublicProductById(productId, options = {}) {
@@ -25,6 +30,7 @@ function listPublicAuctions(status = "all") {
 
 module.exports = {
   getProductsRechargeConfig,
+  listPublicConsignmentProducts,
   listPublicProducts,
   getPublicProductById,
   listPublicRecentOrders,

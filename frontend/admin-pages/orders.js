@@ -1,4 +1,4 @@
-import { renderOrdersSection } from "../admin-renderers/orders.js?v=release-20260509-160631";
+import { renderOrdersSection } from "../admin-renderers/orders.js?v=release-20260611-151806";
 
 export async function loadOrdersPage(context) {
   await context.loadOrders({ page: context.paginationState.orders.page });

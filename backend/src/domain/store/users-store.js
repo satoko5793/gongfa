@@ -54,6 +54,7 @@ function bindUser(payload) {
       game_role_name: payload.game_role_name,
       bind_token_id: payload.bind_token_id || null,
       nickname: payload.nickname || null,
+      contact_info: "",
       password_hash: null,
       helper_capabilities: [],
       created_at: timestamp,
@@ -106,6 +107,7 @@ async function registerPasswordUser(payload) {
     game_role_name: gameRoleName,
     bind_token_id: null,
     nickname: null,
+    contact_info: "",
     password_hash: await hashPassword(payload.password),
     helper_capabilities: [],
     created_at: timestamp,
@@ -311,12 +313,19 @@ function updateRechargeConfig(patch, actorUserId = null, requestId = null) {
         exchange_yuan: nextConfig.exchange_yuan,
         exchange_quota: nextConfig.exchange_quota,
         min_amount_yuan: nextConfig.min_amount_yuan,
+        current_season_gold_min_display_cash_yuan: nextConfig.current_season_gold_min_display_cash_yuan,
         enabled: nextConfig.enabled,
         residual_transfer_enabled: nextConfig.residual_transfer_enabled,
         residual_admin_role_id: nextConfig.residual_admin_role_id,
         residual_admin_role_name: nextConfig.residual_admin_role_name,
         residual_admin_game_name: nextConfig.residual_admin_game_name,
         residual_unit_label: nextConfig.residual_unit_label,
+        residual_recharge_anchor_cash_yuan: nextConfig.residual_recharge_anchor_cash_yuan,
+        residual_recharge_unit_price_yuan: nextConfig.residual_recharge_unit_price_yuan,
+        residual_anchor_cash_yuan: nextConfig.residual_anchor_cash_yuan,
+        residual_unit_price_yuan: nextConfig.residual_unit_price_yuan,
+        residual_purchase_anchor_cash_yuan: nextConfig.residual_purchase_anchor_cash_yuan,
+        residual_purchase_amount_per_quota_anchor: nextConfig.residual_purchase_amount_per_quota_anchor,
         residual_quota_per_unit: nextConfig.residual_quota_per_unit,
         season_member_enabled: nextConfig.season_member_enabled,
         season_member_season_label: nextConfig.season_member_season_label,
@@ -331,6 +340,7 @@ function updateRechargeConfig(patch, actorUserId = null, requestId = null) {
         lineup_seasonal_slot_quota: nextConfig.lineup_seasonal_slot_quota,
         lineup_member_bonus_slots: nextConfig.lineup_member_bonus_slots,
         residual_instructions: nextConfig.residual_instructions,
+        draw_service: nextConfig.draw_service,
         pricing_controls: responseConfig.pricing_controls,
         pricing_reprice_status: responseConfig.pricing_reprice_status,
       },
@@ -360,6 +370,9 @@ function updateSelfProfile(userId, payload) {
   }
   if (payload.game_server !== undefined) {
     user.game_server = String(payload.game_server).trim();
+  }
+  if (payload.contact_info !== undefined) {
+    user.contact_info = String(payload.contact_info || "").trim();
   }
 
   user.updated_at = now();

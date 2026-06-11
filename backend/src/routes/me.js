@@ -113,8 +113,13 @@ meRouter.post("/recharge-orders", async (req, res, next) => {
           quotaAmount: quote.quota_amount,
           transferAmount: quote.transfer_amount || null,
           transferUnit: quote.transfer_unit || null,
+          transferCashAmountYuan: quote.transfer_cash_amount_yuan || null,
           transferTargetRoleId: quote.target_role_id || null,
           transferTargetRoleName: quote.target_role_name || null,
+          quotaAnchorYuan: quote.quota_anchor_yuan,
+          quotaAnchorQuota: quote.quota_anchor_quota,
+          quotaPerYuan: quote.quota_per_yuan,
+          residualUnitPriceYuan: quote.residual_unit_price_yuan || null,
           paymentChannel: body.payment_channel || null,
           paymentReference: body.payment_reference,
           payerNote: body.payer_note || null,
@@ -159,6 +164,7 @@ meRouter.patch("/profile", async (req, res, next) => {
           body.game_role_name !== undefined ? body.game_role_name.trim() : undefined,
         nickname: body.nickname !== undefined ? body.nickname.trim() : undefined,
         game_server: body.game_server !== undefined ? body.game_server.trim() : undefined,
+        contact_info: body.contact_info !== undefined ? body.contact_info.trim() : undefined,
       });
       if (!user) {
         return res.status(404).json({ error: "user_not_found" });

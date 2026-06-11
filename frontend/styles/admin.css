@@ -108,6 +108,52 @@
   background: rgba(255, 243, 235, 0.92);
 }
 
+.admin-section-subtitle {
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.admin-item {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.admin-item.highlight {
+  border-color: rgba(196, 85, 45, 0.3);
+  background: rgba(255, 246, 238, 0.92);
+}
+
+.admin-item-main,
+.admin-item-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-item-actions {
+  justify-items: end;
+}
+
+.admin-item-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.admin-item-meta {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .admin-alert-label {
   color: var(--muted);
   font-size: 13px;

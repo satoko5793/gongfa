@@ -1,15 +1,14 @@
+import {
+  cashToResidual,
+  quotaToCash,
+} from "../payment-conversion.js?v=release-20260611-151806";
+
 export function getEffectiveRechargeConfig(ctx) {
   return ctx.getCurrentRechargeConfig() || ctx.getPublicRechargeConfig() || null;
 }
 
 export function getQuotaCashAmount(ctx, quotaAmount, rechargeConfig = getEffectiveRechargeConfig(ctx)) {
-  const quota = Number(quotaAmount || 0);
-  const exchangeQuota = Number(rechargeConfig?.exchange_quota || 0);
-  const exchangeYuan = Number(rechargeConfig?.exchange_yuan || 0);
-  if (!Number.isFinite(quota) || quota <= 0 || exchangeQuota <= 0 || exchangeYuan <= 0) {
-    return null;
-  }
-  return (quota * exchangeYuan) / exchangeQuota;
+  return quotaToCash(quotaAmount);
 }
 
 export function getOriginalQuotaPrice(product) {
@@ -47,6 +46,16 @@ export function getProductCashPriceText(ctx, product, rechargeConfig = getEffect
   const amount = getQuotaCashAmount(ctx, product?.price_quota, rechargeConfig);
   if (amount === null) return "";
   return ctx.formatCashAmount(amount);
+}
+
+export function getProductResidualPriceText(
+  ctx,
+  product,
+  rechargeConfig = getEffectiveRechargeConfig(ctx)
+) {
+  const amount = getDirectResidualAmount(product, rechargeConfig);
+  if (amount === null || amount === undefined) return "";
+  return `${amount} ${rechargeConfig?.residual_unit_label || "残卷"}`;
 }
 
 export function getDirectPurchaseAmountYuan(
@@ -153,9 +162,9 @@ export function ensureGuestTransferPaymentChannel(
 }
 
 export function getDirectResidualAmount(product, rechargeConfig = null) {
-  const quotaPerUnit = Math.max(Number(rechargeConfig?.residual_quota_per_unit || 0), 0);
-  if (!product || quotaPerUnit <= 0) return null;
-  return Math.ceil(Number(product?.price_quota || 0) / quotaPerUnit);
+  const cashAmount = quotaToCash(product?.price_quota);
+  if (!product || cashAmount === null) return null;
+  return cashToResidual(cashAmount, rechargeConfig);
 }
 
 export function formatRechargeChannelLabel(channel) {

@@ -38,6 +38,7 @@ export function createProductModalRuntimeContext(ctx) {
     isAttackFull: ctx.isAttackFull,
     isHpFull: ctx.isHpFull,
     getProductCashPriceText: ctx.getProductCashPriceText,
+    getProductResidualPriceText: ctx.getProductResidualPriceText,
     getOriginalQuotaPrice: ctx.getOriginalQuotaPrice,
     isDiscountedProduct: ctx.isDiscountedProduct,
     getQuotaPurchasePolicy: ctx.getQuotaPurchasePolicy,
@@ -57,6 +58,7 @@ export function createProductModalRuntimeContext(ctx) {
     closeProductModal: ctx.closeProductModal,
     toggleGuestTransferPanel: ctx.toggleGuestTransferPanel,
     submitGuestTransferOrder: ctx.submitGuestTransferOrder,
+    submitConsignmentEscrowOrder: ctx.submitConsignmentEscrowOrder,
     startDirectPurchase: ctx.startDirectPurchase,
     confirmPurchase: ctx.confirmPurchase,
   };

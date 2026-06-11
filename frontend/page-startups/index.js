@@ -1,10 +1,10 @@
-import { getAuthPageStartupTasks } from "./auth-page.js?v=release-20260509-160631";
-import { getAuctionPageStartupTasks } from "./auction-page.js?v=release-20260509-160631";
-import { getHelperPageStartupTasks } from "./helper-page.js?v=release-20260509-160631";
-import { getMePageStartupTasks } from "./me-page.js?v=release-20260509-160631";
-import { getPageShellStartupTasks } from "./page-shell.js?v=release-20260509-160631";
-import { getSessionPageStartupTasks } from "./session-page.js?v=release-20260509-160631";
-import { getShopPageStartupTasks } from "./shop-page.js?v=release-20260509-160631";
+import { getAuthPageStartupTasks } from "./auth-page.js?v=release-20260611-151806";
+import { getAuctionPageStartupTasks } from "./auction-page.js?v=release-20260611-151806";
+import { getHelperPageStartupTasks } from "./helper-page.js?v=release-20260611-151806";
+import { getMePageStartupTasks } from "./me-page.js?v=release-20260611-151806";
+import { getPageShellStartupTasks } from "./page-shell.js?v=release-20260611-151806";
+import { getSessionPageStartupTasks } from "./session-page.js?v=release-20260611-151806";
+import { getShopPageStartupTasks } from "./shop-page.js?v=release-20260611-151806";
 
 const STARTUP_PIPELINES = {
   legacy: ["page-shell", "auth", "me", "shop", "helper", "auction"],

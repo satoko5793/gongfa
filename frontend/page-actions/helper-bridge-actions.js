@@ -1,4 +1,7 @@
 export async function saveHelperInventoryFromBridgeAction(ctx, payload) {
+  if (ctx.shouldDeferHelperInventoryBatchSave?.()) {
+    return ctx.queueHelperInventoryBatchPayload(payload);
+  }
   const created = await ctx.apiFetch("/helper/inventories", {
     method: "POST",
     body: JSON.stringify({
@@ -194,11 +197,18 @@ export function handleHelperBridgeMessageAction(ctx, event) {
     return true;
   }
   if (data.type === "gongfa_helper_legacy_inventory") {
+    if (!ctx.isCurrentHelperInventoryBridgePayload?.(data?.payload || {})) {
+      return true;
+    }
     ctx.clearHelperBridgeBackgroundFrame();
+    ctx.clearHelperInventorySyncItemTimeout?.();
     saveHelperInventoryFromBridgeAction(ctx, data.payload || {})
       .then((created) => {
         const nextState = { ...ctx.getHelperInventorySyncState() };
         nextState.completed = Number(nextState.completed || 0) + 1;
+        nextState.currentBindingId = null;
+        nextState.currentRequestId = "";
+        nextState.currentRoleName = "";
         ctx.setHelperInventorySyncState(nextState);
         const bindingRoleName =
           ctx.normalizeHelperDisplayRoleName(
@@ -216,6 +226,9 @@ export function handleHelperBridgeMessageAction(ctx, event) {
       })
       .catch((error) => {
         const nextState = { ...ctx.getHelperInventorySyncState() };
+        nextState.currentBindingId = null;
+        nextState.currentRequestId = "";
+        nextState.currentRoleName = "";
         nextState.failures = [
           ...(Array.isArray(nextState.failures) ? nextState.failures : []),
           {
@@ -233,8 +246,15 @@ export function handleHelperBridgeMessageAction(ctx, event) {
     return true;
   }
   if (data.type === "gongfa_helper_legacy_inventory_error") {
+    if (!ctx.isCurrentHelperInventoryBridgePayload?.(data?.payload || {})) {
+      return true;
+    }
     ctx.clearHelperBridgeBackgroundFrame();
+    ctx.clearHelperInventorySyncItemTimeout?.();
     const nextState = { ...ctx.getHelperInventorySyncState() };
+    nextState.currentBindingId = null;
+    nextState.currentRequestId = "";
+    nextState.currentRoleName = "";
     nextState.failures = [
       ...(Array.isArray(nextState.failures) ? nextState.failures : []),
       {

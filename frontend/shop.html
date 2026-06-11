@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>25000 繁星功法商城 - 商城</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260410-fix1" />
-    <link rel="stylesheet" href="styles.css?v=20260409-home-trim1" />
-    <link rel="stylesheet" href="styles/base.css?v=release-20260421-194048" />
+    <link rel="stylesheet" href="styles.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/base.css?v=release-20260611-151806" />
+    <link rel="stylesheet" href="styles/honor.css?v=release-20260611-151806" />
   </head>
   <body data-page-entry="shop">
     <div class="bg-gradient"></div>
@@ -30,13 +31,12 @@
 
     <main class="container">
       <section class="site-banner card" role="status" aria-live="polite">
-        <div class="site-banner-title">数据异常说明</div>
+        <div class="site-banner-title">停服与赛季公告</div>
         <div class="site-banner-copy">
-          4月9日正式服发布过程中出现数据异常，部分账号信息、额度、阵容槽及相关记录可能出现回退或显示不一致。
+          服务器将于 2026 年 6 月 16 日到期，到期后预计不再续开。到期前如需下单、查订单或处理额度问题，请尽早操作并联系我们确认。
         </div>
         <div class="site-banner-copy">
-          如果你发现自己的信息和实际情况对不上，请加群或直接联系我们，我们会逐一核实处理；确认异常后会协助恢复额度和阵容槽，并统一补偿
-          3000 额度。
+          当前已进入第六赛季，商城已按 S6 作为本赛季展示；S5 及更早赛季功法均按旧卡处理。
         </div>
       </section>
 
@@ -51,6 +51,7 @@
             <span class="hero-badge">新手完成三步奖励 1000</span>
             <span class="hero-badge">会员与残卷转赠额外 +5%</span>
           </div>
+          <div id="shop-honor-panel-root"></div>
         </div>
         <div class="hero-side">
           <div class="status-panel">
@@ -111,9 +112,10 @@
         <div id="product-grid" class="product-grid"></div>
         <div id="product-pagination" class="pagination-bar"></div>
       </section>
-    </main>
 
-    <div id="product-detail-modal" class="modal-backdrop hidden" aria-hidden="true">
+</main>
+
+<div id="product-detail-modal" class="modal-backdrop hidden" aria-hidden="true">
       <div
         class="modal-card product-detail-modal"
         role="dialog"
@@ -166,7 +168,8 @@
       tabindex="-1"
       aria-hidden="true"
     ></iframe>
-    <script type="module" src="./shop-entry.js?v=release-20260509-160631"></script>
+
+<script type="module" src="./shop-entry.js?v=release-20260611-151806"></script>
 
 <script>
       (() => {
@@ -221,5 +224,6 @@
         schedule();
       })();
     </script>
+
   </body>
 </html>

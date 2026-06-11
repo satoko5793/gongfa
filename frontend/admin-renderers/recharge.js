@@ -1,3 +1,9 @@
+import {
+  RESIDUAL_ANCHOR_AMOUNT,
+  getResidualAnchorCashYuan,
+  getResidualPurchaseAnchorCashYuan,
+} from "../payment-conversion.js?v=release-20260611-151806";
+
 function formatRechargeReviewStatusLabel(status, RECHARGE_ORDER_STATUS) {
   switch (status) {
     case RECHARGE_ORDER_STATUS.PENDING_REVIEW:
@@ -20,6 +26,89 @@ function formatRechargeOrderTitle(order) {
   if (isResidualRechargeOrder(order)) return "残卷转赠";
   if (order?.order_type === "season_member") return "赛季会员";
   return "普通充值";
+}
+
+function renderDrawServiceConfigSection(context, config) {
+  const { refs, escapeHtml } = context;
+  const { adminDrawServiceConfigRoot } = refs;
+  if (!adminDrawServiceConfigRoot) return;
+  const drawService = config?.draw_service && typeof config.draw_service === "object"
+    ? config.draw_service
+    : {};
+  const tiers = Array.isArray(drawService.tiers) ? drawService.tiers : [];
+
+  adminDrawServiceConfigRoot.innerHTML = `
+    <div class="pricing-global-row">
+      <label class="pricing-global-field">
+        <span>开启代抽</span>
+        <select data-draw-service-field="enabled">
+          <option value="true" ${drawService.enabled === false ? "" : "selected"}>开启</option>
+          <option value="false" ${drawService.enabled === false ? "selected" : ""}>关闭</option>
+        </select>
+        <small>关闭后前台仍可看到说明，但不能提交新单。</small>
+      </label>
+      <label class="pricing-global-field">
+        <span>最小抽取数量（w）</span>
+        <input data-draw-service-field="min_draw_wan" type="number" min="1" step="1" value="${Number(drawService.min_draw_wan || 1)}" />
+        <small>前台输入不足时按这个数量补齐。</small>
+      </label>
+      <label class="pricing-global-field">
+        <span>快捷数量（英文逗号分隔）</span>
+        <input data-draw-service-field="preset_draw_wan" type="text" value="${escapeHtml(Array.isArray(drawService.preset_draw_wan) ? drawService.preset_draw_wan.join(",") : "1,3,5,10")}" />
+        <small>例如 1,3,5,10。</small>
+      </label>
+      <label class="pricing-global-field">
+        <span>默认档位 key</span>
+        <input data-draw-service-field="default_tier_key" type="text" value="${escapeHtml(drawService.default_tier_key || "tier_8")}" />
+        <small>用户打开页面时默认选中的档位。</small>
+      </label>
+    </div>
+    <label class="pricing-global-field">
+      <span>代抽公共提示</span>
+      <textarea data-draw-service-field="rule_notice" rows="2">${escapeHtml(drawService.rule_notice || "")}</textarea>
+      <small>会展示在前台提交区域。</small>
+    </label>
+    <div class="pricing-tier-card-grid">
+      ${tiers
+        .map(
+          (tier) => {
+            const isResidualTransferTier =
+              String(tier.payment_method || "").trim() === "residual_transfer";
+            return `
+            <article class="pricing-tier-card" data-draw-service-tier="${escapeHtml(tier.key || "")}">
+              <div class="pricing-tier-card-head">
+                <div class="pricing-control-tier">
+                  <strong>${escapeHtml(tier.label || tier.key || "代抽档位")}</strong>
+                  <small>${escapeHtml(tier.key || "")}</small>
+                </div>
+                <div class="pricing-tier-summary">
+                  <span>${Number(tier.price_yuan_per_wan || 0)} 元 / 1w</span>
+                </div>
+              </div>
+              <div class="pricing-tier-grid">
+                <label class="pricing-tier-field">
+                  <span>档位名称</span>
+                  <input data-draw-service-tier-field="label" type="text" value="${escapeHtml(tier.label || "")}" />
+                  <small>前台按钮标题。</small>
+                </label>
+                <label class="pricing-tier-field">
+                  <span>价格（元 / 1w）</span>
+                  <input data-draw-service-tier-field="price_yuan_per_wan" type="number" min="0.01" step="0.01" value="${Number(tier.price_yuan_per_wan || 0)}" />
+                  <small>${isResidualTransferTier ? "用于显示规则档位；前台会要求用户转残卷并提交核对信息。" : "系统会折算为额度扣款。"}</small>
+                </label>
+                <label class="pricing-tier-field full">
+                  <span>返还描述</span>
+                  <textarea data-draw-service-tier-field="description" rows="3">${escapeHtml(tier.description || "")}</textarea>
+                  <small>用户选择档位时看到的规则。</small>
+                </label>
+              </div>
+            </article>
+          `;
+          }
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 export function formatRechargeChannelLabel(channel) {
@@ -45,8 +134,8 @@ export function renderRechargeOrdersSection(
   adminRechargeOrdersRoot.innerHTML = orders
     .map((order) => {
       const amountLine = isResidualRechargeOrder(order)
-        ? `转赠数量：${Number(order.transfer_amount || order.amount_yuan || 0)} ${escapeHtml(order.transfer_unit || "残卷")} / 预计额度：${Number(order.quota_amount || 0)}`
-        : `充值金额：${Number(order.amount_yuan || 0)} 元 / 预计额度：${Number(order.quota_amount || 0)} / 支付方式：${formatRechargeChannelLabel(order.channel)}`;
+        ? `转赠数量：${Number(order.transfer_amount || order.amount_yuan || 0)} ${escapeHtml(order.transfer_unit || "残卷")} / 折合 ¥${Number(order.transfer_cash_amount_yuan || 0).toFixed(4)} / 预计额度：${Number(order.quota_amount || 0)}`
+        : `充值金额：${Number(order.amount_yuan || 0)} 元 / 固定 8元=10000额度 / 预计额度：${Number(order.quota_amount || 0)} / 支付方式：${formatRechargeChannelLabel(order.channel)}`;
       const referenceLabel = isResidualRechargeOrder(order) ? "转赠时间" : "付款时间";
       const statusHint =
         order.status === RECHARGE_ORDER_STATUS.PENDING_REVIEW
@@ -116,12 +205,14 @@ export function renderRechargeConfigSection(context, config) {
     adminRechargeExchangeYuanInput,
     adminRechargeExchangeQuotaInput,
     adminRechargeMinYuanInput,
+    adminCurrentSeasonGoldMinDisplayCashYuanInput,
     adminResidualTransferEnabledInput,
     adminResidualAdminRoleIdInput,
     adminResidualAdminRoleNameInput,
     adminResidualAdminGameNameInput,
     adminResidualUnitLabelInput,
     adminResidualQuotaPerUnitInput,
+    adminResidualPurchaseAnchorCashYuanInput,
     adminSeasonMemberEnabledInput,
     adminSeasonMemberLabelInput,
     adminSeasonMemberExpiresAtInput,
@@ -152,9 +243,25 @@ export function renderRechargeConfigSection(context, config) {
   setDraftPricingControls(getNormalizedPricingControls(config.pricing_controls));
 
   if (adminRechargeEnabled) adminRechargeEnabled.value = String(Boolean(config.enabled));
-  if (adminRechargeExchangeYuanInput) adminRechargeExchangeYuanInput.value = Number(config.exchange_yuan || 1);
-  if (adminRechargeExchangeQuotaInput) adminRechargeExchangeQuotaInput.value = Number(config.exchange_quota || 0);
-  if (adminRechargeMinYuanInput) adminRechargeMinYuanInput.value = Number(config.min_amount_yuan || 1);
+  if (adminRechargeExchangeYuanInput) {
+    adminRechargeExchangeYuanInput.value = Number(config.exchange_yuan || 8);
+    adminRechargeExchangeYuanInput.placeholder = String(Number(config.exchange_yuan || 8));
+  }
+  if (adminRechargeExchangeYuanInput) adminRechargeExchangeYuanInput.readOnly = true;
+  if (adminRechargeExchangeQuotaInput) {
+    adminRechargeExchangeQuotaInput.value = Number(config.exchange_quota || 10000);
+    adminRechargeExchangeQuotaInput.placeholder = String(Number(config.exchange_quota || 10000));
+  }
+  if (adminRechargeExchangeQuotaInput) adminRechargeExchangeQuotaInput.readOnly = true;
+  if (adminRechargeMinYuanInput) {
+    adminRechargeMinYuanInput.value = Number(config.min_amount_yuan || 1);
+    adminRechargeMinYuanInput.placeholder = String(Number(config.min_amount_yuan || 1));
+  }
+  if (adminCurrentSeasonGoldMinDisplayCashYuanInput) {
+    const minDisplayCash = Number(config.current_season_gold_min_display_cash_yuan || 0);
+    adminCurrentSeasonGoldMinDisplayCashYuanInput.value = minDisplayCash;
+    adminCurrentSeasonGoldMinDisplayCashYuanInput.placeholder = String(minDisplayCash);
+  }
   if (adminResidualTransferEnabledInput) {
     adminResidualTransferEnabledInput.value = String(Boolean(config.residual_transfer_enabled));
   }
@@ -169,15 +276,30 @@ export function renderRechargeConfigSection(context, config) {
   }
   if (adminResidualUnitLabelInput) {
     adminResidualUnitLabelInput.value = config.residual_unit_label || "";
+    adminResidualUnitLabelInput.placeholder = config.residual_unit_label || "残卷";
   }
   if (adminResidualQuotaPerUnitInput) {
-    adminResidualQuotaPerUnitInput.value = Number(config.residual_quota_per_unit || 1);
+    const residualAnchorCashYuan = getResidualAnchorCashYuan(config);
+    adminResidualQuotaPerUnitInput.value = residualAnchorCashYuan;
+    adminResidualQuotaPerUnitInput.placeholder = String(residualAnchorCashYuan);
+  }
+  if (adminResidualPurchaseAnchorCashYuanInput) {
+    const purchaseAnchorCashYuan = getResidualPurchaseAnchorCashYuan(config);
+    adminResidualPurchaseAnchorCashYuanInput.value = purchaseAnchorCashYuan;
+    adminResidualPurchaseAnchorCashYuanInput.placeholder = String(purchaseAnchorCashYuan);
   }
   if (adminSeasonMemberEnabledInput) adminSeasonMemberEnabledInput.value = String(Boolean(config.season_member_enabled));
   if (adminSeasonMemberLabelInput) adminSeasonMemberLabelInput.value = config.season_member_season_label || "";
   if (adminSeasonMemberExpiresAtInput) adminSeasonMemberExpiresAtInput.value = config.season_member_expires_at || "";
-  if (adminSeasonMemberPriceInput) adminSeasonMemberPriceInput.value = Number(config.season_member_price_yuan || 0);
-  if (adminSeasonMemberQuotaInput) adminSeasonMemberQuotaInput.value = Number(config.season_member_quota || 0);
+  if (adminSeasonMemberPriceInput) {
+    adminSeasonMemberPriceInput.value = Number(config.season_member_price_yuan || 0);
+    adminSeasonMemberPriceInput.placeholder = String(Number(config.season_member_price_yuan || 0));
+  }
+  if (adminSeasonMemberQuotaInput) {
+    adminSeasonMemberQuotaInput.value = Number(config.season_member_quota || 0);
+    adminSeasonMemberQuotaInput.placeholder = String(Number(config.season_member_quota || 0));
+  }
+  if (adminSeasonMemberQuotaInput) adminSeasonMemberQuotaInput.readOnly = true;
   if (adminSeasonMemberBonusRateInput) adminSeasonMemberBonusRateInput.value = Number(config.season_member_bonus_rate || 0);
   if (adminLineupBaseSlotsInput) adminLineupBaseSlotsInput.value = Number(config.lineup_base_slots || 3);
   if (adminLineupPermanentSlotQuotaInput) {
@@ -220,6 +342,7 @@ export function renderRechargeConfigSection(context, config) {
     adminWechatQrPreview.src = config.wechat_qr_image_url || "/payment/wechat-qr.png";
   }
 
+  renderDrawServiceConfigSection(context, config);
   renderPricingControls(context.getDraftPricingControls());
   applyAdminAccessMode();
 }

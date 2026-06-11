@@ -19,7 +19,11 @@ const {
 } = require("../domain/pricing/core/reprice-products");
 const { BUNDLE_SKU_SEEDS, RETIRED_BUNDLE_CODES } = require("../config/catalog-config");
 const { hashPassword, verifyPassword } = require("./password-auth");
-const { buildDefaultRechargeConfig, normalizeRechargeConfig } = require("../config/recharge-config");
+const {
+  buildDefaultRechargeConfig,
+  normalizeRechargeConfig,
+  quoteDrawServiceOrder,
+} = require("../config/recharge-config");
 const {
   buildCardSeasonMeta,
   getConfiguredCurrentSeasonScheduleId,
@@ -55,15 +59,11 @@ const BEGINNER_GUIDE_REWARD_QUOTA = 1000;
 const BEGINNER_GUIDE_REWARD_REMARK = "beginner_guide_reward";
 const DRAW_SERVICE_MIN_QUOTA = 200;
 const DRAW_SERVICE_STEP_QUOTA = 200;
-const DRAW_SERVICE_MILESTONE_QUOTA = 50000;
-const DRAW_SERVICE_FIRST_REBATE_QUOTA = 10000;
-const DRAW_SERVICE_REPEAT_REBATE_QUOTA = 5000;
 const AUCTION_BLOCKING_STATUSES = new Set(["scheduled", "live", "ended"]);
-const DRAW_SERVICE_ATLAS_BONUS_LABEL = "一套带金高攻高血图鉴";
 const DRAW_SERVICE_VIDEO_NOTICE =
   "如需代抽视频确认真实性，请在“我的信息”里的“订单帮助”中，通过微信群联系管理员索取。";
 const DRAW_SERVICE_RULE_SUMMARY =
-  "返还所有双满紫、双满橙、双满红、双满金卡、>=2.5 单词条、双词条、珍。";
+  "用户选择代抽档位后按比例扣额度；旧规则“抽 5w 返 1w”已取消。";
 const LEGACY_DISPLAY_NAME_BY_ID = {
   1: "随便掌",
   2: "折凳要诀",
@@ -130,11 +130,8 @@ function getEffectiveQuotaPrice(basePrice, discountRate) {
 }
 
 function getQuotaCashAmountFromStore(data, quotaAmount) {
-  const config = normalizeRechargeConfig(data?.rechargeConfig || buildDefaultRechargeConfig());
-  const exchangeQuota = Math.max(Number(config.exchange_quota || 0), 1);
-  const exchangeYuan = Math.max(Number(config.exchange_yuan || 1), 0.01);
-  const yuan = (Math.max(Number(quotaAmount) || 0, 0) * exchangeYuan) / exchangeQuota;
-  return Number(yuan.toFixed(2));
+  const { quotaToCash } = require("../domain/payment-conversion");
+  return quotaToCash(Math.max(Number(quotaAmount) || 0, 0));
 }
 
 function defaultData() {
@@ -144,6 +141,10 @@ function defaultData() {
     helperInventories: [],
     helperSnapshots: [],
     helperActionLogs: [],
+    consignmentListings: [],
+    escrowTrades: [],
+    escrowEvidence: [],
+    escrowLedger: [],
     productImports: [],
     products: [],
     bundleSkus: [],
@@ -738,9 +739,43 @@ function getDrawServiceSnapshot(drawService) {
   return {
     service_kind: "draw_service",
     amount_quota: Number(drawService?.amount_quota || 0),
+    draw_amount_wan:
+      drawService?.draw_amount_wan === null || drawService?.draw_amount_wan === undefined
+        ? null
+        : Number(drawService.draw_amount_wan || 0),
+    tier_key: String(drawService?.tier_key || "").trim() || null,
+    tier_label: String(drawService?.tier_label || "").trim() || null,
+    tier_description: String(drawService?.tier_description || "").trim() || null,
+    requires_season_member: Boolean(drawService?.requires_season_member),
+    max_draw_wan_per_order:
+      drawService?.max_draw_wan_per_order === null || drawService?.max_draw_wan_per_order === undefined
+        ? null
+        : Number(drawService.max_draw_wan_per_order || 0),
+    once_per_season: Boolean(drawService?.once_per_season),
+    price_yuan_per_wan:
+      drawService?.price_yuan_per_wan === null || drawService?.price_yuan_per_wan === undefined
+        ? null
+        : Number(drawService.price_yuan_per_wan || 0),
+    cash_amount_yuan:
+      drawService?.cash_amount_yuan === null || drawService?.cash_amount_yuan === undefined
+        ? null
+        : Number(drawService.cash_amount_yuan || 0),
+    payment_method: String(drawService?.payment_method || "quota").trim() || "quota",
+    transfer_amount:
+      drawService?.transfer_amount === null || drawService?.transfer_amount === undefined
+        ? null
+        : Number(drawService.transfer_amount || 0),
+    transfer_amount_per_wan:
+      drawService?.transfer_amount_per_wan === null || drawService?.transfer_amount_per_wan === undefined
+        ? null
+        : Number(drawService.transfer_amount_per_wan || 0),
+    transfer_unit: String(drawService?.transfer_unit || "").trim() || null,
+    transfer_target_role_id: String(drawService?.transfer_target_role_id || "").trim() || null,
+    transfer_target_role_name: String(drawService?.transfer_target_role_name || "").trim() || null,
+    transfer_reference: String(drawService?.transfer_reference || "").trim() || null,
     season_label: String(drawService?.season_label || "").trim() || null,
-    rule_summary: DRAW_SERVICE_RULE_SUMMARY,
-    video_notice: DRAW_SERVICE_VIDEO_NOTICE,
+    rule_summary: String(drawService?.rule_summary || DRAW_SERVICE_RULE_SUMMARY),
+    video_notice: String(drawService?.video_notice || DRAW_SERVICE_VIDEO_NOTICE),
   };
 }
 
@@ -762,39 +797,18 @@ function calculateDrawServiceReward(data, order) {
   );
   const currentAmount = Number(drawService.amount_quota || order.total_quota || 0);
   const nextTotal = previousTotal + currentAmount;
-  const previousMilestones = Math.floor(previousTotal / DRAW_SERVICE_MILESTONE_QUOTA);
-  const nextMilestones = Math.floor(nextTotal / DRAW_SERVICE_MILESTONE_QUOTA);
-  let rebateQuota = 0;
-  let grantsAtlasBonus = false;
-
-  for (let milestone = previousMilestones + 1; milestone <= nextMilestones; milestone += 1) {
-    if (milestone === 1) {
-      rebateQuota += DRAW_SERVICE_FIRST_REBATE_QUOTA;
-      grantsAtlasBonus = true;
-    } else {
-      rebateQuota += DRAW_SERVICE_REPEAT_REBATE_QUOTA;
-    }
-  }
-
-  const rewardLines = [];
-  if (rebateQuota > 0) {
-    rewardLines.push(`返还 ${rebateQuota} 额度`);
-  }
-  if (grantsAtlasBonus) {
-    rewardLines.push(DRAW_SERVICE_ATLAS_BONUS_LABEL);
-  }
 
   return {
     seasonLabel,
     previousTotal,
     nextTotal,
-    previousMilestones,
-    nextMilestones,
-    crossedMilestones: Math.max(nextMilestones - previousMilestones, 0),
-    rebateQuota,
-    grantsAtlasBonus,
-    atlasBonusLabel: grantsAtlasBonus ? DRAW_SERVICE_ATLAS_BONUS_LABEL : null,
-    rewardSummary: rewardLines.length ? rewardLines.join(" / ") : "本次没有触发赛季返利",
+    previousMilestones: 0,
+    nextMilestones: 0,
+    crossedMilestones: 0,
+    rebateQuota: 0,
+    grantsAtlasBonus: false,
+    atlasBonusLabel: null,
+    rewardSummary: "旧规则“抽 5w 返 1w”已取消，本次没有额外额度返利",
   };
 }
 
@@ -1652,8 +1666,8 @@ function createRechargeOrder(
   });
 }
 
-function createDrawServiceOrder(userId, { amountQuota }) {
-  return ordersStore.createDrawServiceOrder(userId, { amountQuota });
+function createDrawServiceOrder(userId, payload = {}) {
+  return ordersStore.createDrawServiceOrder(userId, payload);
 }
 
 function reviewRechargeOrder(rechargeOrderId, { status, adminRemark = null }, actorUserId) {
@@ -1810,6 +1824,7 @@ configureStoreRuntime({
   verifyPassword,
   getSignupSeedQuota,
   normalizeRechargeConfig,
+  quoteDrawServiceOrder,
   repriceDataProducts,
   buildRepriceSummary,
   buildRepriceFailureSummary,

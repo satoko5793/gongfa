@@ -19,6 +19,9 @@ export function openProductModalRuntime(ctx, itemId, itemKind) {
   const attackIsFull = ctx.isAttackFull(product);
   const hpIsFull = ctx.isHpFull(product);
   const cashPriceText = ctx.getProductCashPriceText(product);
+  const residualPriceText = ctx.getProductResidualPriceText
+    ? ctx.getProductResidualPriceText(product, rechargeConfig)
+    : "";
   const originalPriceQuota = ctx.getOriginalQuotaPrice(product);
   const discounted = ctx.isDiscountedProduct(product);
   const quotaPolicy = ctx.getQuotaPurchasePolicy ? ctx.getQuotaPurchasePolicy(product) : null;
@@ -48,6 +51,7 @@ export function openProductModalRuntime(ctx, itemId, itemKind) {
       attackIsFull,
       hpIsFull,
       cashPriceText,
+      residualPriceText,
       originalPriceQuota,
       discounted,
       termBadges,
@@ -66,8 +70,8 @@ export function openProductModalRuntime(ctx, itemId, itemKind) {
 
 function bindProductModalInteractions(ctx, product) {
   ctx.productDetailBody
-    .querySelector("#modal-close-btn")
-    ?.addEventListener("click", () => ctx.closeProductModal());
+    .querySelectorAll("#modal-close-btn")
+    ?.forEach((button) => button.addEventListener("click", () => ctx.closeProductModal()));
   ctx.productDetailBody
     .querySelector("#direct-buy-btn")
     ?.addEventListener("click", () =>
@@ -79,6 +83,9 @@ function bindProductModalInteractions(ctx, product) {
   ctx.productDetailBody
     .querySelector("#guest-transfer-form")
     ?.addEventListener("submit", (event) => ctx.submitGuestTransferOrder(event));
+  ctx.productDetailBody
+    .querySelector("#consignment-escrow-form")
+    ?.addEventListener("submit", (event) => ctx.submitConsignmentEscrowOrder(event));
   ctx.productDetailBody.querySelectorAll("[data-dynamic-bundle-field]").forEach((select) => {
     select.addEventListener("change", () => {
       if (!ctx.applyDynamicBundleSelection) return;
@@ -138,6 +145,15 @@ export function startDirectPurchaseRuntime(ctx, itemId, itemKind = "card") {
 }
 
 export function handleProductGridClickRuntime(ctx, event) {
+  const consignmentBuyButton = event.target.closest(".consignment-buy-btn");
+  if (consignmentBuyButton) {
+    ctx.openProductModal(
+      consignmentBuyButton.getAttribute("data-item-id"),
+      consignmentBuyButton.getAttribute("data-item-kind")
+    );
+    return true;
+  }
+
   const directBuyButton = event.target.closest(".direct-buy-btn");
   if (directBuyButton) {
     ctx.startDirectPurchase(

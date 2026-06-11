@@ -5,6 +5,7 @@ const {
   validateImportInput,
   validateBatchImportInput,
   validateHelperInventoryBatchImportInput,
+  validateConsignmentReviewInput,
   validateProductStatus,
   validateProductUpdate,
   validateBundleUpdate,
@@ -68,6 +69,15 @@ const {
   settleAdminAuction,
   cancelAdminAuction,
 } = require("../modules/admin/auctions/service");
+const {
+  listAdminConsignments,
+  reviewAdminConsignment,
+  listAdminEscrowTrades,
+  listAdminPaymentReviews,
+  reviewAdminEscrowPayment,
+  resolveAdminEscrowTrade,
+  markAdminEscrowSettlement,
+} = require("../modules/admin/consignments/service");
 
 const adminRouter = express.Router();
 adminRouter.use(authRequired, adminReadOnly);
@@ -427,6 +437,77 @@ adminRouter.patch("/orders/:id/remark", adminWriteOnly, async (req, res, next) =
 adminRouter.get("/auctions", async (req, res, next) => {
   try {
     return res.json(await listAdminAuctions(req.query || {}));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/consignments", async (req, res, next) => {
+  try {
+    return res.json(await listAdminConsignments(req.query || {}));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.patch("/consignments/:id/review", adminWriteOnly, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = validateConsignmentReviewInput(body);
+    if (errors.length) {
+      return res.status(400).json({ error: "invalid_input", details: errors });
+    }
+    const updated = await reviewAdminConsignment(req.user, req.params.id, body);
+    if (!updated) {
+      return res.status(404).json({ error: "consignment_not_found" });
+    }
+    return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/escrow-trades", async (req, res, next) => {
+  try {
+    return res.json(await listAdminEscrowTrades(req.query || {}));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/payment-reviews", async (req, res, next) => {
+  try {
+    return res.json(await listAdminPaymentReviews(req.query || {}));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.patch("/escrow-trades/:id/payment-review", adminWriteOnly, async (req, res, next) => {
+  try {
+    const updated = await reviewAdminEscrowPayment(req.user, req.params.id, req.body || {});
+    if (!updated) return res.status(404).json({ error: "escrow_trade_not_found" });
+    return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.patch("/escrow-trades/:id/resolve", adminWriteOnly, async (req, res, next) => {
+  try {
+    const updated = await resolveAdminEscrowTrade(req.user, req.params.id, req.body || {});
+    if (!updated) return res.status(404).json({ error: "escrow_trade_not_found" });
+    return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.patch("/escrow-trades/:id/settlement", adminWriteOnly, async (req, res, next) => {
+  try {
+    const updated = await markAdminEscrowSettlement(req.user, req.params.id, req.body || {});
+    if (!updated) return res.status(404).json({ error: "escrow_trade_not_found" });
+    return res.json(updated);
   } catch (error) {
     return next(error);
   }

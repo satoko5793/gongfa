@@ -1,3 +1,10 @@
+import {
+  formatEscrowPayment,
+  formatEscrowSettlement,
+  formatEscrowStatus,
+  getEscrowSellerNextStep,
+} from "../escrow-formatters.js?v=release-20260611-151806";
+
 function buildHelperRestoreProgressMarkup(ctx, progress) {
   if (!progress) return "";
   const percent = Math.max(0, Math.min(100, Number(progress?.percent || 0)));
@@ -217,7 +224,7 @@ export function renderHelperBindingPanel(ctx) {
   ctx.helperBindCurrent.innerHTML = parts.join("");
 }
 
-function buildHelperInventoryItemMarkup(ctx, item, { compact = false } = {}) {
+function buildHelperInventoryItemMarkup(ctx, item, { compact = false, showConsignButton = false } = {}) {
   const name = String(item?.display_name || "功法").trim() || "功法";
   const imageUrl = ctx.getHelperInventoryImageUrl(item);
   const subtitle = [`攻 ${Number(item?.attack_value || 0) || "-"}`, `血 ${Number(item?.hp_value || 0) || "-"}`]
@@ -244,6 +251,15 @@ function buildHelperInventoryItemMarkup(ctx, item, { compact = false } = {}) {
         )
         .join("")}</div>`
     : "";
+  const sourceText = !sourceMarkup && item?.source_role_name
+    ? `<div class="helper-inventory-sources"><span class="helper-chip helper-chip-soft">${ctx.escapeHtml(item.source_role_name)} / ${ctx.escapeHtml(item.source_server || "-")}</span></div>`
+    : "";
+  const consignMarkup =
+    showConsignButton && item?.inventory_id && item?.item_key
+      ? `<div class="actions helper-inventory-item-actions">
+          <button type="button" class="ghost helper-consign-item-btn" data-helper-inventory-id="${Number(item.inventory_id || 0)}" data-helper-binding-id="${item.binding_id === null || item.binding_id === undefined ? "" : Number(item.binding_id || 0)}" data-helper-item-key="${ctx.escapeHtml(item.item_key)}">申请寄售</button>
+        </div>`
+      : "";
   return `
     <article class="helper-inventory-item ${compact ? "compact" : ""}">
       ${
@@ -256,7 +272,85 @@ function buildHelperInventoryItemMarkup(ctx, item, { compact = false } = {}) {
         <div class="helper-inventory-item-meta">${ctx.escapeHtml(subtitle)}</div>
         ${attrSummary ? `<div class="helper-inventory-item-attrs">${ctx.escapeHtml(attrSummary)}</div>` : ""}
         ${metaChips ? `<div class="helper-inventory-item-chips">${metaChips}</div>` : ""}
-        ${compact ? "" : sourceMarkup}
+        ${compact ? "" : sourceMarkup || sourceText}
+        ${compact ? "" : consignMarkup}
+      </div>
+    </article>
+  `;
+}
+
+function formatConsignmentPriceYuan(listing) {
+  const price = Number(listing?.price_yuan ?? listing?.price_quota ?? 0);
+  if (!Number.isFinite(price) || price <= 0) return "未填价格";
+  return `${Number.isInteger(price) ? String(price) : price.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} 元`;
+}
+
+function formatConsignmentPaymentOptions(listing) {
+  const options = Array.isArray(listing?.payment_options) ? listing.payment_options : [];
+  if (!options.length) return "";
+  return options
+    .map((option) => {
+      const method = String(option?.method || "").trim();
+      if (method === "cash") return `人民币 ${Number(option.price_yuan || 0)} 元`;
+      if (method === "quota") return `额度 ${Number(option.price_quota || 0)}`;
+      if (method === "residual") return `残卷 ${Number(option.transfer_amount || 0)} ${option.transfer_unit || "残卷"}`;
+      return "";
+    })
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function renderConsignmentEvidenceLinks(ctx, trade) {
+  const evidence = Array.isArray(trade?.evidence) ? trade.evidence : [];
+  if (!evidence.length) return "";
+  return `<div class="muted">发货证据：${evidence
+    .map((item, index) => `<a href="${ctx.escapeHtml(item.url)}" target="_blank" rel="noreferrer">图片 ${index + 1}</a>`)
+    .join(" / ")}</div>`;
+}
+
+function renderSellerConsignmentListing(ctx, listing, consignmentStatusLabel) {
+  const snapshot = listing?.item_snapshot || {};
+  const trade = listing?.escrow_trade || null;
+  const listingStatus = String(listing?.status || "").trim();
+  const tradeStatus = String(trade?.status || "").trim();
+  const canWithdraw = ["submitted", "approved"].includes(listingStatus);
+  const canSubmitDelivery = trade && tradeStatus === "escrowed";
+  const statusText = trade
+    ? formatEscrowStatus(tradeStatus)
+    : consignmentStatusLabel[listingStatus] || listingStatus || "-";
+  const nextStep = trade
+    ? getEscrowSellerNextStep(trade)
+    : listingStatus === "submitted"
+      ? "历史待上架记录会自动上架；刷新后应进入商城。"
+      : listingStatus === "approved"
+        ? "已在商城展示，等待买家下单。"
+        : listingStatus === "rejected"
+          ? "申请已被拒绝，可重新从背包发起寄售。"
+          : listingStatus === "suspended"
+            ? "寄售已冻结，暂不展示。"
+            : listingStatus === "withdrawn"
+              ? "你已撤回这张卡的寄售。"
+              : "等待状态更新。";
+  return `
+    <article class="stack-item">
+      <div class="stack-item-main">
+        <strong>${ctx.escapeHtml(snapshot.display_name || "功法")}</strong>
+        <div class="muted">${ctx.escapeHtml([snapshot.main_attr_text, snapshot.ext_attr_text].filter(Boolean).join(" · ") || "-")}</div>
+        <div class="chip-row">
+          <span class="helper-chip">${ctx.escapeHtml(statusText)}</span>
+          <span class="helper-chip">价格 ${ctx.escapeHtml(formatConsignmentPriceYuan(listing))}</span>
+          <span class="helper-chip">${ctx.escapeHtml(ctx.formatDate(listing.updated_at || listing.created_at))}</span>
+        </div>
+        ${formatConsignmentPaymentOptions(listing) ? `<div class="muted">${ctx.escapeHtml(formatConsignmentPaymentOptions(listing))}</div>` : ""}
+        ${trade ? `<div class="muted">担保 #${Number(trade.id || 0)} / ${ctx.escapeHtml(formatEscrowPayment(trade))} / 结算：${ctx.escapeHtml(formatEscrowSettlement(trade.settlement_status))}</div>` : ""}
+        ${trade?.buyer ? `<div class="muted">买家：${ctx.escapeHtml(trade.buyer.game_role_name || trade.buyer.nickname || "-")}</div>` : ""}
+        <div class="muted">下一步：${ctx.escapeHtml(nextStep)}</div>
+        ${trade?.delivery_note ? `<div class="muted">发货说明：${ctx.escapeHtml(trade.delivery_note)}</div>` : ""}
+        ${renderConsignmentEvidenceLinks(ctx, trade)}
+      </div>
+      <div class="actions">
+        ${canSubmitDelivery ? `<button type="button" class="ghost escrow-delivery-btn" data-escrow-id="${Number(trade.id || 0)}">提交发货证据</button>` : ""}
+        ${canWithdraw ? `<button type="button" class="ghost helper-withdraw-consignment-btn" data-helper-consignment-id="${Number(listing.id || 0)}">撤回</button>` : ""}
       </div>
     </article>
   `;
@@ -311,9 +405,7 @@ export function renderHelperInventoryPanel(ctx) {
     ctx.helperInventoryBindings.innerHTML = bindings
       .map((binding) => {
         const inventory = ctx.getHelperInventoryBinding(binding?.id);
-        const count = Number(
-          inventory?.summary?.legacy_count || (inventory?.items || []).length || 0
-        );
+        const count = Number(inventory?.item_count || inventory?.summary?.legacy_count || 0);
         const fragmentCount = Number(inventory?.summary?.fragment_count || 0);
         const updatedAt =
           inventory?.updated_at || inventory?.summary?.synced_at || binding?.updated_at;
@@ -340,7 +432,7 @@ export function renderHelperInventoryPanel(ctx) {
               <span class="helper-chip">${ctx.escapeHtml(updatedAt ? `${ctx.formatDate(updatedAt)} 同步` : "未同步")}</span>
             </div>
             <div class="helper-status-meta">${
-              inventory?.items?.length
+              count > 0
                 ? `功法明细已收起，避免同步后一次性加载大量卡片图片。`
                 : "还没有同步过这个角色的功法库存。"
             }</div>
@@ -355,26 +447,47 @@ export function renderHelperInventoryPanel(ctx) {
       .join("");
   }
 
-  if (!mergedItems.length) {
+  const page = ctx.currentHelperInventoryPage || {};
+  const query = ctx.helperInventoryQuery || {};
+  const totals = ctx.currentHelperInventorySummary?.totals || {};
+  const totalKinds = Number(page.total || 0);
+  const totalCardCount = Number(totals.item_count || 0);
+  const currentPage = Number(page.page || query.page || 1);
+  const totalPages = Number(page.total_pages || 1);
+  const keyword = String(query.keyword || "").trim();
+  const bindingId = String(query.bindingId || "").trim();
+  const selectedBinding = bindingId
+    ? bindings.find((binding) => String(Number(binding?.id || 0)) === bindingId)
+    : null;
+  const selectedBindingName = selectedBinding
+    ? ctx.normalizeHelperDisplayRoleName(selectedBinding?.game_role_name, selectedBinding?.game_role_id) || "当前炉子"
+    : "";
+  const hasActiveFilter = Boolean(keyword || bindingId);
+  const consignmentListings = Array.isArray(ctx.currentConsignmentListings) ? ctx.currentConsignmentListings : [];
+  const consignmentStatusLabel = {
+    submitted: "自动上架中",
+    approved: "已通过",
+    rejected: "已拒绝",
+    suspended: "已冻结",
+    withdrawn: "已撤回",
+    reserved: "已有买家下单",
+  };
+
+  if (!totalCardCount && !mergedItems.length) {
     ctx.helperInventoryMerged.innerHTML =
       '<div class="stack-item">还没有任何炉子完成同步。先点“同步当前号功法”或“同步全部炉子”，总仓库就会出现在这里。</div>';
     return;
   }
 
-  const totalCardCount = mergedItems.reduce(
-    (sum, item) => sum + Number(item?.total_count || 0),
-    0
-  );
-  const expanded = ctx.isHelperInventoryExpanded?.() === true;
-  const visibleMergedItems = expanded
-    ? mergedItems
-    : mergedItems.slice(0, HELPER_INVENTORY_PREVIEW_LIMIT);
-  const hiddenMergedCount = Math.max(mergedItems.length - visibleMergedItems.length, 0);
   ctx.helperInventoryMerged.innerHTML = `
     <div class="helper-inventory-merged-head">
       <div>
-        <div class="helper-snapshot-kicker">合并总仓库</div>
-        <div class="muted">共 ${mergedItems.length} 种功法 / ${totalCardCount} 张，后面自动发货会从完整仓库里选对应炉子。</div>
+        <div class="helper-snapshot-kicker">功法仓库</div>
+        <div class="muted">已同步 ${Number(totals.inventory_count || 0)} 个炉子 / ${totalCardCount} 张功法。${
+          hasActiveFilter
+            ? `当前筛选${selectedBindingName ? `“${ctx.escapeHtml(selectedBindingName)}”` : ""}${keyword ? ` / “${ctx.escapeHtml(keyword)}”` : ""}：${totalKinds} 张。`
+            : ""
+        }当前页只加载 ${mergedItems.length} 张，图片继续懒加载。</div>
       </div>
       ${
         canImportProducts
@@ -384,25 +497,48 @@ export function renderHelperInventoryPanel(ctx) {
           : ""
       }
     </div>
-    ${
-      hiddenMergedCount > 0 || expanded
-        ? `<div class="helper-inventory-summary-card">
-            <div>
-              <strong>${expanded ? "正在显示完整仓库" : "功法明细已收起"}</strong>
-              <div class="muted">${
-                expanded
-                  ? "完整列表可能比较长，收起后页面会更轻。"
-                  : `当前没有加载任何功法卡片，${hiddenMergedCount} 种明细已收起，自动发货和导入仍使用完整数据。`
-              }</div>
-            </div>
-            <button type="button" class="ghost helper-toggle-inventory-expanded-btn" data-helper-inventory-expanded="${expanded ? "0" : "1"}">
-              ${expanded ? "收起明细" : "加载功法明细"}
-            </button>
-          </div>`
-        : ""
-    }
+    <div class="helper-inventory-summary-card">
+      <div>
+        <strong>按需加载明细</strong>
+        <div class="muted">搜索、筛炉子、翻页都会走轻量分页接口，不再一次性渲染完整背包。</div>
+      </div>
+      <div class="helper-inventory-filterbar">
+        <input class="helper-inventory-keyword-input" type="search" value="${ctx.escapeHtml(keyword)}" placeholder="搜名称 / 词条 / 炉子" />
+        <select class="helper-inventory-binding-filter">
+          <option value="">全部炉子</option>
+          ${bindings
+            .map(
+              (binding) => `<option value="${Number(binding?.id || 0)}" ${bindingId === String(Number(binding?.id || 0)) ? "selected" : ""}>${ctx.escapeHtml(ctx.normalizeHelperDisplayRoleName(binding?.game_role_name, binding?.game_role_id) || "-")}</option>`
+            )
+            .join("")}
+        </select>
+        <button type="button" class="ghost helper-inventory-search-btn">筛选</button>
+      </div>
+    </div>
+    <div class="helper-inventory-summary-card">
+      <div>
+        <strong>我的寄售卖场</strong>
+        <div class="muted">这里看每张寄售卡是否已上架、是否有人下单、当前是否需要发卡。</div>
+      </div>
+    </div>
+    <div class="stack-list">
+      ${
+        consignmentListings.length
+          ? consignmentListings.map((listing) => renderSellerConsignmentListing(ctx, listing, consignmentStatusLabel)).join("")
+          : '<div class="stack-item">还没有寄售申请。</div>'
+      }
+    </div>
     <div class="helper-inventory-grid">
-      ${visibleMergedItems.map((item) => buildHelperInventoryItemMarkup(ctx, item)).join("")}
+      ${
+        mergedItems.length
+          ? mergedItems.map((item) => buildHelperInventoryItemMarkup(ctx, item, { showConsignButton: true })).join("")
+          : '<div class="stack-item">当前筛选没有匹配的功法。</div>'
+      }
+    </div>
+    <div class="pagination-bar helper-inventory-pagination">
+      <button type="button" class="ghost helper-inventory-page-btn" data-helper-page="${Math.max(currentPage - 1, 1)}" ${currentPage <= 1 ? "disabled" : ""}>上一页</button>
+      <span class="chip">第 ${currentPage} / ${totalPages} 页，共 ${totalKinds} 条</span>
+      <button type="button" class="ghost helper-inventory-page-btn" data-helper-page="${Math.min(currentPage + 1, totalPages)}" ${currentPage >= totalPages ? "disabled" : ""}>下一页</button>
     </div>
   `;
 }

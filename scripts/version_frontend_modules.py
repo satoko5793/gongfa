@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT / "frontend"
 
 RELATIVE_JS_REFERENCE_RE = re.compile(r'(?P<quote>["\'])(?P<path>\.{1,2}/[^"\']+?\.m?js)(?:\?v=[^"\']+)?(?P=quote)')
+RELATIVE_CSS_REFERENCE_RE = re.compile(
+    r'(?P<quote>["\'])(?P<path>(?!https?:|//|/)[^"\']+?\.css)(?:\?v=[^"\']+)?(?P=quote)'
+)
 
 
 def iter_targets() -> list[Path]:
@@ -26,6 +29,11 @@ def rewrite_file(path: Path, version: str) -> bool:
         lambda match: f'{match.group("quote")}{match.group("path")}?v={version}{match.group("quote")}',
         source,
     )
+    if path.suffix == ".html":
+        updated = RELATIVE_CSS_REFERENCE_RE.sub(
+            lambda match: f'{match.group("quote")}{match.group("path")}?v={version}{match.group("quote")}',
+            updated,
+        )
     if updated == source:
         return False
     path.write_text(updated, encoding="utf-8")
@@ -33,7 +41,7 @@ def rewrite_file(path: Path, version: str) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Rewrite frontend relative JS module references to one release version.")
+    parser = argparse.ArgumentParser(description="Rewrite frontend relative JS/CSS references to one release version.")
     parser.add_argument("--version", required=True, help="Version suffix to apply, for example release-20260411-170000")
     args = parser.parse_args()
 

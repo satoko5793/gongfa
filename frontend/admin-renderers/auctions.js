@@ -1,19 +1,4 @@
-function formatAuctionStatusLabel(status) {
-  switch (String(status || "").trim()) {
-    case "live":
-      return "进行中";
-    case "scheduled":
-      return "即将开始";
-    case "ended":
-      return "等待结算";
-    case "settled":
-      return "已成交";
-    case "cancelled":
-      return "已流拍";
-    default:
-      return status || "-";
-  }
-}
+import { formatAuctionStatusLabel } from "../auction-formatters.js?v=release-20260611-151806";
 
 export function renderAuctionsSection(context, auctions = context.getCurrentAuctionList()) {
   const { refs, escapeHtml, formatDate, hasAdminWriteAccess } = context;

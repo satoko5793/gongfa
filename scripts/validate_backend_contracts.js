@@ -126,6 +126,18 @@ async function runAuthenticatedAdminChecks(baseUrl, options = {}) {
   if (!patchResult.data?.pricing_reprice_status) {
     fail("authenticated recharge-config PATCH missing pricing_reprice_status");
   }
+  if (!Number.isFinite(Number(patchResult.data?.residual_anchor_cash_yuan))) {
+    fail("authenticated recharge-config PATCH missing residual_anchor_cash_yuan");
+  }
+  if (!Number.isFinite(Number(patchResult.data?.residual_purchase_amount_per_quota_anchor))) {
+    fail("authenticated recharge-config PATCH missing residual_purchase_amount_per_quota_anchor");
+  }
+  if (!Number.isFinite(Number(patchResult.data?.residual_purchase_anchor_cash_yuan))) {
+    fail("authenticated recharge-config PATCH missing residual_purchase_anchor_cash_yuan");
+  }
+  if (!Number.isFinite(Number(patchResult.data?.current_season_gold_min_display_cash_yuan))) {
+    fail("authenticated recharge-config PATCH missing current_season_gold_min_display_cash_yuan");
+  }
 }
 
 async function runHttpChecks(baseUrl, options = {}) {
@@ -175,6 +187,7 @@ async function main() {
     "backend/src/domain/quota-log-types.js",
     "backend/src/domain/audit-actions.js",
     "backend/src/domain/errors/http.js",
+    "backend/src/domain/payment-conversion.js",
   ].forEach(assertFileExists);
 
   check("checking backend request context and error envelope wiring");
@@ -194,6 +207,15 @@ async function main() {
   assertIncludes("backend/src/routes/me.js", 'modules/me/file-service');
   assertIncludes("backend/src/routes/products.js", 'modules/products/file-service');
   assertIncludes("backend/src/routes/helper.js", 'modules/helper/file-service');
+  assertIncludes("backend/src/config/recharge-config.js", "QUOTA_ANCHOR_YUAN");
+  assertIncludes("backend/src/config/recharge-config.js", "residual_anchor_cash_yuan");
+  assertIncludes("backend/src/config/recharge-config.js", "residual_purchase_amount_per_quota_anchor");
+  assertIncludes("backend/src/config/recharge-config.js", "residual_purchase_anchor_cash_yuan");
+  assertIncludes("backend/src/config/recharge-config.js", "current_season_gold_min_display_cash_yuan");
+  assertIncludes("backend/src/domain/payment-conversion.js", "config.residual_anchor_cash_yuan");
+  assertIncludes("backend/src/domain/payment-conversion.js", "residual_purchase_amount_per_quota_anchor");
+  assertIncludes("frontend/page-runtime/commerce-builders.js", "quotaToCash");
+  assertIncludes("frontend/page-runtime/recharge-builders.js", "cashToQuota");
 
   assertNotIncludes("backend/src/middlewares/auth.js", 'new Set(["admin", "poster_admin"])');
   assertNotIncludes("backend/src/repositories/pg/admin-pricing-repository.js", 'action: "product_pricing_recalculate"');

@@ -60,7 +60,7 @@ export function renderOrdersListSection(context, orders = context.getCurrentOrde
                           data-field="draw-best-gold"
                           type="text"
                           value="${escapeHtml(drawMeta.best_gold_card || "")}"
-                          placeholder="如果触发 5w 首档奖励，填写本次选中的最佳金卡"
+                          placeholder="可选：备注本次较好的金卡"
                         />
                       </div>
                     `
@@ -69,7 +69,8 @@ export function renderOrdersListSection(context, orders = context.getCurrentOrde
                       <div class="muted">图鉴金卡：${escapeHtml(drawMeta.best_gold_card || "-")}</div>
                     `
               }
-              <div class="muted">规则：返还所有双满紫 / 橙 / 红 / 金卡、>=2.5 单词条、双词条、珍；视频如需查看请让用户去咨询群联系管理员。</div>
+              <div class="muted">代抽档位：${escapeHtml(drawMeta.tier_label || "旧版代抽")}${drawMeta.draw_amount_wan ? ` / ${Number(drawMeta.draw_amount_wan)}w` : ""}${drawMeta.price_yuan_per_wan ? ` / ${Number(drawMeta.price_yuan_per_wan)} 元/1w` : ""}</div>
+              <div class="muted">规则：${escapeHtml(drawMeta.tier_description || drawMeta.rule_summary || "按用户下单时选择的档位返还")}</div>
               ${
                 drawMeta.reward_summary
                   ? `<div class="muted">已结算奖励：${escapeHtml(drawMeta.reward_summary)}</div>`
@@ -125,7 +126,9 @@ export function renderOrdersListSection(context, orders = context.getCurrentOrde
             <div>创建时间：${formatDate(order.created_at)}</div>
             ${
               isDrawServiceOrder(order) && drawMeta
-                ? `<div>代抽赛季：${escapeHtml(drawMeta.season_label || "-")} / 返利：${Number(drawMeta.rebate_quota || 0)}</div>`
+                ? drawMeta.payment_method === "residual_transfer"
+                  ? `<div>代抽赛季：${escapeHtml(drawMeta.season_label || "-")} / 自己的卷：${Number(drawMeta.transfer_amount || order.transfer_amount || 0)} ${escapeHtml(drawMeta.transfer_unit || order.transfer_unit || "残卷")} / 目标：${escapeHtml(drawMeta.transfer_target_role_name || order.transfer_target_role_name || "admin残卷")} / ${escapeHtml(drawMeta.transfer_target_role_id || order.transfer_target_role_id || "-")} / 转赠时间：${escapeHtml(drawMeta.transfer_reference || order.payment_reference || "-")}</div>`
+                  : `<div>代抽赛季：${escapeHtml(drawMeta.season_label || "-")} / 扣款：${Number(drawMeta.amount_quota || order.total_quota || 0)} 额度</div>`
                 : ""
             }
           </div>

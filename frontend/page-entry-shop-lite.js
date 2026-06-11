@@ -1,13 +1,10 @@
-import { apiFetch } from "./shared.js?v=release-20260509-160631";
+import { apiFetch, escapeHtml } from "./shared.js?v=release-20260611-151806";
+import {
+  cashToResidual,
+  quotaToCash,
+} from "./payment-conversion.js?v=release-20260611-151806";
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+let liteRechargeConfig = null;
 
 function formatCompactNumber(value) {
   const numeric = Number(value || 0);
@@ -16,6 +13,13 @@ function formatCompactNumber(value) {
     return `${(numeric / 10000).toFixed(numeric % 10000 === 0 ? 0 : 1)}w`;
   }
   return String(Math.round(numeric));
+}
+
+function formatCashAmount(amount) {
+  const numeric = Number(amount);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+  if (Math.abs(numeric - Math.round(numeric)) < 0.001) return `¥${Math.round(numeric)}`;
+  return `¥${numeric.toFixed(2)}`;
 }
 
 function formatRecentSaleTime(value) {
@@ -139,13 +143,26 @@ function getProductSubtitle(product) {
 function getPriceLine(product) {
   const current = Number(product?.price_quota || 0);
   const original = Number(product?.original_price_quota || 0);
+  const cashAmount = quotaToCash(current);
+  const residualAmount = cashAmount === null ? null : cashToResidual(cashAmount, liteRechargeConfig);
+  const cashChip = cashAmount === null ? "" : `<span class="chip accent soft">${escapeHtml(formatCashAmount(cashAmount))}</span>`;
+  const residualChip =
+    residualAmount === null
+      ? ""
+      : `<span class="chip subtle">${escapeHtml(`${residualAmount} ${liteRechargeConfig?.residual_unit_label || "残卷"}`)}</span>`;
   if (original > current) {
     return `
       <span class="chip original-price">原 ${formatCompactNumber(original)}</span>
-      <span class="chip accent">残卷 ${formatCompactNumber(current)}</span>
+      <span class="chip accent">额度 ${formatCompactNumber(current)}</span>
+      ${cashChip}
+      ${residualChip}
     `;
   }
-  return `<span class="chip strong">残卷 ${formatCompactNumber(current)}</span>`;
+  return `
+    <span class="chip strong">额度 ${formatCompactNumber(current)}</span>
+    ${cashChip}
+    ${residualChip}
+  `;
 }
 
 function renderLiteProductCard(product) {
@@ -340,16 +357,24 @@ export function startShopLiteShell({
 
   async function loadLiteStorefront() {
     try {
-      const [products, recentSales] = await Promise.all([
-        apiFetch("/products"),
+      const [products, recentSales, meta] = await Promise.all([
+        apiFetch("/products?page=1&page_size=12"),
         apiFetch("/products/recent-sales?limit=8").catch(() => ({ items: [] })),
+        apiFetch("/products/meta").catch(() => null),
       ]);
-      const productItems = Array.isArray(products) ? products.slice(0, 12) : [];
+      liteRechargeConfig = meta?.recharge_config || null;
+      const productItems = Array.isArray(products)
+        ? products.slice(0, 12)
+        : Array.isArray(products?.items)
+          ? products.items
+          : [];
       const recentSaleItems = Array.isArray(recentSales?.items) ? recentSales.items : [];
       renderLiteProductList(productGrid, productItems);
       renderLiteRecentSales(recentSalesList, recentSaleItems);
       if (productPagination) {
-        const total = Array.isArray(products) ? products.length : productItems.length;
+        const total = Array.isArray(products)
+          ? products.length
+          : Number(products?.total || productItems.length);
         productPagination.innerHTML = `
           <div class="muted">
             轻量首屏先展示 ${productItems.length} / ${total} 件商品，点击筛选、分页、详情或购买后会自动加载完整商城。

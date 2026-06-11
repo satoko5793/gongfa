@@ -96,12 +96,73 @@ function validateOrderCancelRequestInput(body) {
   return errors;
 }
 
+function validateConsignmentEscrowCreate(body) {
+  const errors = [];
+  if (!isInteger(body?.listing_id ?? body?.item_id)) errors.push("listing_id_required");
+  const method = String(body?.payment_method || "").trim();
+  if (!["cash", "quota", "residual"].includes(method)) errors.push("payment_method_invalid");
+  if (method !== "quota" && !requiredString(body?.payment_reference)) {
+    errors.push("payment_reference_required");
+  }
+  if (body?.buyer_note !== undefined && !optionalString(body.buyer_note)) {
+    errors.push("buyer_note_invalid");
+  }
+  return errors;
+}
+
+function validateEscrowDeliveryInput(body) {
+  const errors = [];
+  if (!requiredString(body?.delivery_note || body?.note)) errors.push("delivery_note_required");
+  return errors;
+}
+
+function validateEscrowDisputeInput(body) {
+  const errors = [];
+  if (body?.dispute_note !== undefined && !optionalString(body.dispute_note)) {
+    errors.push("dispute_note_invalid");
+  }
+  return errors;
+}
+
 function validateOrderStatus(status) {
   return ORDER_STATUS_VALUES.includes(status);
 }
 
 function validateDrawOrderCreate(body) {
   const errors = [];
+  const hasTierSelection =
+    String(body?.tier_key || "").trim() || body?.draw_amount_wan !== undefined;
+  if (hasTierSelection) {
+    if (typeof body?.tier_key !== "string" || !String(body.tier_key).trim()) {
+      errors.push("tier_key_invalid");
+    }
+    if (!isInteger(body?.draw_amount_wan) || Number(body.draw_amount_wan) <= 0) {
+      errors.push("draw_amount_wan_invalid");
+    }
+    if (
+      body?.transfer_amount !== undefined &&
+      (!isInteger(body.transfer_amount) || Number(body.transfer_amount) <= 0)
+    ) {
+      errors.push("transfer_amount_invalid");
+    }
+    if (body?.payment_reference !== undefined && !optionalString(body.payment_reference)) {
+      errors.push("payment_reference_invalid");
+    }
+    if (body?.payer_note !== undefined && !optionalString(body.payer_note)) {
+      errors.push("payer_note_invalid");
+    }
+    if (body?.game_role_id !== undefined && !optionalString(body.game_role_id)) {
+      errors.push("game_role_id_invalid");
+    }
+    if (body?.game_role_name !== undefined && !optionalString(body.game_role_name)) {
+      errors.push("game_role_name_invalid");
+    }
+    if (body?.nickname !== undefined && !optionalString(body.nickname)) {
+      errors.push("nickname_invalid");
+    }
+    return [...new Set(errors)];
+  }
+
   if (!isInteger(body?.amount_quota)) {
     errors.push("amount_quota_invalid");
     return errors;
@@ -127,6 +188,9 @@ function validateAuctionBidCreate(body) {
 module.exports = {
   validateOrderCreate,
   validateGuestTransferOrderCreate,
+  validateConsignmentEscrowCreate,
+  validateEscrowDeliveryInput,
+  validateEscrowDisputeInput,
   validateOrderCancelRequestInput,
   validateOrderStatus,
   validateDrawOrderCreate,

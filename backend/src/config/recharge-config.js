@@ -1,3 +1,19 @@
+const {
+  QUOTA_ANCHOR_YUAN,
+  QUOTA_ANCHOR_QUOTA,
+  QUOTA_PER_YUAN,
+  DEFAULT_RESIDUAL_UNIT_PRICE_YUAN,
+  RESIDUAL_ANCHOR_AMOUNT,
+  cashToQuota,
+  residualToCash,
+  getResidualUnitPriceYuan,
+  getResidualPurchaseAmountPerQuotaAnchor,
+  getResidualPurchaseUnitPriceYuan,
+  getResidualPurchaseAnchorCashYuan,
+  getDerivedResidualQuotaPerUnit,
+  buildPaymentConversionSnapshot,
+} = require("../domain/payment-conversion");
+
 function parsePositiveInteger(value, fallback) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -15,6 +31,22 @@ function parseNonNegativeInteger(value, fallback) {
 function parsePositiveMoney(value, fallback) {
   const parsed = parseMoneyAmount(value);
   return parsed === null ? fallback : parsed;
+}
+
+function parseNonNegativeMoney(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return fallback;
+  const normalized = Number(numeric.toFixed(2));
+  if (Math.abs(normalized * 100 - Math.round(normalized * 100)) > 0.000001) {
+    return fallback;
+  }
+  return normalized;
+}
+
+function parsePositiveDecimal(value, fallback, precision = 4) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  return Number(numeric.toFixed(precision));
 }
 
 function parseMoneyAmount(value) {
@@ -94,6 +126,25 @@ function parsePricingPercent(value, fallback, { min = 0, max = 300 } = {}) {
 function parseText(value, fallback) {
   const text = String(value ?? "").trim();
   return text || fallback;
+}
+
+function parseOptionalText(value, fallback = "") {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+}
+
+const DEFAULT_SEASON_MEMBER_SEASON_LABEL = "S6 第六赛季";
+const DEFAULT_SEASON_MEMBER_EXPIRES_AT = "2026-07-02T23:59:59+08:00";
+const LEGACY_DEFAULT_SEASON_MEMBER_SEASON_LABEL = "S5 朱明赛季";
+const LEGACY_DEFAULT_SEASON_MEMBER_EXPIRES_AT = "2026-06-04T23:59:59+08:00";
+
+function shouldMigrateLegacyDefaultSeason(rawConfig = {}) {
+  const label = String(rawConfig.season_member_season_label || "").trim();
+  const expiresAt = String(rawConfig.season_member_expires_at || "").trim();
+  return (
+    label === LEGACY_DEFAULT_SEASON_MEMBER_SEASON_LABEL &&
+    (!expiresAt || expiresAt === LEGACY_DEFAULT_SEASON_MEMBER_EXPIRES_AT)
+  );
 }
 
 const PRICING_CONTROL_TIER_ORDER = ["green", "blue", "purple", "orange", "red", "gold"];
@@ -385,6 +436,268 @@ function normalizePricingControls(rawPricingControls = {}, defaults = buildDefau
   };
 }
 
+const DRAW_SERVICE_DEFAULT_TIER_ORDER = [
+  "tier_6",
+  "tier_7",
+  "tier_8",
+  "tier_10",
+  "own_scrolls",
+  "season_member_benefit",
+];
+
+function buildDefaultDrawServiceConfig() {
+  return {
+    enabled: true,
+    unit_label: "1w",
+    min_draw_wan: 1,
+    step_draw_wan: 1,
+    preset_draw_wan: [1, 3, 5, 10],
+    default_tier_key: "tier_8",
+    video_notice: "如需代抽视频确认真实性，请在“我的信息”里的“订单帮助”中，通过微信群联系管理员索取。",
+    rule_notice: "旧规则“抽 5w 返 1w”已取消；用户按本次选择的档位和抽取数量提交代抽单。",
+    tiers: [
+      {
+        key: "tier_6",
+        label: "6 元 / 1w",
+        price_yuan_per_wan: 6,
+        description: "仅返珍",
+      },
+      {
+        key: "tier_7",
+        label: "7 元 / 1w",
+        price_yuan_per_wan: 7,
+        description: "返双词条、珍、双满金、单 3.0",
+      },
+      {
+        key: "tier_8",
+        label: "8 元 / 1w",
+        price_yuan_per_wan: 8,
+        description: "返珍、双词条、2.5+ 单词条、双满紫-金卡",
+      },
+      {
+        key: "tier_10",
+        label: "10 元 / 1w",
+        price_yuan_per_wan: 10,
+        description: "返全金红、双满橙紫",
+      },
+      {
+        key: "own_scrolls",
+        label: "自己的卷",
+        price_yuan_per_wan: 8,
+        description: "自己的卷需先转残卷给管理员，按 8 元 / 1w 档返珍、双词条、2.5+ 单词条、双满紫-金卡",
+        payment_method: "residual_transfer",
+        transfer_amount_per_wan: 10000,
+      },
+      {
+        key: "season_member_benefit",
+        label: "赛季会员福利 6.5 元 / 1w",
+        price_yuan_per_wan: 6.5,
+        description: "开通赛季会员可用；每赛季一次，最多 5w，抽 5w 按第三档返还规则",
+        requires_season_member: true,
+        max_draw_wan_per_order: 5,
+        once_per_season: true,
+      },
+    ],
+  };
+}
+
+function normalizeDrawServiceTierKey(value, fallback) {
+  const key = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+  return key || fallback;
+}
+
+function normalizeDrawServiceConfig(rawDrawService = {}, defaults = buildDefaultDrawServiceConfig()) {
+  const source = rawDrawService && typeof rawDrawService === "object" ? rawDrawService : {};
+  const defaultTierByKey = new Map(defaults.tiers.map((tier) => [tier.key, tier]));
+  const rawTiers = Array.isArray(source.tiers) ? source.tiers : [];
+  const seen = new Set();
+  const tiers = [];
+
+  for (const defaultKey of DRAW_SERVICE_DEFAULT_TIER_ORDER) {
+    const defaultTier = defaultTierByKey.get(defaultKey);
+    const rawTier =
+      rawTiers.find((tier) => String(tier?.key || "").trim() === defaultKey) ||
+      (defaultKey === "season_member_benefit"
+        ? rawTiers.find((tier) => String(tier?.key || "").trim() === "fan_badge")
+        : null) ||
+      {};
+    const isLegacyFanBadge =
+      defaultKey === "season_member_benefit" &&
+      String(rawTier?.key || "").trim() === "fan_badge";
+    const isLegacySeasonMemberBenefitDescription =
+      defaultKey === "season_member_benefit" &&
+      String(rawTier?.description || "").trim() === "开通赛季会员可用；抽 5w 按第三档返还规则";
+    const isLegacyOwnScrollsDescription =
+      defaultKey === "own_scrolls" &&
+      String(rawTier?.description || "").trim() ===
+        "自己的卷按 8 元 / 1w 档，返珍、双词条、2.5+ 单词条、双满紫-金卡";
+    const key = defaultTier.key;
+    seen.add(key);
+    if (isLegacyFanBadge) seen.add("fan_badge");
+    tiers.push({
+      key,
+      label: parseText(isLegacyFanBadge ? "" : rawTier.label, defaultTier.label),
+      price_yuan_per_wan: parsePositiveMoney(
+        rawTier.price_yuan_per_wan,
+        defaultTier.price_yuan_per_wan
+      ),
+      description: parseText(
+        isLegacyFanBadge || isLegacySeasonMemberBenefitDescription || isLegacyOwnScrollsDescription
+          ? ""
+          : rawTier.description,
+        defaultTier.description
+      ),
+      requires_season_member:
+        defaultTier.requires_season_member === true
+          ? true
+          : Boolean(rawTier.requires_season_member),
+      payment_method:
+        defaultTier.payment_method === "residual_transfer" ||
+        String(rawTier.payment_method || "").trim() === "residual_transfer"
+          ? "residual_transfer"
+          : "quota",
+      transfer_amount_per_wan: parsePositiveInteger(
+        rawTier.transfer_amount_per_wan,
+        defaultTier.transfer_amount_per_wan || 0
+      ),
+      max_draw_wan_per_order: parseNonNegativeInteger(
+        rawTier.max_draw_wan_per_order,
+        defaultTier.max_draw_wan_per_order || 0
+      ),
+      once_per_season:
+        defaultTier.once_per_season === true ? true : Boolean(rawTier.once_per_season),
+    });
+  }
+
+  for (const rawTier of rawTiers) {
+    const key = normalizeDrawServiceTierKey(rawTier?.key, "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    tiers.push({
+      key,
+      label: parseText(rawTier.label, key),
+      price_yuan_per_wan: parsePositiveMoney(rawTier.price_yuan_per_wan, 8),
+      description: parseOptionalText(rawTier.description, ""),
+      requires_season_member: Boolean(rawTier.requires_season_member),
+      payment_method:
+        String(rawTier.payment_method || "").trim() === "residual_transfer"
+          ? "residual_transfer"
+          : "quota",
+      transfer_amount_per_wan: parsePositiveInteger(rawTier.transfer_amount_per_wan, 0),
+      max_draw_wan_per_order: parseNonNegativeInteger(rawTier.max_draw_wan_per_order, 0),
+      once_per_season: Boolean(rawTier.once_per_season),
+    });
+  }
+
+  const minDrawWan = parsePositiveInteger(source.min_draw_wan, defaults.min_draw_wan);
+  const stepDrawWan = parsePositiveInteger(source.step_draw_wan, defaults.step_draw_wan);
+  const presetDrawWan = Array.isArray(source.preset_draw_wan)
+    ? source.preset_draw_wan
+        .map((item) => parsePositiveInteger(item, null))
+        .filter((item) => item !== null && item >= minDrawWan)
+    : defaults.preset_draw_wan;
+  const uniquePresets = [...new Set(presetDrawWan)].sort((a, b) => a - b);
+  const defaultTierKey = normalizeDrawServiceTierKey(
+    source.default_tier_key,
+    defaults.default_tier_key
+  );
+  const firstTierKey = tiers[0]?.key || defaults.default_tier_key;
+
+  return {
+    enabled: source.enabled === undefined ? defaults.enabled : Boolean(source.enabled),
+    unit_label: parseText(source.unit_label, defaults.unit_label),
+    min_draw_wan: minDrawWan,
+    step_draw_wan: stepDrawWan,
+    preset_draw_wan: uniquePresets.length ? uniquePresets : defaults.preset_draw_wan,
+    default_tier_key: tiers.some((tier) => tier.key === defaultTierKey)
+      ? defaultTierKey
+      : firstTierKey,
+    video_notice: parseText(source.video_notice, defaults.video_notice),
+    rule_notice: parseText(source.rule_notice, defaults.rule_notice),
+    tiers,
+  };
+}
+
+function quoteDrawServiceOrder(rechargeConfig, { tierKey, drawAmountWan, amountQuota } = {}) {
+  const config = normalizeRechargeConfig(rechargeConfig || {});
+  const drawService = normalizeDrawServiceConfig(config.draw_service);
+  if (!drawService.enabled) return null;
+
+  const normalizedTierKey = normalizeDrawServiceTierKey(tierKey, drawService.default_tier_key);
+  const tier =
+    drawService.tiers.find((item) => item.key === normalizedTierKey) ||
+    drawService.tiers.find((item) => item.key === drawService.default_tier_key) ||
+    drawService.tiers[0];
+  if (!tier) return null;
+
+  const rawWan = Number(drawAmountWan);
+  if (!Number.isFinite(rawWan) || rawWan <= 0) {
+    if (amountQuota !== undefined && amountQuota !== null) {
+      const legacyAmount = Number(amountQuota);
+      if (Number.isInteger(legacyAmount) && legacyAmount > 0) {
+        return {
+          legacy: true,
+          amount_quota: legacyAmount,
+          draw_amount_wan: null,
+          tier_key: null,
+          tier_label: "旧版代抽",
+          price_yuan_per_wan: null,
+          cash_amount_yuan: quotaToCashSafe(legacyAmount),
+          description: "",
+          rule_notice: drawService.rule_notice,
+          video_notice: drawService.video_notice,
+        };
+      }
+    }
+    return null;
+  }
+
+  const roundedWan =
+    Math.ceil(Math.max(rawWan, drawService.min_draw_wan) / drawService.step_draw_wan) *
+    drawService.step_draw_wan;
+  const drawWan = Math.max(drawService.min_draw_wan, roundedWan);
+  const cashAmountYuan = Number((drawWan * Number(tier.price_yuan_per_wan || 0)).toFixed(2));
+  const quotaAmount = cashToQuota(cashAmountYuan);
+  if (!quotaAmount) return null;
+  const paymentMethod =
+    String(tier.payment_method || "").trim() === "residual_transfer"
+      ? "residual_transfer"
+      : "quota";
+  const transferAmount =
+    paymentMethod === "residual_transfer"
+      ? Math.max(Math.ceil(drawWan * Number(tier.transfer_amount_per_wan || 10000)), 1)
+      : null;
+
+  return {
+    legacy: false,
+    amount_quota: quotaAmount,
+    draw_amount_wan: drawWan,
+    tier_key: tier.key,
+    tier_label: tier.label,
+    price_yuan_per_wan: Number(tier.price_yuan_per_wan || 0),
+    cash_amount_yuan: cashAmountYuan,
+    payment_method: paymentMethod,
+    transfer_amount: transferAmount,
+    transfer_amount_per_wan:
+      paymentMethod === "residual_transfer" ? Number(tier.transfer_amount_per_wan || 10000) : null,
+    transfer_unit: config.residual_unit_label || "残卷",
+    transfer_target_role_id: config.residual_admin_role_id || "584967604",
+    transfer_target_role_name: config.residual_admin_role_name || "admin残卷",
+    description: tier.description,
+    requires_season_member: Boolean(tier.requires_season_member),
+    max_draw_wan_per_order: Number(tier.max_draw_wan_per_order || 0),
+    once_per_season: Boolean(tier.once_per_season),
+    rule_notice: drawService.rule_notice,
+    video_notice: drawService.video_notice,
+  };
+}
+
+function quotaToCashSafe(quotaAmount) {
+  const quota = Number(quotaAmount);
+  if (!Number.isFinite(quota) || quota <= 0) return null;
+  return Number((quota / QUOTA_PER_YUAN).toFixed(2));
+}
+
 function parsePresetAmounts(value, minimumAmount, exchangeYuan) {
   const source = String(value || "")
     .split(",")
@@ -400,18 +713,15 @@ function parsePresetAmounts(value, minimumAmount, exchangeYuan) {
 }
 
 function buildDefaultRechargeConfig() {
-  const exchangeYuan = parsePositiveMoney(process.env.RECHARGE_EXCHANGE_YUAN, 12);
-  const exchangeQuota = parsePositiveInteger(
-    process.env.RECHARGE_EXCHANGE_QUOTA,
-    10000
-  );
+  const exchangeYuan = QUOTA_ANCHOR_YUAN;
+  const exchangeQuota = QUOTA_ANCHOR_QUOTA;
   const seasonMemberSeasonLabel = parseText(
     process.env.SEASON_MEMBER_SEASON_LABEL,
-    "S5 朱明赛季"
+    DEFAULT_SEASON_MEMBER_SEASON_LABEL
   );
   const seasonMemberExpiresAt = parseText(
     process.env.SEASON_MEMBER_EXPIRES_AT,
-    "2026-06-04T23:59:59+08:00"
+    DEFAULT_SEASON_MEMBER_EXPIRES_AT
   );
   const seasonMemberPriceYuan = parsePositiveMoney(
     process.env.SEASON_MEMBER_PRICE_YUAN,
@@ -419,7 +729,7 @@ function buildDefaultRechargeConfig() {
   );
   const seasonMemberQuota = parsePositiveInteger(
     process.env.SEASON_MEMBER_QUOTA,
-    30000
+    cashToQuota(seasonMemberPriceYuan)
   );
   const seasonMemberBonusRate = parseRate(
     process.env.SEASON_MEMBER_BONUS_RATE,
@@ -429,9 +739,30 @@ function buildDefaultRechargeConfig() {
     parsePositiveMoney(process.env.RECHARGE_MIN_YUAN, exchangeYuan),
     exchangeYuan
   );
-  const residualQuotaPerUnit = parsePositiveInteger(
-    process.env.RESIDUAL_QUOTA_PER_UNIT,
-    1
+  const currentSeasonGoldMinDisplayCashYuan = parseNonNegativeMoney(
+    process.env.CURRENT_SEASON_GOLD_MIN_DISPLAY_CASH_YUAN,
+    0
+  );
+  const residualUnitPriceYuan = getResidualUnitPriceYuan({
+    residual_recharge_anchor_cash_yuan: process.env.RESIDUAL_RECHARGE_ANCHOR_CASH_YUAN,
+    residual_unit_price_yuan: process.env.RESIDUAL_UNIT_PRICE_YUAN,
+    residual_quota_per_unit: process.env.RESIDUAL_QUOTA_PER_UNIT,
+  });
+  const residualPurchaseAmountPerQuotaAnchor = getResidualPurchaseAmountPerQuotaAnchor({
+    residual_unit_price_yuan: residualUnitPriceYuan,
+    residual_purchase_anchor_cash_yuan: process.env.RESIDUAL_PURCHASE_ANCHOR_CASH_YUAN,
+    residual_purchase_amount_per_quota_anchor: process.env.RESIDUAL_PURCHASE_AMOUNT_PER_QUOTA_ANCHOR,
+  });
+  const residualPurchaseUnitPriceYuan = getResidualPurchaseUnitPriceYuan({
+    residual_purchase_anchor_cash_yuan: process.env.RESIDUAL_PURCHASE_ANCHOR_CASH_YUAN,
+    residual_purchase_amount_per_quota_anchor: residualPurchaseAmountPerQuotaAnchor,
+  });
+  const residualPurchaseAnchorCashYuan = getResidualPurchaseAnchorCashYuan({
+    residual_purchase_anchor_cash_yuan: process.env.RESIDUAL_PURCHASE_ANCHOR_CASH_YUAN,
+    residual_purchase_amount_per_quota_anchor: residualPurchaseAmountPerQuotaAnchor,
+  });
+  const residualQuotaPerUnit = getDerivedResidualQuotaPerUnit(
+    { residual_unit_price_yuan: residualUnitPriceYuan }
   );
   const lineupBaseSlots = parsePositiveInteger(process.env.LINEUP_BASE_SLOTS, 3);
   const lineupPermanentSlotQuota = parsePositiveInteger(
@@ -457,6 +788,7 @@ function buildDefaultRechargeConfig() {
     exchange_yuan: exchangeYuan,
     exchange_quota: exchangeQuota,
     min_amount_yuan: minAmountYuan,
+    current_season_gold_min_display_cash_yuan: currentSeasonGoldMinDisplayCashYuan,
     residual_transfer_enabled: true,
     residual_admin_role_id: parseText(
       process.env.RESIDUAL_ADMIN_ROLE_ID,
@@ -474,12 +806,21 @@ function buildDefaultRechargeConfig() {
       process.env.RESIDUAL_UNIT_LABEL,
       "残卷"
     ),
+    residual_unit_price_yuan: residualUnitPriceYuan,
+    residual_recharge_unit_price_yuan: residualUnitPriceYuan,
+    residual_anchor_amount: RESIDUAL_ANCHOR_AMOUNT,
+    residual_recharge_anchor_cash_yuan: Number((residualUnitPriceYuan * RESIDUAL_ANCHOR_AMOUNT).toFixed(2)),
+    residual_anchor_cash_yuan: Number((residualUnitPriceYuan * RESIDUAL_ANCHOR_AMOUNT).toFixed(2)),
+    residual_purchase_anchor_quota: QUOTA_ANCHOR_QUOTA,
+    residual_purchase_anchor_cash_yuan: residualPurchaseAnchorCashYuan,
+    residual_purchase_amount_per_quota_anchor: residualPurchaseAmountPerQuotaAnchor,
+    residual_purchase_unit_price_yuan: residualPurchaseUnitPriceYuan,
     residual_quota_per_unit: residualQuotaPerUnit,
     season_member_enabled: true,
     season_member_season_label: seasonMemberSeasonLabel,
     season_member_expires_at: seasonMemberExpiresAt,
     season_member_price_yuan: seasonMemberPriceYuan,
-    season_member_quota: seasonMemberQuota,
+    season_member_quota: cashToQuota(seasonMemberPriceYuan) || seasonMemberQuota,
     season_member_bonus_rate: seasonMemberBonusRate,
     lineup_base_slots: lineupBaseSlots,
     lineup_permanent_slot_quota: lineupPermanentSlotQuota,
@@ -508,25 +849,23 @@ function buildDefaultRechargeConfig() {
     ],
     residual_instructions: [
       "1. 在游戏内把残卷直接转给管理员账号，再回来提交审核。",
-      "2. 管理员游戏 ID：584967604，1 残卷 = 1 额度。",
+      "2. 管理员游戏 ID：584967604，残卷按提交时后台单价折算为额度。",
       "3. 提交时填写转赠时间即可，管理员会按时间核对。",
     ],
+    draw_service: buildDefaultDrawServiceConfig(),
     pricing_controls: buildDefaultPricingControls(),
   };
 }
 
 function normalizeRechargeConfig(rawConfig = {}) {
   const defaults = buildDefaultRechargeConfig();
-  const exchangeYuan = parsePositiveMoney(rawConfig.exchange_yuan, defaults.exchange_yuan);
-  const exchangeQuota = parsePositiveInteger(rawConfig.exchange_quota, defaults.exchange_quota);
+  const exchangeYuan = QUOTA_ANCHOR_YUAN;
+  const exchangeQuota = QUOTA_ANCHOR_QUOTA;
   const seasonMemberPriceYuan = parsePositiveMoney(
     rawConfig.season_member_price_yuan,
     defaults.season_member_price_yuan
   );
-  const seasonMemberQuota = parsePositiveInteger(
-    rawConfig.season_member_quota,
-    defaults.season_member_quota
-  );
+  const seasonMemberQuota = cashToQuota(seasonMemberPriceYuan) || defaults.season_member_quota;
   const seasonMemberBonusRate = parseRate(
     rawConfig.season_member_bonus_rate,
     defaults.season_member_bonus_rate
@@ -535,9 +874,32 @@ function normalizeRechargeConfig(rawConfig = {}) {
     parsePositiveMoney(rawConfig.min_amount_yuan, defaults.min_amount_yuan),
     1
   );
-  const residualQuotaPerUnit = parsePositiveInteger(
-    rawConfig.residual_quota_per_unit,
-    defaults.residual_quota_per_unit
+  const currentSeasonGoldMinDisplayCashYuan = parseNonNegativeMoney(
+    rawConfig.current_season_gold_min_display_cash_yuan,
+    defaults.current_season_gold_min_display_cash_yuan
+  );
+  const residualUnitPriceYuan = getResidualUnitPriceYuan({
+    residual_recharge_anchor_cash_yuan: rawConfig.residual_recharge_anchor_cash_yuan,
+    residual_anchor_cash_yuan: rawConfig.residual_anchor_cash_yuan,
+    residual_recharge_unit_price_yuan: rawConfig.residual_recharge_unit_price_yuan,
+    residual_unit_price_yuan: rawConfig.residual_unit_price_yuan,
+    residual_quota_per_unit: rawConfig.residual_quota_per_unit,
+  });
+  const residualPurchaseAmountPerQuotaAnchor = getResidualPurchaseAmountPerQuotaAnchor({
+    residual_unit_price_yuan: residualUnitPriceYuan,
+    residual_purchase_anchor_cash_yuan: rawConfig.residual_purchase_anchor_cash_yuan,
+    residual_purchase_amount_per_quota_anchor: rawConfig.residual_purchase_amount_per_quota_anchor,
+  });
+  const residualPurchaseUnitPriceYuan = getResidualPurchaseUnitPriceYuan({
+    residual_purchase_anchor_cash_yuan: rawConfig.residual_purchase_anchor_cash_yuan,
+    residual_purchase_amount_per_quota_anchor: residualPurchaseAmountPerQuotaAnchor,
+  });
+  const residualPurchaseAnchorCashYuan = getResidualPurchaseAnchorCashYuan({
+    residual_purchase_anchor_cash_yuan: rawConfig.residual_purchase_anchor_cash_yuan,
+    residual_purchase_amount_per_quota_anchor: residualPurchaseAmountPerQuotaAnchor,
+  });
+  const residualQuotaPerUnit = getDerivedResidualQuotaPerUnit(
+    { residual_unit_price_yuan: residualUnitPriceYuan }
   );
   const lineupBaseSlots = parsePositiveInteger(
     rawConfig.lineup_base_slots,
@@ -563,14 +925,23 @@ function normalizeRechargeConfig(rawConfig = {}) {
     rawConfig.pricing_controls,
     defaults.pricing_controls
   );
+  const drawService = normalizeDrawServiceConfig(rawConfig.draw_service, defaults.draw_service);
+  const migrateLegacyDefaultSeason = shouldMigrateLegacyDefaultSeason(rawConfig);
+  const seasonMemberSeasonLabelSource = migrateLegacyDefaultSeason
+    ? defaults.season_member_season_label
+    : rawConfig.season_member_season_label;
+  const seasonMemberExpiresAtSource = migrateLegacyDefaultSeason
+    ? defaults.season_member_expires_at
+    : rawConfig.season_member_expires_at;
 
   const normalized = {
     enabled: rawConfig.enabled === undefined ? defaults.enabled : Boolean(rawConfig.enabled),
     channel: "alipay_qr",
     exchange_yuan: exchangeYuan,
     exchange_quota: exchangeQuota,
-    quota_per_yuan: Number((exchangeQuota / exchangeYuan).toFixed(4)),
+    quota_per_yuan: QUOTA_PER_YUAN,
     min_amount_yuan: minAmountYuan,
+    current_season_gold_min_display_cash_yuan: currentSeasonGoldMinDisplayCashYuan,
     residual_transfer_enabled:
       rawConfig.residual_transfer_enabled === undefined
         ? defaults.residual_transfer_enabled
@@ -591,17 +962,26 @@ function normalizeRechargeConfig(rawConfig = {}) {
       rawConfig.residual_unit_label,
       defaults.residual_unit_label
     ),
+    residual_unit_price_yuan: residualUnitPriceYuan,
+    residual_recharge_unit_price_yuan: residualUnitPriceYuan,
+    residual_anchor_amount: RESIDUAL_ANCHOR_AMOUNT,
+    residual_recharge_anchor_cash_yuan: Number((residualUnitPriceYuan * RESIDUAL_ANCHOR_AMOUNT).toFixed(2)),
+    residual_anchor_cash_yuan: Number((residualUnitPriceYuan * RESIDUAL_ANCHOR_AMOUNT).toFixed(2)),
+    residual_purchase_anchor_quota: QUOTA_ANCHOR_QUOTA,
+    residual_purchase_anchor_cash_yuan: residualPurchaseAnchorCashYuan,
+    residual_purchase_amount_per_quota_anchor: residualPurchaseAmountPerQuotaAnchor,
+    residual_purchase_unit_price_yuan: residualPurchaseUnitPriceYuan,
     residual_quota_per_unit: residualQuotaPerUnit,
     season_member_enabled:
       rawConfig.season_member_enabled === undefined
         ? defaults.season_member_enabled
         : Boolean(rawConfig.season_member_enabled),
     season_member_season_label: parseText(
-      rawConfig.season_member_season_label,
+      seasonMemberSeasonLabelSource,
       defaults.season_member_season_label
     ),
     season_member_expires_at: parseText(
-      rawConfig.season_member_expires_at,
+      seasonMemberExpiresAtSource,
       defaults.season_member_expires_at
     ),
     season_member_price_yuan: seasonMemberPriceYuan,
@@ -633,6 +1013,7 @@ function normalizeRechargeConfig(rawConfig = {}) {
       Array.isArray(rawConfig.residual_instructions) && rawConfig.residual_instructions.length > 0
         ? rawConfig.residual_instructions.map((item) => String(item || "").trim()).filter(Boolean)
         : defaults.residual_instructions,
+    draw_service: drawService,
     pricing_controls: pricingControls,
   };
 
@@ -685,9 +1066,8 @@ function buildRechargeQuote(amountYuan, rechargeConfig) {
 
   return {
     amount_yuan: normalizedAmount,
-    quota_amount: Math.round(
-      (normalizedAmount * Number(config.exchange_quota || 0)) / Number(config.exchange_yuan || 1)
-    ),
+    quota_amount: cashToQuota(normalizedAmount),
+    ...buildPaymentConversionSnapshot(config),
   };
 }
 
@@ -697,10 +1077,11 @@ function buildSeasonMemberQuote(rechargeConfig) {
 
   return {
     amount_yuan: Number(config.season_member_price_yuan || 0),
-    quota_amount: Number(config.season_member_quota || 0),
+    quota_amount: cashToQuota(config.season_member_price_yuan),
     season_label: config.season_member_season_label,
     expires_at: config.season_member_expires_at,
     bonus_rate: Number(config.season_member_bonus_rate || 0),
+    ...buildPaymentConversionSnapshot(config),
   };
 }
 
@@ -717,15 +1098,19 @@ function buildResidualTransferQuote(amount, rechargeConfig) {
     amount_yuan: normalizedAmount,
     transfer_amount: normalizedAmount,
     transfer_unit: config.residual_unit_label,
-    quota_amount: normalizedAmount * Number(config.residual_quota_per_unit || 1),
+    transfer_cash_amount_yuan: residualToCash(normalizedAmount, config),
+    quota_amount: cashToQuota(residualToCash(normalizedAmount, config)),
     target_role_id: config.residual_admin_role_id,
     target_role_name: config.residual_admin_role_name,
+    ...buildPaymentConversionSnapshot(config),
   };
 }
 
 module.exports = {
   buildDefaultRechargeConfig,
+  buildDefaultDrawServiceConfig,
   buildDefaultPricingControls,
+  normalizeDrawServiceConfig,
   normalizePricingControls,
   normalizeRechargeConfig,
   getRechargeConfig,
@@ -733,6 +1118,8 @@ module.exports = {
   buildRechargeQuote,
   buildSeasonMemberQuote,
   buildResidualTransferQuote,
+  quoteDrawServiceOrder,
   PRICING_CONTROL_TIER_ORDER,
   PRICING_CONTROL_TIER_LABELS,
+  DRAW_SERVICE_DEFAULT_TIER_ORDER,
 };

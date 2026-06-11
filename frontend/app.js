@@ -14,33 +14,35 @@ import {
   saveHelperBridgeSession,
   setHelperOrigin,
   formatDate,
-} from "./shared.js?v=release-20260509-160631";
+  escapeHtml as sharedEscapeHtml,
+  pickErrorMessage as sharedPickErrorMessage,
+} from "./shared.js?v=release-20260611-151806";
 import {
   ADMIN_ROLES,
   ORDER_STATUS,
   isAdminRole,
-} from "./app-constants.js?v=release-20260509-160631";
-import { createPageRuntime } from "./page-mode.js?v=release-20260509-160631";
+} from "./app-constants.js?v=release-20260611-151806";
+import { createPageRuntime } from "./page-mode.js?v=release-20260611-151806";
 import {
   submitAuctionBidAction,
-} from "./page-actions/auction-actions.js?v=release-20260509-160631";
+} from "./page-actions/auction-actions.js?v=release-20260611-151806";
 import {
   changeAccountPasswordAction,
   logoutCurrentSessionAction,
   saveAccountProfileAction,
-} from "./page-actions/account-actions.js?v=release-20260509-160631";
+} from "./page-actions/account-actions.js?v=release-20260611-151806";
 import {
   bindAccountAction,
   loginAccountAction,
   registerAccountAction,
-} from "./page-actions/auth-actions.js?v=release-20260509-160631";
+} from "./page-actions/auth-actions.js?v=release-20260611-151806";
 import {
   confirmPurchaseAction,
   requestCancelOrderAction,
   submitGuestTransferOrderAction,
   submitRechargeOrderAction,
-} from "./page-actions/commerce-actions.js?v=release-20260509-160631";
-import { submitDrawServiceOrderAction } from "./page-actions/draw-service-actions.js?v=release-20260509-160631";
+} from "./page-actions/commerce-actions.js?v=release-20260611-151806";
+import { submitDrawServiceOrderAction } from "./page-actions/draw-service-actions.js?v=release-20260611-151806";
 import {
   importHelperInventoryProductsAction,
   autoBindHelperRoleToCurrentSessionAction,
@@ -54,19 +56,19 @@ import {
   openHelperGameFeatureAction,
   syncAllHelperInventoriesAction,
   syncCurrentHelperInventoryAction,
-} from "./page-actions/helper-actions.js?v=release-20260509-160631";
+} from "./page-actions/helper-actions.js?v=release-20260611-151806";
 
 import {
   openHelperAuthPopupAction,
   openHelperBindPopupAction,
   openHelperToolAction,
-} from "./page-actions/helper-entry-actions.js?v=release-20260509-160631";
+} from "./page-actions/helper-entry-actions.js?v=release-20260611-151806";
 import {
   openHelperPreviewPopupAction,
   openHelperRestorePopupAction,
   openHelperSnapshotPopupAction,
   openHelperTeamSwitchPopupAction,
-} from "./page-actions/helper-popup-actions.js?v=release-20260509-160631";
+} from "./page-actions/helper-popup-actions.js?v=release-20260611-151806";
 import {
   handleHelperBridgeMessageAction,
   removeHelperSnapshotAction,
@@ -76,18 +78,18 @@ import {
   saveHelperSnapshotFromBridgeAction,
   togglePinHelperSnapshotAction,
   updateHelperSnapshotMetaAction,
-} from "./page-actions/helper-bridge-actions.js?v=release-20260509-160631";
-import { loadAccountData } from "./page-loaders/account-loader.js?v=release-20260509-160631";
-import { loadAuctionsData } from "./page-loaders/auctions-loader.js?v=release-20260509-160631";
+} from "./page-actions/helper-bridge-actions.js?v=release-20260611-151806";
+import { loadAccountData } from "./page-loaders/account-loader.js?v=release-20260611-151806";
+import { loadAuctionsData } from "./page-loaders/auctions-loader.js?v=release-20260611-151806";
 import {
   loadHelperActionLogsData,
   loadHelperBindingsData,
   loadHelperConfigData,
   loadHelperInventoriesData,
   loadHelperSnapshotsData,
-} from "./page-loaders/helper-loader.js?v=release-20260509-160631";
-import { loadProductsData } from "./page-loaders/products-loader.js?v=release-20260509-160631";
-import { loadRecentSalesData } from "./page-loaders/recent-sales-loader.js?v=release-20260509-160631";
+} from "./page-loaders/helper-loader.js?v=release-20260611-151806";
+import { loadProductsData } from "./page-loaders/products-loader.js?v=release-20260611-151806";
+import { loadRecentSalesData } from "./page-loaders/recent-sales-loader.js?v=release-20260611-151806";
 import {
   buildHelperSnapshotName as buildHelperSnapshotNameView,
   formatHelperBattleSlot as formatHelperBattleSlotView,
@@ -101,19 +103,19 @@ import {
   renderHelperSnapshotPanel as renderHelperSnapshotPanelView,
   renderHelperTeamSwitchPanel as renderHelperTeamSwitchPanelView,
   sortHelperSnapshotsList as sortHelperSnapshotsListView,
-} from "./page-renderers/helper-renderers.js?v=release-20260509-160631";
+} from "./page-renderers/helper-renderers.js?v=release-20260611-151806";
 import {
   formatAuctionCountdownDuration as formatAuctionCountdownDurationView,
   formatAuctionStatusLabel as formatAuctionStatusLabelView,
   getAuctionCountdownMeta as getAuctionCountdownMetaView,
   renderAuctionZone as renderAuctionZoneView,
-} from "./page-renderers/auction-renderers.js?v=release-20260509-160631";
+} from "./page-renderers/auction-renderers.js?v=release-20260611-151806";
 import {
   renderProfileSection as renderProfileSectionView,
   renderRechargeSection as renderRechargeSectionView,
-} from "./page-renderers/account-renderers.js?v=release-20260509-160631";
-import { renderDrawServiceZoneContent } from "./page-renderers/draw-service-renderers.js?v=release-20260509-160631";
-import { renderProductDetailModalContent } from "./page-renderers/product-detail-renderers.js?v=release-20260509-160631";
+} from "./page-renderers/account-renderers.js?v=release-20260611-151806";
+import { renderDrawServiceZoneContent } from "./page-renderers/draw-service-renderers.js?v=release-20260611-151806";
+import { renderProductDetailModalContent } from "./page-renderers/product-detail-renderers.js?v=release-20260611-151806";
 import {
   formatFullStatValue as formatFullStatValueView,
   formatTermBadgeLabel as formatTermBadgeLabelView,
@@ -124,17 +126,17 @@ import {
   renderProductVisual as renderProductVisualView,
   renderStatBlock as renderStatBlockView,
   renderTermBadge as renderTermBadgeView,
-} from "./page-renderers/product-card-renderers.js?v=release-20260509-160631";
+} from "./page-renderers/product-card-renderers.js?v=release-20260611-151806";
 import {
   applyDiscountView as applyDiscountViewRenderer,
   applyProductView as applyProductViewRenderer,
   renderDiscountProducts as renderDiscountProductsView,
   renderProducts as renderProductsView,
-} from "./page-renderers/product-list-renderers.js?v=release-20260509-160631";
+} from "./page-renderers/product-list-renderers.js?v=release-20260611-151806";
 import {
   renderBeginnerGuideSection as renderBeginnerGuideSectionView,
   renderRecentSalesSection as renderRecentSalesSectionView,
-} from "./page-renderers/shop-home-renderers.js?v=release-20260509-160631";
+} from "./page-renderers/shop-home-renderers.js?v=release-20260611-151806";
 import {
   buildHelperBridgeBindUrl as buildHelperBridgeBindUrlRuntime,
   buildHelperBridgeGameFeatureUrl as buildHelperBridgeGameFeatureUrlRuntime,
@@ -147,7 +149,7 @@ import {
   closeHelperBridgeModalRuntime,
   openHelperBridgeModalSurfaceRuntime,
   runHelperBridgeInBackgroundRuntime,
-} from "./page-runtime/helper-bridge-runtime.js?v=release-20260509-160631";
+} from "./page-runtime/helper-bridge-runtime.js?v=release-20260611-151806";
 import {
   buildDirectPurchaseContext as buildDirectPurchaseContextRuntime,
   ensureGuestTransferPaymentChannel as ensureGuestTransferPaymentChannelRuntime,
@@ -160,17 +162,18 @@ import {
   getGuestPurchaseMethods as getGuestPurchaseMethodsRuntime,
   getOriginalQuotaPrice as getOriginalQuotaPriceRuntime,
   getProductCashPriceText as getProductCashPriceTextRuntime,
+  getProductResidualPriceText as getProductResidualPriceTextRuntime,
   getQuotaCashAmount as getQuotaCashAmountRuntime,
   getQuotaCashText as getQuotaCashTextRuntime,
   getRechargePaymentMethods as getRechargePaymentMethodsRuntime,
   isDiscountedProduct as isDiscountedProductRuntime,
-} from "./page-runtime/commerce-builders.js?v=release-20260509-160631";
+} from "./page-runtime/commerce-builders.js?v=release-20260611-151806";
 import {
   createConfirmPurchaseContext,
   createRequestCancelOrderContext,
   createSubmitGuestTransferOrderContext,
   createSubmitRechargeOrderContext,
-} from "./page-runtime/commerce-action-contexts.js?v=release-20260509-160631";
+} from "./page-runtime/commerce-action-contexts.js?v=release-20260611-151806";
 import {
   createBindAccountContext,
   createChangeAccountPasswordContext,
@@ -178,14 +181,14 @@ import {
   createLogoutCurrentSessionContext,
   createRegisterAccountContext,
   createSaveAccountProfileContext,
-} from "./page-runtime/auth-account-action-contexts.js?v=release-20260509-160631";
+} from "./page-runtime/auth-account-action-contexts.js?v=release-20260611-151806";
 import {
   applyImmediateAuthResultRuntime,
   completePostAuthNavigationRuntime,
   consumePostAuthAccountFocusRuntime,
   focusAccountAfterAuthRuntime,
   schedulePostAuthAccountFocusRuntime,
-} from "./page-runtime/auth-post-auth-runtime.js?v=release-20260509-160631";
+} from "./page-runtime/auth-post-auth-runtime.js?v=release-20260611-151806";
 import {
   findPendingSeasonMemberOrder as findPendingSeasonMemberOrderRuntime,
   formatRechargeOrderAmountLine as formatRechargeOrderAmountLineRuntime,
@@ -195,7 +198,7 @@ import {
   getRechargeQuoteSummary as getRechargeQuoteSummaryRuntime,
   isPositiveMoneyAmount as isPositiveMoneyAmountRuntime,
   isResidualTransferOrder as isResidualTransferOrderRuntime,
-} from "./page-runtime/recharge-builders.js?v=release-20260509-160631";
+} from "./page-runtime/recharge-builders.js?v=release-20260611-151806";
 import {
   buildHelperEquipmentMarkup as buildHelperEquipmentMarkupRuntime,
   buildHelperEquipmentSummary as buildHelperEquipmentSummaryRuntime,
@@ -207,12 +210,12 @@ import {
   buildHelperSnapshotRestoreSummaryText as buildHelperSnapshotRestoreSummaryTextRuntime,
   getSnapshotAttachmentOwnershipCount as getSnapshotAttachmentOwnershipCountRuntime,
   getSnapshotSafeRestoreBlockReason as getSnapshotSafeRestoreBlockReasonRuntime,
-} from "./page-runtime/helper-restore-builders.js?v=release-20260509-160631";
+} from "./page-runtime/helper-restore-builders.js?v=release-20260611-151806";
 import {
   bindGlobalAppEvents,
   runAppBootSequence,
-} from "./page-runtime/app-bootstrap-runtime.js?v=release-20260509-160631";
-import { createAppStartupContext } from "./page-runtime/app-startup-context.js?v=release-20260509-160631";
+} from "./page-runtime/app-bootstrap-runtime.js?v=release-20260611-151806";
+import { createAppStartupContext } from "./page-runtime/app-startup-context.js?v=release-20260611-151806";
 import {
   activateAccountTabRuntime,
   handleAccountLogoutClickRuntime,
@@ -223,48 +226,50 @@ import {
   handleOrderListClickRuntime,
   navigateToAccountTabLinkRuntime,
   syncAccountTabWithHashRuntime,
-} from "./page-runtime/account-runtime.js?v=release-20260509-160631";
+} from "./page-runtime/account-runtime.js?v=release-20260611-151806";
 import {
   handleAuctionBodyClickRuntime,
   handleAuctionBodyInputRuntime,
   handleAuctionStatusTabsClickRuntime,
   updateAuctionBidPreviewRuntime,
   updateAuctionCountdownsRuntime,
-} from "./page-runtime/auction-runtime.js?v=release-20260509-160631";
+} from "./page-runtime/auction-runtime.js?v=release-20260611-151806";
 import {
   handleDrawServiceBodyClickRuntime,
   handleDrawServiceBodyInputRuntime,
   handleDrawServiceBodySubmitRuntime,
+  getDrawServiceSelectionQuote as getDrawServiceSelectionQuoteRuntime,
   normalizeDrawServiceAmount as normalizeDrawServiceAmountRuntime,
+  normalizeDrawServiceWan as normalizeDrawServiceWanRuntime,
   updateDrawServiceQuoteRuntime,
-} from "./page-runtime/draw-service-runtime.js?v=release-20260509-160631";
+} from "./page-runtime/draw-service-runtime.js?v=release-20260611-151806";
 import {
   handleRechargePanelClickRuntime,
   handleRechargePanelInputRuntime,
   handleRechargePanelSubmitRuntime,
   updateRechargeQuotePreviewRuntime,
-} from "./page-runtime/recharge-runtime.js?v=release-20260509-160631";
+} from "./page-runtime/recharge-runtime.js?v=release-20260611-151806";
 import {
   closeProductModalRuntime,
   handleProductGridClickRuntime,
   openProductModalRuntime,
   startDirectPurchaseRuntime,
   toggleGuestTransferPanelRuntime,
-} from "./page-runtime/product-modal-runtime.js?v=release-20260509-160631";
+} from "./page-runtime/product-modal-runtime.js?v=release-20260611-151806";
 import {
   buildActiveProductState,
   createProductModalRuntimeContext,
   findProductInList,
   isActiveProductState,
-} from "./page-runtime/product-modal-context.js?v=release-20260509-160631";
+} from "./page-runtime/product-modal-context.js?v=release-20260611-151806";
 import {
   bindAccountShellEvents,
   bindAuthEntryEvents,
   bindBeginnerGuideEvents,
   bindPageDockEvents,
-} from "./page-runtime/page-shell-bindings.js?v=release-20260509-160631";
-import { bindHelperShellEvents } from "./page-runtime/helper-shell-bindings.js?v=release-20260509-160631";
-import { bindPageInteractionEvents } from "./page-runtime/page-interaction-bindings.js?v=release-20260509-160631";
+} from "./page-runtime/page-shell-bindings.js?v=release-20260611-151806";
+import { bindHelperShellEvents } from "./page-runtime/helper-shell-bindings.js?v=release-20260611-151806";
+import { bindPageInteractionEvents } from "./page-runtime/page-interaction-bindings.js?v=release-20260611-151806";
 import {
   getLoginEntryHrefRuntime,
   getPostAuthSurfaceUrlRuntime,
@@ -275,7 +280,7 @@ import {
   setActiveDockTargetRuntime,
   syncDiscountDockVisibilityRuntime,
   syncDockWithViewportRuntime,
-} from "./page-runtime/page-navigation-runtime.js?v=release-20260509-160631";
+} from "./page-runtime/page-navigation-runtime.js?v=release-20260611-151806";
 import {
   handleDiscountCategoryClickRuntime,
   handleDiscountDetailClickRuntime,
@@ -291,8 +296,8 @@ import {
   handleProductPaginationClickRuntime,
   handleProductSortChangeRuntime,
   handleProductSubcategoryClickRuntime,
-} from "./page-runtime/product-list-runtime.js?v=release-20260509-160631";
-import { getStartupTasksForMode } from "./page-startups/index.js?v=release-20260509-160631";
+} from "./page-runtime/product-list-runtime.js?v=release-20260611-151806";
+import { getStartupTasksForMode } from "./page-startups/index.js?v=release-20260611-151806";
 
 const SEASON_DURATION_DAYS = 28;
 const SEASON_FIRST_WEEK_DAYS = 7;
@@ -384,6 +389,7 @@ const accountProfileForm = document.getElementById("account-profile-form");
 const accountRoleNameInput = document.getElementById("account-role-name");
 const accountServerInput = document.getElementById("account-server");
 const accountNicknameInput = document.getElementById("account-nickname");
+const accountContactInput = document.getElementById("account-contact");
 const accountPasswordPanel = document.getElementById("account-password-panel");
 const accountPasswordForm = document.getElementById("account-password-form");
 const accountCurrentPasswordInput = document.getElementById("account-current-password");
@@ -505,7 +511,8 @@ let selectedRechargeOrderType = "normal";
 let selectedRechargePaymentChannel = "alipay_qr";
 let selectedGuestTransferPaymentChannel = "alipay_qr";
 let pendingDirectPurchaseContext = null;
-let selectedDrawServiceAmount = 200;
+let selectedDrawServiceTierKey = "tier_8";
+let selectedDrawServiceWan = 1;
 let productSearchTimer = null;
 let discountSearchTimer = null;
 let activeAuthTab = "register";
@@ -516,10 +523,28 @@ let deferredAccountBootstrapQueued = false;
 let recentSalesItems = [];
 let currentAuctions = [];
 let currentAuctionBidSummaries = [];
+let currentAccountOrders = [];
+let currentEscrowTrades = [];
+let activePurchaseView = "mall";
+let purchasePaginationState = {
+  mall: 1,
+  escrow_buy: 1,
+  escrow_sell: 1,
+};
 let activeAuctionStatus = "live";
 let currentHelperBindings = [];
 let currentHelperInventories = [];
 let currentHelperMergedItems = [];
+let currentHelperInventorySummary = null;
+let currentHelperInventoryPage = null;
+let helperInventoryQuery = {
+  page: 1,
+  pageSize: 30,
+  keyword: "",
+  bindingId: "",
+  merged: false,
+};
+let currentConsignmentListings = [];
 let currentHelperSnapshots = [];
 let currentHelperActionLogs = [];
 let currentHelperRestorePreview = null;
@@ -536,6 +561,11 @@ let helperInventorySyncState = {
   completed: 0,
   failures: [],
   currentBindingId: null,
+  currentRequestId: "",
+  currentRoleName: "",
+  itemTimeoutId: null,
+  pendingInventories: [],
+  batchSaving: false,
 };
 let helperInventoryImportState = {
   running: false,
@@ -562,12 +592,48 @@ function setCurrentAuctionBidSummaries(items) {
   currentAuctionBidSummaries = Array.isArray(items) ? items : [];
 }
 
+function setCurrentAccountOrders(items) {
+  currentAccountOrders = Array.isArray(items) ? items : [];
+}
+
+function getPurchasePage(view) {
+  return Math.max(Number(purchasePaginationState?.[view] || 1) || 1, 1);
+}
+
+function renderCurrentAccountPurchases() {
+  renderProfile(currentProfile, currentQuota, currentAccountOrders, currentEscrowTrades);
+}
+
+function setActivePurchaseView(view) {
+  const normalized = ["mall", "escrow_buy", "escrow_sell"].includes(String(view || ""))
+    ? String(view)
+    : "mall";
+  activePurchaseView = normalized;
+  renderCurrentAccountPurchases();
+}
+
+function changePurchasePage(view, page) {
+  const normalized = ["mall", "escrow_buy", "escrow_sell"].includes(String(view || ""))
+    ? String(view)
+    : activePurchaseView;
+  purchasePaginationState = {
+    ...purchasePaginationState,
+    [normalized]: Math.max(Number(page) || 1, 1),
+  };
+  activePurchaseView = normalized;
+  renderCurrentAccountPurchases();
+}
+
 function setCurrentHelperBindings(items) {
   currentHelperBindings = Array.isArray(items) ? items : [];
 }
 
 function getCurrentHelperBindings() {
   return currentHelperBindings;
+}
+
+function findHelperBindingById(bindingId) {
+  return (currentHelperBindings || []).find((item) => Number(item?.id || 0) === Number(bindingId || 0)) || null;
 }
 
 function setCurrentHelperInventories(items) {
@@ -581,6 +647,29 @@ function getCurrentHelperInventories() {
 function setCurrentHelperMergedItems(items) {
   currentHelperMergedItems = Array.isArray(items) ? items : [];
   helperInventoryExpanded = false;
+}
+
+function setCurrentHelperInventorySummary(summary) {
+  currentHelperInventorySummary = summary && typeof summary === "object" ? { ...summary } : null;
+}
+
+function setCurrentHelperInventoryPage(page) {
+  currentHelperInventoryPage = page && typeof page === "object" ? { ...page } : null;
+}
+
+function getHelperInventoryQuery() {
+  return { ...helperInventoryQuery };
+}
+
+function updateHelperInventoryQuery(patch = {}) {
+  helperInventoryQuery = {
+    ...helperInventoryQuery,
+    ...(patch || {}),
+  };
+}
+
+function setCurrentConsignmentListings(items) {
+  currentConsignmentListings = Array.isArray(items) ? items : [];
 }
 
 function setCurrentHelperSnapshots(items) {
@@ -716,12 +805,20 @@ function resetAccountSessionState() {
   currentRechargeOrders = [];
   currentProfile = null;
   currentQuota = null;
+  currentAccountOrders = [];
+  currentEscrowTrades = [];
+  activePurchaseView = "mall";
+  purchasePaginationState = { mall: 1, escrow_buy: 1, escrow_sell: 1 };
   selectedRechargePaymentChannel = "alipay_qr";
   pendingDirectPurchaseContext = null;
   setCurrentAuctionBidSummaries([]);
   currentHelperBindings = [];
   currentHelperInventories = [];
   currentHelperMergedItems = [];
+  currentHelperInventorySummary = null;
+  currentHelperInventoryPage = null;
+  helperInventoryQuery = { page: 1, pageSize: 30, keyword: "", bindingId: "", merged: false };
+  currentConsignmentListings = [];
   currentHelperSnapshots = [];
   currentHelperActionLogs = [];
   currentHelperRestorePreview = null;
@@ -789,15 +886,17 @@ function scheduleDeferredAccountBootstrap() {
   return true;
 }
 
-function applyLoadedAccountState({ profile, quota, orders, rechargeConfig, rechargeOrders }) {
+function applyLoadedAccountState({ profile, quota, orders, rechargeConfig, rechargeOrders, escrowTrades }) {
   deferredAccountBootstrapQueued = false;
   currentRechargeConfig = rechargeConfig;
   publicRechargeConfig = rechargeConfig;
   currentRechargeOrders = rechargeOrders || [];
+  setCurrentAccountOrders(orders || []);
+  currentEscrowTrades = escrowTrades || [];
   currentProfile = profile;
   currentQuota = quota;
   renderSessionSummary(profile);
-  renderProfile(profile, quota, orders || []);
+  renderProfile(profile, quota, orders || [], currentEscrowTrades);
   renderBeginnerGuide(profile, orders || [], rechargeOrders || []);
   renderRechargeSection(profile, rechargeConfig, rechargeOrders || []);
   renderDrawServiceZone(profile, quota);
@@ -913,12 +1012,9 @@ const discountPaginationState = {
 const BEGINNER_GUIDE_REWARD_QUOTA = 1000;
 const DRAW_SERVICE_MIN_QUOTA = 200;
 const DRAW_SERVICE_STEP_QUOTA = 200;
-const DRAW_SERVICE_MILESTONE_QUOTA = 50000;
-const DRAW_SERVICE_FIRST_REBATE_QUOTA = 10000;
-const DRAW_SERVICE_REPEAT_REBATE_QUOTA = 5000;
 const AUCTION_COUNTDOWN_TICK_MS = 1000;
 const POST_AUTH_TARGET_KEY = "gongfa_post_auth_target_v1";
-const HELPER_CACHE_BUSTER = "20260405-helper-positionfix-1";
+const HELPER_CACHE_BUSTER = "20260513-helper-inventory-sync-2";
 const debugState = new Map();
 const HELPER_EQUIPMENT_PART_NAMES = {
   1: "武器",
@@ -965,12 +1061,7 @@ function normalizeHelperAttachmentUid(value) {
 }
 
 function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+  return sharedEscapeHtml(value);
 }
 
 function normalizeHelperDisplayRoleName(value, roleId = "") {
@@ -1524,6 +1615,7 @@ function fillAccountForms(profile) {
   accountServerInput.value = profile?.game_server || "";
   accountServerInput.disabled = !profile;
   accountNicknameInput.value = profile?.nickname || "";
+  if (accountContactInput) accountContactInput.value = profile?.contact_info || "";
 }
 
 function setProductDetailMessage(text, type = "") {
@@ -1532,11 +1624,7 @@ function setProductDetailMessage(text, type = "") {
 }
 
 function pickErrorMessage(error, fallback) {
-  const details = error?.payload?.details;
-  if (Array.isArray(details) && details.length > 0) {
-    return details.join(", ");
-  }
-  return error?.payload?.error || error?.message || fallback;
+  return sharedPickErrorMessage(error, fallback);
 }
 
 function getCurrentQuotaValue() {
@@ -1589,6 +1677,10 @@ function getHelperRendererContext() {
     currentHelperBindings,
     currentHelperInventories,
     currentHelperMergedItems,
+    currentHelperInventorySummary,
+    currentHelperInventoryPage,
+    helperInventoryQuery,
+    currentConsignmentListings,
     currentHelperSnapshots,
     currentHelperActionLogs,
     currentHelperRestorePreview,
@@ -1924,6 +2016,14 @@ function getHelperShellBindingsContext() {
       helperInventoryExpanded = Boolean(expanded);
       renderHelperInventoryPanel();
     },
+    applyHelperInventoryFilter,
+    changeHelperInventoryPage,
+    submitConsignmentListing,
+    withdrawConsignmentListing,
+    submitEscrowDelivery,
+    getHelperInventoryPage: () => currentHelperInventoryPage,
+    getHelperInventoryQuery,
+    getCurrentHelperInventoryItems: () => currentHelperMergedItems,
     findHelperBinding: (bindingId) =>
       (currentHelperBindings || []).find((item) => Number(item?.id || 0) === Number(bindingId || 0)),
     getCurrentProfile,
@@ -2219,6 +2319,10 @@ async function loadHelperInventories() {
     isHelperInventoryEnabled,
     setCurrentHelperInventories,
     setCurrentHelperMergedItems,
+    setCurrentHelperInventorySummary,
+    setCurrentHelperInventoryPage,
+    getHelperInventoryQuery,
+    setCurrentConsignmentListings,
     renderHelperInventoryPanel,
     apiFetch,
     setHelperInventoryMessage,
@@ -2245,6 +2349,7 @@ async function loadHelperSnapshots() {
 }
 
 function resetHelperInventorySyncState() {
+  clearHelperInventorySyncItemTimeout();
   helperInventorySyncState = {
     running: false,
     mode: "",
@@ -2253,43 +2358,172 @@ function resetHelperInventorySyncState() {
     completed: 0,
     failures: [],
     currentBindingId: null,
+    currentRequestId: "",
+    currentRoleName: "",
+    itemTimeoutId: null,
+    pendingInventories: [],
+    batchSaving: false,
   };
+}
+
+function clearHelperInventorySyncItemTimeout() {
+  if (helperInventorySyncState?.itemTimeoutId) {
+    window.clearTimeout(helperInventorySyncState.itemTimeoutId);
+  }
+  helperInventorySyncState = {
+    ...helperInventorySyncState,
+    itemTimeoutId: null,
+  };
+}
+
+function isCurrentHelperInventoryBridgeRequest(requestId) {
+  const normalized = String(requestId || "").trim();
+  if (!normalized) return true;
+  return String(helperInventorySyncState?.currentRequestId || "").trim() === normalized;
+}
+
+function isCurrentHelperInventoryBridgePayload(payload = {}) {
+  if (!helperInventorySyncState.running) return true;
+  const requestId = String(payload?.bridge_request_id || "").trim();
+  const currentRequestId = String(helperInventorySyncState?.currentRequestId || "").trim();
+  if (requestId && currentRequestId) {
+    return requestId === currentRequestId;
+  }
+  const payloadBindingId = Number(payload?.binding_id || 0);
+  const currentBindingId = Number(helperInventorySyncState?.currentBindingId || 0);
+  return !payloadBindingId || !currentBindingId || payloadBindingId === currentBindingId;
+}
+
+function failCurrentHelperInventorySyncByTimeout(requestId) {
+  if (!helperInventorySyncState.running || !isCurrentHelperInventoryBridgeRequest(requestId)) return;
+  const currentBindingId = Number(helperInventorySyncState.currentBindingId || 0);
+  const roleName = String(helperInventorySyncState.currentRoleName || "").trim() || "未命名角色";
+  clearHelperBridgeBackgroundFrame();
+  closeHelperBridgeModal();
+  helperInventorySyncState.failures = [
+    ...(Array.isArray(helperInventorySyncState.failures) ? helperInventorySyncState.failures : []),
+    {
+      binding_id: currentBindingId,
+      role_name: roleName,
+      message: "同步超过 120 秒没有返回，已自动跳过这个炉子。",
+    },
+  ];
+  helperInventorySyncState.currentBindingId = null;
+  helperInventorySyncState.currentRequestId = "";
+  helperInventorySyncState.currentRoleName = "";
+  helperInventorySyncState.itemTimeoutId = null;
+  setHelperInventoryMessage(`同步 ${roleName} 超时，已跳过并继续处理后续炉子。`, "error");
+  renderHelperInventoryPanel();
+  startNextHelperInventorySyncInQueue();
+}
+
+function shouldDeferHelperInventoryBatchSave() {
+  return helperInventorySyncState.running === true && helperInventorySyncState.mode === "all";
+}
+
+function queueHelperInventoryBatchPayload(payload) {
+  const nextState = { ...helperInventorySyncState };
+  nextState.pendingInventories = [
+    ...(Array.isArray(nextState.pendingInventories) ? nextState.pendingInventories : []),
+    {
+      binding_id:
+        payload?.binding_id === undefined || payload?.binding_id === null
+          ? null
+          : Number(payload.binding_id),
+      source_type: "helper_bridge",
+      summary: payload?.summary || {},
+      items: Array.isArray(payload?.items) ? payload.items : [],
+    },
+  ];
+  setHelperInventorySyncState(nextState);
+  return {
+    deferred: true,
+    summary: payload?.summary || {},
+    items: Array.isArray(payload?.items) ? payload.items : [],
+    binding: findHelperBindingById(payload?.binding_id),
+  };
+}
+
+async function flushHelperInventoryBatchSave() {
+  const pendingInventories = Array.isArray(helperInventorySyncState.pendingInventories)
+    ? helperInventorySyncState.pendingInventories
+    : [];
+  if (!pendingInventories.length) return null;
+  helperInventorySyncState.batchSaving = true;
+  renderHelperInventoryPanel();
+  const result = await apiFetch("/helper/inventories/batch", {
+    method: "POST",
+    body: JSON.stringify({ inventories: pendingInventories }),
+  });
+  helperInventorySyncState.pendingInventories = [];
+  helperInventorySyncState.batchSaving = false;
+  await loadHelperInventories();
+  return result;
 }
 
 function startNextHelperInventorySyncInQueue() {
   const nextBinding = helperInventorySyncState.queue.shift() || null;
   if (!nextBinding) {
-    const failureCount = helperInventorySyncState.failures.length;
-    const total = helperInventorySyncState.total || 0;
-    const completed = helperInventorySyncState.completed || 0;
-    const failureSummary = failureCount
-      ? `，其中 ${failureCount} 个炉子失败：${helperInventorySyncState.failures
-          .map((item) => item?.role_name || "未命名角色")
-          .join("、")}`
-      : "";
-    setHelperInventoryMessage(`功法仓库同步完成，成功 ${completed}/${total}${failureSummary}。`, failureCount ? "error" : "success");
-    resetHelperInventorySyncState();
-    renderHelperInventoryPanel();
+    const finishSync = () => {
+      const failureCount = helperInventorySyncState.failures.length;
+      const total = helperInventorySyncState.total || 0;
+      const completed = helperInventorySyncState.completed || 0;
+      const failureSummary = failureCount
+        ? `，其中 ${failureCount} 个炉子失败：${helperInventorySyncState.failures
+            .map((item) => item?.role_name || "未命名角色")
+            .join("、")}`
+        : "";
+      setHelperInventoryMessage(`功法仓库同步完成，成功 ${completed}/${total}${failureSummary}。`, failureCount ? "error" : "success");
+      resetHelperInventorySyncState();
+      renderHelperInventoryPanel();
+    };
+    if ((helperInventorySyncState.pendingInventories || []).length) {
+      setHelperInventoryMessage("正在批量写入功法仓库...", "success");
+      flushHelperInventoryBatchSave()
+        .then(finishSync)
+        .catch((error) => {
+          setHelperInventoryMessage(`批量保存功法仓库失败：${pickErrorMessage(error, "保存失败")}`, "error");
+          resetHelperInventorySyncState();
+          renderHelperInventoryPanel();
+        });
+      return;
+    }
+    finishSync();
     return;
   }
 
   helperInventorySyncState.currentBindingId = Number(nextBinding?.id || 0);
+  helperInventorySyncState.currentRequestId = `legacy-inventory-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  helperInventorySyncState.currentRoleName =
+    normalizeHelperDisplayRoleName(nextBinding?.game_role_name, nextBinding?.game_role_id) || "该角色";
+  clearHelperInventorySyncItemTimeout();
+  const requestId = helperInventorySyncState.currentRequestId;
+  helperInventorySyncState.itemTimeoutId = window.setTimeout(
+    () => failCurrentHelperInventorySyncByTimeout(requestId),
+    120000
+  );
   renderHelperInventoryPanel();
   const opened = runHelperBridgeInBackground(
-    buildHelperBridgeLegacyInventoryUrl(nextBinding),
+    buildHelperBridgeLegacyInventoryUrl(nextBinding, helperInventorySyncState.currentRequestId),
     "legacyInventory"
   );
   if (!opened) {
+    clearHelperInventorySyncItemTimeout();
     helperInventorySyncState.failures.push({
       binding_id: Number(nextBinding?.id || 0),
       role_name: normalizeHelperDisplayRoleName(nextBinding?.game_role_name, nextBinding?.game_role_id),
       message: "当前页面暂时无法启动功法同步",
     });
+    helperInventorySyncState.currentBindingId = null;
+    helperInventorySyncState.currentRequestId = "";
+    helperInventorySyncState.currentRoleName = "";
     startNextHelperInventorySyncInQueue();
     return;
   }
   setHelperInventoryMessage(
-    `正在同步 ${normalizeHelperDisplayRoleName(nextBinding?.game_role_name, nextBinding?.game_role_id) || "该角色"} 的功法库存（${helperInventorySyncState.completed + 1}/${helperInventorySyncState.total}）...`,
+    `正在同步 ${helperInventorySyncState.currentRoleName} 的功法库存（${helperInventorySyncState.completed + 1}/${helperInventorySyncState.total}）...`,
     "success"
   );
 }
@@ -2343,6 +2577,159 @@ function importHelperInventoryProducts() {
     loadProducts,
     loadHelperInventories,
   });
+}
+
+function applyHelperInventoryFilter({ keyword, bindingId } = {}) {
+  updateHelperInventoryQuery({
+    page: 1,
+    keyword: keyword === undefined ? helperInventoryQuery.keyword : String(keyword || "").trim(),
+    bindingId: bindingId === undefined ? helperInventoryQuery.bindingId : String(bindingId || "").trim(),
+  });
+  return loadHelperInventories();
+}
+
+function changeHelperInventoryPage(page) {
+  updateHelperInventoryQuery({ page: Math.max(Number(page) || 1, 1) });
+  return loadHelperInventories();
+}
+
+function openConsignmentListingForm() {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="modal-card" role="dialog" aria-modal="true">
+        <div class="modal-head">
+          <div>
+            <div class="eyebrow">玩家寄售</div>
+            <h3>上架寄售</h3>
+            <p>从 1 小时内同步的背包卡发起，提交后自动进入商城；人民币价格必填，额度和残卷可留空自动换算。</p>
+          </div>
+          <button class="ghost" type="button" data-consignment-form-cancel="1">关闭</button>
+        </div>
+        <form class="form-grid" data-consignment-form="1">
+          <label>人民币价格
+            <input name="price_yuan" type="number" min="0.01" step="0.01" placeholder="例如 420" required />
+          </label>
+          <div class="stack-item">
+            <strong>接受支付方式</strong>
+            <div class="preset-list">
+              <label class="preset-chip active"><input name="method" type="checkbox" value="cash" checked /> 人民币</label>
+              <label class="preset-chip active"><input name="method" type="checkbox" value="quota" checked /> 额度</label>
+              <label class="preset-chip active"><input name="method" type="checkbox" value="residual" checked /> 残卷</label>
+            </div>
+          </div>
+          <label>额度价格（可选）
+            <input name="quota_price" type="number" min="1" step="1" placeholder="留空自动换算" />
+          </label>
+          <label>残卷价格（可选）
+            <input name="residual_price" type="number" min="1" step="1" placeholder="留空自动换算" />
+          </label>
+          <label>备注（可选）
+            <textarea name="seller_remark" rows="3" placeholder="例如发货时间、联系方式、特殊说明"></textarea>
+          </label>
+          <div class="actions">
+            <button class="ghost" type="button" data-consignment-form-cancel="1">取消</button>
+            <button class="primary" type="submit">提交并上架</button>
+          </div>
+        </form>
+      </div>
+    `;
+    const cleanup = (value) => {
+      backdrop.remove();
+      resolve(value);
+    };
+    backdrop.querySelectorAll('[data-consignment-form-cancel="1"]').forEach((button) => {
+      button.addEventListener("click", () => cleanup(null));
+    });
+    backdrop.querySelectorAll('input[name="method"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        input.closest(".preset-chip")?.classList.toggle("active", input.checked);
+      });
+    });
+    backdrop.querySelector('[data-consignment-form="1"]')?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const methods = Array.from(form.querySelectorAll('input[name="method"]:checked')).map((input) => input.value);
+      cleanup({
+        priceText: form.querySelector('[name="price_yuan"]')?.value || "",
+        acceptedMethods: methods,
+        quotaPriceText: form.querySelector('[name="quota_price"]')?.value || "",
+        residualPriceText: form.querySelector('[name="residual_price"]')?.value || "",
+        sellerRemark: form.querySelector('[name="seller_remark"]')?.value || "",
+      });
+    });
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('[name="price_yuan"]')?.focus();
+  });
+}
+
+async function submitConsignmentListing(item) {
+  if (!item) return;
+  if (!String(currentProfile?.contact_info || "").trim()) {
+    setHelperInventoryMessage("上架寄售前请先到个人后台资料里填写微信或联系方式，方便买家遇到问题时联系。", "error");
+    if (window.confirm("上架寄售需要先填写微信或联系方式。现在去个人后台资料页补充吗？")) {
+      window.location.href = "me.html#profile-panel";
+    }
+    return;
+  }
+  const formResult = await openConsignmentListingForm();
+  if (!formResult) return;
+  const { priceText, acceptedMethods, quotaPriceText, residualPriceText, sellerRemark } = formResult;
+  const normalizedPriceText = String(priceText || "").trim();
+  const priceYuan = Number(normalizedPriceText);
+  if (!Number.isFinite(priceYuan) || priceYuan <= 0 || !/^\d+(?:\.\d{1,2})?$/.test(normalizedPriceText)) {
+    setHelperInventoryMessage("寄售价格需要是大于 0 的人民币金额，最多两位小数。", "error");
+    return;
+  }
+  if (!acceptedMethods.length) {
+    setHelperInventoryMessage("至少选择一种收款方式。", "error");
+    return;
+  }
+  const quotaPrice = String(quotaPriceText || "").trim() ? Number(quotaPriceText) : null;
+  const residualPrice = String(residualPriceText || "").trim() ? Number(residualPriceText) : null;
+  if (quotaPrice !== null && (!Number.isInteger(quotaPrice) || quotaPrice <= 0)) {
+    setHelperInventoryMessage("额度价格必须是大于 0 的整数，或留空自动换算。", "error");
+    return;
+  }
+  if (residualPrice !== null && (!Number.isInteger(residualPrice) || residualPrice <= 0)) {
+    setHelperInventoryMessage("残卷价格必须是大于 0 的整数，或留空自动换算。", "error");
+    return;
+  }
+  try {
+    await apiFetch("/helper/consignments", {
+      method: "POST",
+      body: JSON.stringify({
+        inventory_id: Number(item.inventory_id || 0),
+        binding_id: item.binding_id ?? null,
+        item_key: String(item.item_key || "").trim(),
+        price_yuan: Math.round(priceYuan * 100) / 100,
+        accepted_payment_methods: acceptedMethods,
+        quota_price: quotaPrice || undefined,
+        residual_price: residualPrice || undefined,
+        auto_price_methods: [
+          quotaPrice === null && acceptedMethods.includes("quota") ? "quota" : "",
+          residualPrice === null && acceptedMethods.includes("residual") ? "residual" : "",
+        ].filter(Boolean),
+        seller_remark: sellerRemark,
+      }),
+    });
+    setHelperInventoryMessage("寄售已提交并自动上架到商城。", "success");
+    await loadHelperInventories();
+  } catch (error) {
+    setHelperInventoryMessage(`提交寄售失败：${pickErrorMessage(error, "提交失败")}`, "error");
+  }
+}
+
+async function withdrawConsignmentListing(listingId) {
+  if (!window.confirm("确定撤回这个寄售申请吗？")) return;
+  try {
+    await apiFetch(`/helper/consignments/${listingId}/withdraw`, { method: "PATCH" });
+    setHelperInventoryMessage("寄售申请已撤回。", "success");
+    await loadHelperInventories();
+  } catch (error) {
+    setHelperInventoryMessage(`撤回失败：${pickErrorMessage(error, "撤回失败")}`, "error");
+  }
 }
 
 async function loadHelperActionLogs() {
@@ -2703,6 +3090,11 @@ function handleHelperBridgeMessage(event) {
     setLocationHash,
     getHelperInventorySyncState,
     setHelperInventorySyncState,
+    clearHelperInventorySyncItemTimeout,
+    isCurrentHelperInventoryBridgeRequest,
+    isCurrentHelperInventoryBridgePayload,
+    shouldDeferHelperInventoryBatchSave,
+    queueHelperInventoryBatchPayload,
     normalizeHelperDisplayRoleName,
     setHelperInventoryMessage,
     startNextHelperInventorySyncInQueue,
@@ -2891,7 +3283,12 @@ function getSeasonFirstWeekWindow(rechargeConfig = getEffectiveRechargeConfig())
 }
 
 function isQuotaRestrictedTermGoldProduct(product) {
-  if (isBundle(product) || !isCurrentSeasonProduct(product) || getTierKey(product) !== "gold") {
+  if (
+    isBundle(product) ||
+    String(product?.item_kind || "") === "consignment" ||
+    !isCurrentSeasonProduct(product) ||
+    getTierKey(product) !== "gold"
+  ) {
     return false;
   }
   const termValues = getProductTermValues(product);
@@ -3083,6 +3480,10 @@ function getProductCashPriceText(product, rechargeConfig = getEffectiveRechargeC
   return getProductCashPriceTextRuntime(getCommerceBuilderContext(), product, rechargeConfig);
 }
 
+function getProductResidualPriceText(product, rechargeConfig = getEffectiveRechargeConfig()) {
+  return getProductResidualPriceTextRuntime(getCommerceBuilderContext(), product, rechargeConfig);
+}
+
 function getDirectPurchaseAmountYuan(product, rechargeConfig = getEffectiveRechargeConfig()) {
   return getDirectPurchaseAmountYuanRuntime(getCommerceBuilderContext(), product, rechargeConfig);
 }
@@ -3163,6 +3564,7 @@ function getProductCardRendererContext() {
     renderBundleCollage,
     getImagePayload,
     getProductCashPriceText,
+    getProductResidualPriceText,
     getOriginalQuotaPrice,
     isDiscountedProduct,
     isAttackFull,
@@ -3395,6 +3797,9 @@ function getAccountRendererContext() {
     formatRechargeReferenceLine,
     isResidualTransferOrder,
     formatRechargeChannelLabel,
+    getActivePurchaseView: () => activePurchaseView,
+    getPurchasePage,
+    getPurchasePageSize: () => 6,
   };
 }
 
@@ -3409,6 +3814,11 @@ function getAccountInteractionRuntimeContext() {
       activeAccountTab = value;
     },
     requestCancelOrder,
+    submitEscrowDelivery,
+    confirmEscrowReceipt,
+    disputeEscrowTrade,
+    setActivePurchaseView,
+    changePurchasePage,
     logoutCurrentSession,
     saveAccountProfile,
     changeAccountPassword,
@@ -3443,6 +3853,67 @@ function getRechargeInteractionRuntimeContext() {
     setAccountMessage,
     submitRechargeOrder,
   };
+}
+
+async function submitEscrowDelivery(tradeId) {
+  const note = window.prompt("填写发货说明（例如已发给哪个角色、时间、凭证说明）", "");
+  if (note === null) return;
+  if (!String(note || "").trim()) {
+    setNotice("请填写发货说明。", "error");
+    return;
+  }
+  try {
+    const trade = await apiFetch(`/orders/consignments/${tradeId}/delivery`, {
+      method: "POST",
+      body: JSON.stringify({ delivery_note: String(note).trim() }),
+    });
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/webp";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        await Promise.allSettled([loadAccount(), loadHelperInventories()]);
+        return;
+      }
+      const form = new FormData();
+      form.append("image", file);
+      await apiFetch(`/orders/consignments/${trade.id}/evidence-images`, {
+        method: "POST",
+        body: form,
+      });
+      setNotice("发货说明和证据图片已提交。", "success");
+      await Promise.allSettled([loadAccount(), loadHelperInventories()]);
+    };
+    input.click();
+  } catch (error) {
+    setNotice(`提交发货失败：${pickErrorMessage(error, "提交失败")}`, "error");
+  }
+}
+
+async function confirmEscrowReceipt(tradeId) {
+  if (!window.confirm("确认已经收到卡？确认后平台会结算给卖家。")) return;
+  try {
+    await apiFetch(`/orders/consignments/${tradeId}/confirm-receipt`, { method: "POST" });
+    setNotice("已确认收货。", "success");
+    await loadAccount();
+  } catch (error) {
+    setNotice(`确认失败：${pickErrorMessage(error, "确认失败")}`, "error");
+  }
+}
+
+async function disputeEscrowTrade(tradeId) {
+  const note = window.prompt("请简单说明纠纷原因", "") ?? "";
+  try {
+    await apiFetch(`/orders/consignments/${tradeId}/dispute`, {
+      method: "POST",
+      body: JSON.stringify({ dispute_note: note }),
+    });
+    setNotice("纠纷已提交，等待管理员处理。", "success");
+    await loadAccount();
+  } catch (error) {
+    setNotice(`提交纠纷失败：${pickErrorMessage(error, "提交失败")}`, "error");
+  }
 }
 
 function formatOrderStatus(status) {
@@ -3483,6 +3954,22 @@ function normalizeDrawServiceAmount(value) {
   });
 }
 
+function getDrawServiceConfig() {
+  return getEffectiveRechargeConfig()?.draw_service || null;
+}
+
+function normalizeDrawServiceWan(value) {
+  const config = getDrawServiceConfig();
+  return normalizeDrawServiceWanRuntime(value, {
+    minDrawWan: Number(config?.min_draw_wan || 1),
+    stepDrawWan: Number(config?.step_draw_wan || 1),
+  });
+}
+
+function getDrawServiceSelectionQuote(drawWanValue = null, tierKeyValue = null) {
+  return getDrawServiceSelectionQuoteRuntime(getDrawServiceRuntimeContext(), drawWanValue, tierKeyValue);
+}
+
 function setDrawServiceMessage(text, type = "") {
   if (!drawServiceMessage) return;
   drawServiceMessage.textContent = text || "";
@@ -3497,14 +3984,21 @@ function getDrawServiceRuntimeContext() {
   return {
     minQuota: DRAW_SERVICE_MIN_QUOTA,
     stepQuota: DRAW_SERVICE_STEP_QUOTA,
-    milestoneQuota: DRAW_SERVICE_MILESTONE_QUOTA,
+    getEffectiveRechargeConfig,
+    getDrawServiceConfig,
     getCurrentProfile: () => currentProfile,
     getCurrentQuota: () => currentQuota,
-    getSelectedDrawServiceAmount: () => selectedDrawServiceAmount,
-    setSelectedDrawServiceAmount: (value) => {
-      selectedDrawServiceAmount = Number(value || 0);
+    getSelectedDrawServiceTierKey: () => selectedDrawServiceTierKey,
+    setSelectedDrawServiceTierKey: (value) => {
+      selectedDrawServiceTierKey = String(value || "").trim();
+    },
+    getSelectedDrawServiceWan: () => selectedDrawServiceWan,
+    setSelectedDrawServiceWan: (value) => {
+      selectedDrawServiceWan = Number(value || 0);
     },
     normalizeDrawServiceAmount,
+    normalizeDrawServiceWan,
+    getDrawServiceSelectionQuote,
     updateDrawServiceQuote,
     renderDrawServiceZone,
     submitDrawServiceOrder,
@@ -3512,9 +4006,14 @@ function getDrawServiceRuntimeContext() {
 }
 
 function getDrawServiceRendererContext() {
+  const config = getDrawServiceConfig();
   return {
     minQuota: DRAW_SERVICE_MIN_QUOTA,
     stepQuota: DRAW_SERVICE_STEP_QUOTA,
+    rechargeConfig: getEffectiveRechargeConfig(),
+    drawServiceConfig: config,
+    selectedTierKey: selectedDrawServiceTierKey || config?.default_tier_key || "tier_8",
+    selectedDrawWan: selectedDrawServiceWan || config?.min_draw_wan || 1,
     presetAmounts: [200, 1000, 2000, 5000, 10000, 50000],
   };
 }
@@ -3527,12 +4026,18 @@ function getDrawServiceActionContext(event) {
     loadAccount,
     navigateToLoginEntry,
     normalizeDrawServiceAmount,
+    normalizeDrawServiceWan,
+    getDrawServiceSelectionQuote,
     setDrawServiceMessage,
     getCurrentProfile: () => currentProfile,
     getCurrentQuota: () => currentQuota,
-    getSelectedDrawServiceAmount: () => selectedDrawServiceAmount,
-    setSelectedDrawServiceAmount: (value) => {
-      selectedDrawServiceAmount = Number(value || 0);
+    getSelectedDrawServiceTierKey: () => selectedDrawServiceTierKey,
+    setSelectedDrawServiceTierKey: (value) => {
+      selectedDrawServiceTierKey = String(value || "").trim();
+    },
+    getSelectedDrawServiceWan: () => selectedDrawServiceWan,
+    setSelectedDrawServiceWan: (value) => {
+      selectedDrawServiceWan = Number(value || 0);
     },
   };
 }
@@ -3543,20 +4048,30 @@ function renderDrawServiceZone(profile, quota) {
   currentQuota = quota || null;
 
   if (!profile) {
-    drawServiceBody.innerHTML = renderDrawServiceZoneContent(getDrawServiceRendererContext(), null, null, selectedDrawServiceAmount);
+    drawServiceBody.innerHTML = renderDrawServiceZoneContent(getDrawServiceRendererContext(), null, null, {
+      tierKey: selectedDrawServiceTierKey,
+      drawAmountWan: selectedDrawServiceWan,
+    });
     setDrawServiceMessage("");
     return;
   }
 
-  if (!normalizeDrawServiceAmount(selectedDrawServiceAmount)) {
-    selectedDrawServiceAmount = DRAW_SERVICE_MIN_QUOTA;
+  const config = getDrawServiceConfig();
+  if (!selectedDrawServiceTierKey) {
+    selectedDrawServiceTierKey = config?.default_tier_key || "tier_8";
+  }
+  if (!normalizeDrawServiceWan(selectedDrawServiceWan)) {
+    selectedDrawServiceWan = Number(config?.min_draw_wan || 1);
   }
 
   drawServiceBody.innerHTML = renderDrawServiceZoneContent(
     getDrawServiceRendererContext(),
     profile,
     quota,
-    selectedDrawServiceAmount
+    {
+      tierKey: selectedDrawServiceTierKey,
+      drawAmountWan: selectedDrawServiceWan,
+    }
   );
   updateDrawServiceQuote();
   setDrawServiceMessage("");
@@ -3767,8 +4282,8 @@ function renderBeginnerGuide(profile, orders = [], rechargeOrders = []) {
   );
 }
 
-function renderProfile(profile, quota, orders) {
-  return renderProfileSectionView(getAccountRendererContext(), profile, quota, orders);
+function renderProfile(profile, quota, orders, escrowTrades = []) {
+  return renderProfileSectionView(getAccountRendererContext(), profile, quota, orders, escrowTrades);
 }
 
 function findPendingSeasonMemberOrder(rechargeOrders, rechargeConfig) {
@@ -3854,6 +4369,7 @@ function getProductModalRuntimeContext() {
     isAttackFull,
     isHpFull,
     getProductCashPriceText,
+    getProductResidualPriceText,
     getOriginalQuotaPrice,
     isDiscountedProduct,
     getQuotaPurchasePolicy,
@@ -3873,6 +4389,7 @@ function getProductModalRuntimeContext() {
     closeProductModal,
     toggleGuestTransferPanel,
     submitGuestTransferOrder,
+    submitConsignmentEscrowOrder,
     startDirectPurchase,
     confirmPurchase,
   });
@@ -3911,6 +4428,44 @@ async function submitGuestTransferOrder(event) {
       formatCashAmount,
     })
   );
+}
+
+async function submitConsignmentEscrowOrder(event) {
+  event.preventDefault();
+  const session = loadSession();
+  if (!session?.token) {
+    setProductDetailMessage("请先登录后再购买玩家寄售。", "error");
+    navigateToLoginEntry();
+    return;
+  }
+  const product = findProduct(activeItemId, activeItemKind);
+  if (!product) {
+    setProductDetailMessage("当前寄售商品不存在或已下架。", "error");
+    return;
+  }
+  const method = document.querySelector('input[name="consignment-payment-method"]:checked')?.value || "";
+  const paymentReference = String(document.getElementById("consignment-payment-reference")?.value || "").trim();
+  const buyerNote = String(document.getElementById("consignment-buyer-note")?.value || "").trim();
+  if (method !== "quota" && !paymentReference) {
+    setProductDetailMessage("请填写付款或转赠时间/备注。", "error");
+    return;
+  }
+  try {
+    const trade = await apiFetch("/orders/consignments", {
+      method: "POST",
+      body: JSON.stringify({
+        listing_id: Number(product.consignment_listing_id || product.item_id),
+        payment_method: method,
+        payment_reference: paymentReference || (method === "quota" ? "额度支付" : ""),
+        buyer_note: buyerNote || undefined,
+      }),
+    });
+    closeProductModal();
+    setNotice(`担保订单 #${trade.id} 已提交，商品已锁定。`, "success");
+    await Promise.allSettled([loadProducts({ resetPage: false }), loadAccount()]);
+  } catch (error) {
+    setProductDetailMessage(`担保订单提交失败：${pickErrorMessage(error, "提交失败")}`, "error");
+  }
 }
 
 function startDirectPurchase(itemId, itemKind = "card") {
@@ -4063,6 +4618,7 @@ async function saveAccountProfile(event) {
       apiFetch,
       accountRoleNameInput,
       accountNicknameInput,
+      accountContactInput,
       accountServerInput,
       saveSession,
       loadAccount,

@@ -3,7 +3,7 @@ import {
   openHelperRestoreAction,
   openHelperSnapshotAction,
   openHelperTeamSwitchAction,
-} from "./helper-actions.js?v=release-20260509-160631";
+} from "./helper-actions.js?v=release-20260611-151806";
 
 export function openHelperSnapshotPopupAction(ctx) {
   return openHelperSnapshotAction({

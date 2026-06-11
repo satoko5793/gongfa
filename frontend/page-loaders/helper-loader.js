@@ -44,17 +44,37 @@ export async function loadHelperInventoriesData(ctx) {
   if (!ctx.getCurrentProfile() || !ctx.isHelperInventoryEnabled()) {
     ctx.setCurrentHelperInventories([]);
     ctx.setCurrentHelperMergedItems([]);
+    ctx.setCurrentHelperInventorySummary?.(null);
+    ctx.setCurrentHelperInventoryPage?.(null);
+    ctx.setCurrentConsignmentListings?.([]);
     ctx.renderHelperInventoryPanel();
     return;
   }
 
   try {
-    const payload = await ctx.apiFetch("/helper/inventories");
-    ctx.setCurrentHelperInventories(Array.isArray(payload?.inventories) ? payload.inventories : []);
-    ctx.setCurrentHelperMergedItems(Array.isArray(payload?.merged_items) ? payload.merged_items : []);
+    const query = ctx.getHelperInventoryQuery?.() || {};
+    const params = new URLSearchParams();
+    params.set("page", String(query.page || 1));
+    params.set("page_size", String(query.pageSize || 30));
+    params.set("merged", query.merged ? "1" : "0");
+    if (query.keyword) params.set("keyword", String(query.keyword));
+    if (query.bindingId) params.set("binding_id", String(query.bindingId));
+    const [summary, pagePayload, consignments] = await Promise.all([
+      ctx.apiFetch("/helper/inventories/summary"),
+      ctx.apiFetch(`/helper/inventories/items?${params.toString()}`),
+      ctx.apiFetch("/helper/consignments").catch(() => []),
+    ]);
+    ctx.setCurrentHelperInventorySummary?.(summary || null);
+    ctx.setCurrentHelperInventories(Array.isArray(summary?.inventories) ? summary.inventories : []);
+    ctx.setCurrentHelperInventoryPage?.(pagePayload || null);
+    ctx.setCurrentHelperMergedItems(Array.isArray(pagePayload?.items) ? pagePayload.items : []);
+    ctx.setCurrentConsignmentListings?.(Array.isArray(consignments) ? consignments : []);
   } catch (error) {
     ctx.setCurrentHelperInventories([]);
     ctx.setCurrentHelperMergedItems([]);
+    ctx.setCurrentHelperInventorySummary?.(null);
+    ctx.setCurrentHelperInventoryPage?.(null);
+    ctx.setCurrentConsignmentListings?.([]);
     ctx.setHelperInventoryMessage(`读取功法仓库失败：${ctx.pickErrorMessage(error, "读取失败")}`, "error");
   } finally {
     ctx.renderHelperInventoryPanel();

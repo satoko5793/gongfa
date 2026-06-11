@@ -1,3 +1,8 @@
+import {
+  RESIDUAL_ANCHOR_AMOUNT,
+  getResidualPurchaseAnchorCashYuan,
+} from "../payment-conversion.js?v=release-20260611-151806";
+
 function hasBundleVariant(product, patch = {}) {
   const variants = Array.isArray(product?.bundle_variants) ? product.bundle_variants : [];
   const selected = product?.selected_bundle_options || {};
@@ -25,6 +30,14 @@ function renderDynamicBundleOption(ctx, product, option, field, selectedValue) {
   `;
 }
 
+function formatConsignmentOption(ctx, option, rechargeConfig) {
+  const method = String(option?.method || "").trim();
+  if (method === "cash") return `${Number(option.price_yuan || 0)} 元`;
+  if (method === "quota") return `${Number(option.price_quota || 0)} 额度`;
+  if (method === "residual") return `${Number(option.transfer_amount || 0)} ${option.transfer_unit || rechargeConfig?.residual_unit_label || "残卷"}`;
+  return "-";
+}
+
 export function renderProductDetailModalContent(ctx, model) {
   const {
     product,
@@ -38,12 +51,77 @@ export function renderProductDetailModalContent(ctx, model) {
     attackIsFull,
     hpIsFull,
     cashPriceText,
+    residualPriceText,
     originalPriceQuota,
     discounted,
     termBadges,
     rechargeConfig,
     quotaPolicy,
   } = model;
+  const isConsignment = String(product?.item_kind || "") === "consignment" || Boolean(product?.is_consignment);
+  if (isConsignment) {
+    const paymentOptions =
+      Array.isArray(product?.payment_options) && product.payment_options.length
+        ? product.payment_options
+        : [{ method: "cash", label: "人民币", price_yuan: Number(product?.price_yuan || product?.price_quota || 0) }];
+    const sellerName = String(product?.seller_display_name || product?.seller_role_name || "").trim() || "寄售卖家";
+    const sellerContact = String(product?.seller_contact_info || "").trim();
+    const priceSummary = paymentOptions.map((option) => formatConsignmentOption(ctx, option, rechargeConfig)).join(" / ");
+    return `
+      <div class="product-detail-shell">
+        <div class="product-detail-layout">
+          <div class="product-detail-cover">${ctx.renderProductVisual(product, "detail")}</div>
+          <div class="product-detail-main">
+            <div class="product-headline">
+              <div class="product-name">${ctx.escapeHtml(product.name || "功法")}</div>
+              <div class="product-type-chip">${ctx.escapeHtml(ctx.getTierLabel(product))} / ${ctx.escapeHtml(product.uid || "-")}</div>
+            </div>
+            <div class="product-meta">玩家寄售 / ${ctx.escapeHtml(ctx.getSeasonDisplayText(product))}</div>
+            <div class="term-row">${termBadges.length ? termBadges.map((badge) => ctx.renderTermBadge(badge)).join("") : '<span class="term-empty">无额外词条</span>'}</div>
+            <div class="detail-list">
+              <div class="detail-row"><strong>价格</strong><span>${ctx.escapeHtml(priceSummary || "-")}</span></div>
+              <div class="detail-row"><strong>攻击</strong><span>${ctx.renderFullStatValue(product.attack_value || 0, attackIsFull)}</span></div>
+              <div class="detail-row"><strong>血量</strong><span>${ctx.renderFullStatValue(product.hp_value || 0, hpIsFull)}</span></div>
+              <div class="detail-row"><strong>赛季</strong><span>${ctx.escapeHtml(ctx.getSeasonDisplayText(product))}</span></div>
+              <div class="detail-row"><strong>库存</strong><span>寄售 1 张</span></div>
+              <div class="detail-row"><strong>卖家</strong><span>${ctx.escapeHtml(sellerName)}</span></div>
+              <div class="detail-row"><strong>联系方式</strong><span>${ctx.escapeHtml(sellerContact || "未登记，请通过平台联系")}</span></div>
+            </div>
+            <div class="direct-purchase-panel">
+              <div class="direct-purchase-panel-head">
+                <strong>平台担保购买</strong>
+                <span>转账、额度或残卷都会先交给平台托管；卖家发卡后确认收货，再结算给卖家。</span>
+              </div>
+              <form id="consignment-escrow-form" class="guest-transfer-form" novalidate>
+                <div class="preset-list guest-transfer-methods">
+                  ${paymentOptions
+                    .map(
+                      (option, index) => `
+                        <label class="preset-chip ${index === 0 ? "active" : ""}">
+                          <input type="radio" name="consignment-payment-method" value="${ctx.escapeHtml(option.method)}" ${index === 0 ? "checked" : ""} />
+                          ${ctx.escapeHtml(option.label || option.method)} ${ctx.escapeHtml(formatConsignmentOption(ctx, option, rechargeConfig))}
+                        </label>
+                      `
+                    )
+                    .join("")}
+                </div>
+                <label class="guest-transfer-field-span">付款/转赠备注
+                  <input id="consignment-payment-reference" type="text" maxlength="100" placeholder="额度支付可填：额度支付；转账/残卷请填时间或说明" />
+                </label>
+                <label class="guest-transfer-field-span">补充说明（可选）
+                  <textarea id="consignment-buyer-note" rows="3" placeholder="例如：收卡角色、联系方式、付款截图说明"></textarea>
+                </label>
+                <div class="guest-transfer-form-actions">
+                  <button class="ghost" type="button" id="modal-close-btn">返回</button>
+                  <button class="primary" type="submit">提交担保订单</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   const detailRows = ctx.isBundle(product)
     ? `
@@ -149,7 +227,7 @@ export function renderProductDetailModalContent(ctx, model) {
           ${ctx.isBundle(product) ? `<div class="product-meta">${ctx.escapeHtml(product.description || product.main_attrs || "套餐商品")}</div>` : ""}
           <div class="term-row">${termBadges.length > 0 ? termBadges.map((badge) => ctx.renderTermBadge(badge)).join("") : '<span class="term-empty">无额外词条</span>'}</div>
           <div class="detail-list">
-            <div class="detail-row"><strong>价格</strong><span data-product-price-text="1">${discounted ? `原价 ${originalPriceQuota} / ` : ""}${Number(product.price_quota || 0)} 额度${cashPriceText ? ` / ${ctx.escapeHtml(cashPriceText)}` : ""}${discounted ? ` / ${ctx.escapeHtml(product.discount_label || "折扣")}` : ""}</span></div>
+            <div class="detail-row"><strong>价格</strong><span data-product-price-text="1">${discounted ? `原价 ${originalPriceQuota} / ` : ""}${Number(product.price_quota || 0)} 额度${cashPriceText ? ` / ${ctx.escapeHtml(cashPriceText)}` : ""}${residualPriceText ? ` / ${ctx.escapeHtml(residualPriceText)}` : ""}${discounted ? ` / ${ctx.escapeHtml(product.discount_label || "折扣")}` : ""}</span></div>
             ${detailRows}
             <div class="detail-row"><strong>额度购买账号</strong><span>${ctx.escapeHtml(sessionProfile?.game_role_name || "未登录")}</span></div>
           </div>
@@ -224,7 +302,7 @@ export function renderProductDetailModalContent(ctx, model) {
                             <div class="guest-transfer-card-title"><strong>${ctx.escapeHtml(rechargeConfig?.residual_admin_role_name || "admin残卷")}</strong></div>
                             <div class="muted">游戏名称：${ctx.escapeHtml(rechargeConfig?.residual_admin_game_name || "-")}</div>
                             <div class="muted">游戏 ID：${ctx.escapeHtml(rechargeConfig?.residual_admin_role_id || "-")}</div>
-                            <div class="muted">兑换比例：1 ${ctx.escapeHtml(rechargeConfig?.residual_unit_label || "残卷")} = ${Number(rechargeConfig?.residual_quota_per_unit || 1)} 额度</div>
+                            <div class="muted">购卡残卷比例：${getResidualPurchaseAnchorCashYuan(rechargeConfig)} 元 = ${RESIDUAL_ANCHOR_AMOUNT} ${ctx.escapeHtml(rechargeConfig?.residual_unit_label || "残卷")}</div>
                           `
                         : `
                             <img class="recharge-qr-image" src="${ctx.escapeHtml(activeGuestPaymentMethod.imageUrl || "")}" alt="${ctx.escapeHtml(activeGuestPaymentMethod.name || "收款码")}" />
@@ -259,7 +337,7 @@ export function renderProductDetailModalContent(ctx, model) {
                             ? `${Number(directResidualAmount || 0)} ${rechargeConfig?.residual_unit_label || "残卷"}`
                             : ctx.formatCashAmount(directPurchaseContext.amountYuan)
                         )}</strong>
-                        <span class="muted">${Number(directPurchaseContext.quotaAmount)} 额度，商品会先锁定</span>
+                        <span class="muted">${Number(directPurchaseContext.quotaAmount)} 额度 / ${ctx.escapeHtml(ctx.formatCashAmount(directPurchaseContext.amountYuan))}，商品会先锁定</span>
                       </div>
                     </div>
                     <div class="guest-transfer-fields">

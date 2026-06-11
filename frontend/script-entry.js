@@ -1,7 +1,7 @@
-import { loadSession } from "./shared.js?v=release-20260509-160631";
-import { bootDeferredPageEntry } from "./page-entry-bootstrap.js?v=release-20260509-160631";
-import { applyEntryNavSessionState, getEntrySessionProfile } from "./page-entry-session.js?v=release-20260509-160631";
-import { bindWakeOnHelperIntent, prepareHelperLiteShell } from "./page-entry-helper-lite.js?v=release-20260509-160631";
+import { loadSession } from "./shared.js?v=release-20260611-151806";
+import { bootDeferredPageEntry } from "./page-entry-bootstrap.js?v=release-20260611-151806";
+import { applyEntryNavSessionState, getEntrySessionProfile } from "./page-entry-session.js?v=release-20260611-151806";
+import { bindWakeOnHelperIntent, prepareHelperLiteShell } from "./page-entry-helper-lite.js?v=release-20260611-151806";
 
 const helperLabSection = document.getElementById("helper-lab");
 const helperLabBadge = document.getElementById("helper-lab-badge");
@@ -20,7 +20,7 @@ const helperClearPreviewBtn = document.getElementById("helper-clear-preview-btn"
 const sessionProfile = getEntrySessionProfile(loadSession());
 const hasSession = Boolean(loadSession()?.token);
 
-const entry = bootDeferredPageEntry("script", "./app.js?v=release-20260509-160631", {
+const entry = bootDeferredPageEntry("script", "./app.js?v=release-20260611-151806", {
   idleTimeout: hasSession ? 500 : 1800,
   fallbackDelay: hasSession ? 100 : 600,
   autoBoot: false,

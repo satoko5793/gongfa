@@ -60,6 +60,8 @@ export function startHelperInventorySyncAction(ctx, bindings, mode = "current") 
     completed: 0,
     failures: [],
     currentBindingId: null,
+    pendingInventories: [],
+    batchSaving: false,
   });
   ctx.renderHelperInventoryPanel();
   ctx.startNextHelperInventorySyncInQueue();
@@ -133,7 +135,9 @@ export async function importHelperInventoryProductsAction(ctx) {
     return;
   }
   const inventories = Array.isArray(ctx.getCurrentHelperInventories()) ? ctx.getCurrentHelperInventories() : [];
-  const hasItems = inventories.some((inventory) => Array.isArray(inventory?.items) && inventory.items.length > 0);
+  const hasItems = inventories.some(
+    (inventory) => Number(inventory?.item_count || 0) > 0 || (Array.isArray(inventory?.items) && inventory.items.length > 0)
+  );
   if (!hasItems) {
     ctx.setHelperInventoryMessage("还没有已同步的功法库存，先同步当前号或全部炉子。", "error");
     return;

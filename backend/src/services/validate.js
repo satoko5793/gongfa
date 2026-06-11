@@ -59,6 +59,12 @@ function isPositiveMoneyAmount(value) {
   return Math.abs(numeric * 100 - Math.round(numeric * 100)) < 0.000001;
 }
 
+function isNonNegativeMoneyAmount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return false;
+  return Math.abs(numeric * 100 - Math.round(numeric * 100)) < 0.000001;
+}
+
 function validateBindInput(body) {
   const errors = [];
   if (!requiredString(body.game_role_id)) errors.push("game_role_id_required");
@@ -123,6 +129,82 @@ function validateHelperInventoryInput(body) {
   }
   if (!Array.isArray(body?.items)) {
     errors.push("items_required");
+  }
+  return [...new Set(errors)];
+}
+
+function validateHelperInventoryBatchInput(body) {
+  const errors = [];
+  const inventories = Array.isArray(body?.inventories) ? body.inventories : null;
+  if (!inventories || inventories.length === 0) {
+    errors.push("inventories_required");
+    return errors;
+  }
+  if (inventories.length > 20) {
+    errors.push("inventories_too_many");
+  }
+  inventories.forEach((item, index) => {
+    validateHelperInventoryInput(item || {}).forEach((error) => {
+      errors.push(`inventories_${index}_${error}`);
+    });
+  });
+  return [...new Set(errors)];
+}
+
+function validateConsignmentCreateInput(body) {
+  const errors = [];
+  if (!Number.isInteger(Number(body?.inventory_id)) || Number(body.inventory_id) <= 0) {
+    errors.push("inventory_id_required");
+  }
+  if (
+    body?.binding_id !== undefined &&
+    body?.binding_id !== null &&
+    String(body.binding_id).trim() !== "" &&
+    (!Number.isInteger(Number(body.binding_id)) || Number(body.binding_id) <= 0)
+  ) {
+    errors.push("binding_id_invalid");
+  }
+  if (!requiredString(body?.item_key)) {
+    errors.push("item_key_required");
+  }
+  const rawPrice = body?.price_yuan !== undefined ? body.price_yuan : body?.price_quota;
+  const priceText = String(rawPrice ?? "").trim();
+  const priceValue = Number(priceText);
+  if (!Number.isFinite(priceValue) || priceValue <= 0 || !/^\d+(?:\.\d{1,2})?$/.test(priceText)) {
+    errors.push("price_yuan_invalid");
+  }
+  if (body?.seller_remark !== undefined && !optionalString(body.seller_remark)) {
+    errors.push("seller_remark_invalid");
+  }
+  if (body?.accepted_payment_methods !== undefined) {
+    const methods = Array.isArray(body.accepted_payment_methods) ? body.accepted_payment_methods : [];
+    if (
+      !methods.length ||
+      methods.some((item) => !["cash", "quota", "residual"].includes(String(item || "").trim()))
+    ) {
+      errors.push("accepted_payment_methods_invalid");
+    }
+  }
+  for (const field of ["quota_price", "residual_price"]) {
+    if (
+      body?.[field] !== undefined &&
+      body?.[field] !== null &&
+      body?.[field] !== "" &&
+      (!Number.isInteger(Number(body[field])) || Number(body[field]) <= 0)
+    ) {
+      errors.push(`${field}_invalid`);
+    }
+  }
+  return [...new Set(errors)];
+}
+
+function validateConsignmentReviewInput(body) {
+  const errors = [];
+  if (!["approved", "rejected", "suspended"].includes(String(body?.status || "").trim())) {
+    errors.push("status_invalid");
+  }
+  if (body?.review_note !== undefined && !optionalString(body.review_note)) {
+    errors.push("review_note_invalid");
   }
   return [...new Set(errors)];
 }
@@ -249,7 +331,8 @@ function validateProfileUpdateInput(body) {
   if (
     body.game_role_name === undefined &&
     body.nickname === undefined &&
-    body.game_server === undefined
+    body.game_server === undefined &&
+    body.contact_info === undefined
   ) {
     errors.push("profile_update_empty");
   }
@@ -261,6 +344,9 @@ function validateProfileUpdateInput(body) {
   }
   if (body.game_server !== undefined && !requiredString(body.game_server)) {
     errors.push("game_server_required");
+  }
+  if (body.contact_info !== undefined && !optionalString(body.contact_info)) {
+    errors.push("contact_info_invalid");
   }
   return errors;
 }
@@ -346,6 +432,44 @@ function validateRechargeConfigUpdateInput(body) {
       errors.push(`${field}_invalid`);
     }
   }
+  if (
+    body.current_season_gold_min_display_cash_yuan !== undefined &&
+    !isNonNegativeMoneyAmount(body.current_season_gold_min_display_cash_yuan)
+  ) {
+    errors.push("current_season_gold_min_display_cash_yuan_invalid");
+  }
+  if (
+    body.residual_unit_price_yuan !== undefined &&
+    (!Number.isFinite(Number(body.residual_unit_price_yuan)) ||
+      Number(body.residual_unit_price_yuan) <= 0)
+  ) {
+    errors.push("residual_unit_price_yuan_invalid");
+  }
+  if (
+    body.residual_recharge_unit_price_yuan !== undefined &&
+    (!Number.isFinite(Number(body.residual_recharge_unit_price_yuan)) ||
+      Number(body.residual_recharge_unit_price_yuan) <= 0)
+  ) {
+    errors.push("residual_recharge_unit_price_yuan_invalid");
+  }
+  if (
+    body.residual_anchor_cash_yuan !== undefined &&
+    !isPositiveMoneyAmount(body.residual_anchor_cash_yuan)
+  ) {
+    errors.push("residual_anchor_cash_yuan_invalid");
+  }
+  if (
+    body.residual_recharge_anchor_cash_yuan !== undefined &&
+    !isPositiveMoneyAmount(body.residual_recharge_anchor_cash_yuan)
+  ) {
+    errors.push("residual_recharge_anchor_cash_yuan_invalid");
+  }
+  if (
+    body.residual_purchase_anchor_cash_yuan !== undefined &&
+    !isPositiveMoneyAmount(body.residual_purchase_anchor_cash_yuan)
+  ) {
+    errors.push("residual_purchase_anchor_cash_yuan_invalid");
+  }
   for (const field of [
     "exchange_quota",
     "season_member_quota",
@@ -365,6 +489,13 @@ function validateRechargeConfigUpdateInput(body) {
     (!Number.isInteger(body.residual_quota_per_unit) || Number(body.residual_quota_per_unit) <= 0)
   ) {
     errors.push("residual_quota_per_unit_invalid");
+  }
+  if (
+    body.residual_purchase_amount_per_quota_anchor !== undefined &&
+    (!Number.isInteger(body.residual_purchase_amount_per_quota_anchor) ||
+      Number(body.residual_purchase_amount_per_quota_anchor) <= 0)
+  ) {
+    errors.push("residual_purchase_amount_per_quota_anchor_invalid");
   }
   if (
     body.lineup_permanent_slot_max !== undefined &&
@@ -788,6 +919,9 @@ module.exports = {
   validateBindInput,
   validateHelperBindingInput,
   validateHelperInventoryInput,
+  validateHelperInventoryBatchInput,
+  validateConsignmentCreateInput,
+  validateConsignmentReviewInput,
   validateHelperSnapshotInput,
   validateHelperSnapshotUpdateInput,
   validateHelperActionLogInput,

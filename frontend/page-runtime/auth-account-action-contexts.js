@@ -70,6 +70,7 @@ export function createSaveAccountProfileContext(ctx) {
     apiFetch: ctx.apiFetch,
     gameRoleName: ctx.accountRoleNameInput.value.trim(),
     nickname: ctx.accountNicknameInput.value.trim(),
+    contactInfo: ctx.accountContactInput?.value.trim() || "",
     gameServer: ctx.accountServerInput.value.trim(),
     saveSession: ctx.saveSession,
     loadAccount: ctx.loadAccount,
